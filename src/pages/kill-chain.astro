@@ -177,9 +177,11 @@ const crossLinkBox = css({
   _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
 });
 
-// The per-phase visual spine — same idiom as osi-model.astro's OSI_LAYERS
-// stack: a vertical rail connecting numbered badges, closer to a real chain
-// diagram than a plain card list (fitting, for a page named after a chain).
+// The per-phase visual spine — a vertical rail connecting numbered badges,
+// closer to a real chain diagram than a plain card list (fitting, for a page
+// named after a chain). osi-model.astro used this same idiom once, but was
+// later rebuilt to plain bordered cards with no spine (see CLAUDE.md's
+// Debugging section); this page's own spine is unaffected by that.
 const stack = css({ display: 'flex', flexDirection: 'column', gap: '0.9rem', mt: '1.25rem', position: 'relative', pl: '1.4rem', borderLeft: '2px solid token(colors.border)' });
 const phaseRow = `${card()} ${css({ cursor: 'default', position: 'relative' })}`;
 const spineDot = css({ position: 'absolute', left: 'calc(-1.4rem - 5px)', top: '1.35rem', w: '8px', h: '8px', borderRadius: 'full', bg: 'primary', boxShadow: '0 0 0 3px token(colors.bg)' });

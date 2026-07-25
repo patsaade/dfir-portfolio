@@ -304,3 +304,25 @@ const jsonLd = JSON.stringify({ '@context': 'https://schema.org', '@graph': grap
     });
   })();
 </script>
+
+<!-- Domain-based brand identity (cyberkit.win vs patricksaade.com): tools-only
+     site under the cyberkit.win domain gets a "CyberKit" identity instead of
+     Patrick's personal branding. Runs before first paint, same timing as the
+     theme controller above, so there's no flash of the wrong brand. This is
+     CLIENT-SIDE ONLY, by deliberate choice over a second Vercel
+     project/build-time env var — see CLAUDE.md's own note on the tradeoff:
+     <title>/meta description/OG images and no-JS visitors on cyberkit.win
+     still get Patrick-branded metadata; only the rendered nav/footer text and
+     the redirected-page links (vercel.json) are actually domain-aware. Every
+     conditional element in Navigation.astro/Footer.astro reads this single
+     `data-brand="cyberkit"` attribute via a flat, single-level
+     `[data-brand="cyberkit"] &` selector — never nested with another
+     self-selector, which is the exact Panda gotcha that caused the
+     site-wide switch-thumb bug (see CLAUDE.md invariant 12). -->
+<script is:inline>
+  (function () {
+    if (/(^|\.)cyberkit\.win$/.test(location.hostname)) {
+      document.documentElement.setAttribute('data-brand', 'cyberkit');
+    }
+  })();
+</script>

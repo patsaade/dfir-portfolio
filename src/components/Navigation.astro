@@ -403,8 +403,17 @@ const mobileSummary = css({
       })}
     >
       <PixelStar size={17} twinkle={false} class={css({ flexShrink: 0 })} />
-      <span class={css({ display: { base: 'inline', sm: 'none' } })}>{SITE.brandShort}</span>
-      <span class={css({ display: { base: 'none', sm: 'inline' } })}>{SITE.brand}</span>
+      {/* Domain-based brand identity (cyberkit.win vs patricksaade.com) — see
+          BaseHead.astro's own pre-paint script, which sets `data-brand="cyberkit"`
+          on <html> before first paint (client-side only, so <title>/meta/OG stay
+          Patrick-branded regardless of domain — a deliberate tradeoff, see
+          CLAUDE.md). Both brand's markup always renders server-side; a single-
+          level `[data-brand="cyberkit"] &` selector toggles which is visible —
+          never nested with another self-selector (that's the exact Panda
+          gotcha this codebase already hit once with the switch-thumb bug). */}
+      <span class={css({ display: { base: 'inline', sm: 'none' }, '[data-brand="cyberkit"] &': { display: 'none' } })}>{SITE.brandShort}</span>
+      <span class={css({ display: { base: 'none', sm: 'inline' }, '[data-brand="cyberkit"] &': { display: 'none' } })}>{SITE.brand}</span>
+      <span class={css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } })}>CyberKit</span>
     </a>
 
     <div
@@ -424,9 +433,15 @@ const mobileSummary = css({
           p: 0,
         })}
       >
+        {/* NAV_LINKS is exactly Blog/Labs/About — the three personal-content
+            pages redirected away by vercel.json on cyberkit.win (see that
+            file's own comment) — so the whole list hides together on that
+            domain rather than needing per-item filtering. A visitor who
+            somehow lands on one of those URLs anyway still gets redirected
+            at the edge; this just keeps a dead-end link out of the nav. */}
         {
           NAV_LINKS.map((link) => (
-            <li>
+            <li class={css({ '[data-brand="cyberkit"] &': { display: 'none' } })}>
               <a
                 href={link.href}
                 aria-current={isActive(link.href) ? 'page' : undefined}
@@ -707,7 +722,7 @@ const mobileSummary = css({
     </li>
     {
       NAV_LINKS.map((link) => (
-        <li>
+        <li class={css({ '[data-brand="cyberkit"] &': { display: 'none' } })}>
           <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={mobileLink}>
             {link.label}
           </a>

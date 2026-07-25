@@ -25,10 +25,11 @@
 // doesn't attribute a specific word-scale to him; the "why it hurts" prose
 // below is grounded in his actual sentences instead.
 //
-// Visual pyramid diagram: same data-driven-grid technique osi-model.astro's
-// "derivation diagram" section documents (each level's width comes from its
-// own `widthPct` field, not hand-tuned per element) and the same swatch rule
-// — `filter: hue-rotate()` only ever lands on an isolated, childless,
+// Visual pyramid diagram: a data-driven grid (each level's width comes from
+// its own `widthPct` field, not hand-tuned per element — osi-model.astro's
+// old "derivation diagram" documented this same technique before that page
+// was rebuilt away from it, see CLAUDE.md's Debugging section) and the same
+// swatch rule — `filter: hue-rotate()` only ever lands on an isolated, childless,
 // aria-hidden decorative dot, never on anything holding text, since it
 // recolors that element's whole rendered subtree. The bands THEMSELVES use
 // `background: color-mix(...)` instead (not hue-rotate) to shade from a
@@ -189,8 +190,8 @@ const whyCell = css({ p: '1rem 1.1rem', bg: 'bgCard', border: '1px solid token(c
 const whyCellTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.92rem', color: 'text', display: 'block' });
 const whyCellDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.65, mt: '0.4rem' });
 
-// The visual pyramid — an md+ progressive enhancement (like osi-model.astro's
-// diagramWrap), stepped bars centered on the inline axis, widest at the base.
+// The visual pyramid — an md+ progressive enhancement, stepped bars centered
+// on the inline axis, widest at the base.
 // The always-rendered detail stack further down is the accessible baseline
 // on every screen size, so nothing here is load-bearing content.
 const pyramidWrap = css({ display: { base: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'center', gap: '0.35rem', mt: '1.5rem', mb: '1rem' });
@@ -209,10 +210,12 @@ const pyramidBand = css({
 });
 const bandLabel = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.85rem', color: 'text', lineHeight: 1.25 });
 
-// Per-layer stack — same "numbered badge on a spine" shape osi-model.astro's
-// own `stack`/`layerRow`/`spineDot` establish, reused here rather than
-// forked. Isolated, childless swatches only (spineDot/numBadge) ever get
-// `hue-rotate()`; the surrounding card and its text never do.
+// Per-layer stack — a "numbered badge on a spine" shape (osi-model.astro
+// used this same idiom once, but was later rebuilt to plain bordered cards
+// with no spine at all — see CLAUDE.md's Debugging section; this page's own
+// version is now independently maintained, not shared). Isolated, childless
+// swatches only (spineDot/numBadge) ever get `hue-rotate()`; the surrounding
+// card and its text never do.
 const stack = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem', mt: '1.25rem', position: 'relative', pl: '1.4rem', borderLeft: '2px solid token(colors.border)' });
 const layerRow = `${card()} ${css({ position: 'relative' })}`;
 const spineDot = css({

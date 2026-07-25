@@ -89,19 +89,26 @@ const dfirFooterLinks = [
       gap: { base: '1.75rem', sm: '2rem' },
     })}
   >
-    {/* Brand + social */}
+    {/* Brand + social — domain-based swap, see Navigation.astro's own comment
+        on the `[data-brand="cyberkit"]` mechanism (BaseHead.astro sets it
+        pre-paint). The whole social row is personal-identity content
+        (Patrick's own LinkedIn/GitHub/Credly profiles, plus an RSS feed for
+        a blog that's redirected away on this domain anyway), so it hides as
+        one unit on cyberkit.win rather than filtering per-icon. */}
     <div>
       <a
         href="/"
         class={css({ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', fontFamily: 'redaction50', fontWeight: 700, fontSize: '1.2rem', color: 'text', letterSpacing: '-0.01em', _hover: { color: 'primary' } })}
       >
         <PixelStar size={16} class={css({ flexShrink: 0 })} />
-        {SITE.brand}
+        <span class={css({ '[data-brand="cyberkit"] &': { display: 'none' } })}>{SITE.brand}</span>
+        <span class={css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } })}>CyberKit</span>
       </a>
       <p class={css({ fontSize: '0.875rem', color: 'textMuted', mt: '0.6rem', lineHeight: 1.65, maxW: '320px' })}>
-        {SITE.tagline} — writeups, labs, tooling, and a daily security term.
+        <span class={css({ '[data-brand="cyberkit"] &': { display: 'none' } })}>{SITE.tagline} — writeups, labs, tooling, and a daily security term.</span>
+        <span class={css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } })}>Free, browser-based DFIR &amp; IT tools — nothing you enter ever leaves your browser.</span>
       </p>
-      <div class={css({ display: 'flex', gap: '0.6rem', mt: '1.4rem' })}>
+      <div class={css({ display: 'flex', gap: '0.6rem', mt: '1.4rem', '[data-brand="cyberkit"] &': { display: 'none' } })}>
         <a href={SOCIALS.linkedin} target="_blank" rel="noopener" aria-label="LinkedIn" class={socialBtn}><Icon name="linkedin" size={17} /></a>
         <a href={SOCIALS.github} target="_blank" rel="noopener" aria-label="GitHub" class={socialBtn}><Icon name="github" size={17} /></a>
         <a href={SOCIALS.credly} target="_blank" rel="noopener" aria-label="Credly" class={socialBtn}><Icon name="award" size={17} /></a>
@@ -109,10 +116,13 @@ const dfirFooterLinks = [
       </div>
     </div>
 
-    {/* Explore */}
+    {/* Explore — NAV_LINKS (Blog/Labs/About) is exactly the personal-content
+        set redirected away on cyberkit.win (see vercel.json), so each row
+        hides individually there rather than dropping the whole column
+        (IT/Drills below stay visible on every domain). */}
     <nav aria-label="Footer — site sections">
       <p class={colHead}>Explore</p>
-      {NAV_LINKS.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
+      {NAV_LINKS.map((l) => <a href={l.href} class={`${fLink} ${css({ '[data-brand="cyberkit"] &': { display: 'none' } })}`}>{l.label}</a>)}
       {/* IT and Drills are nav dropdowns, not NAV_LINKS entries (see
           Navigation.astro), so each needs its own row here rather than
           coming along for free. */}
@@ -126,10 +136,12 @@ const dfirFooterLinks = [
       {dfirFooterLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
     </nav>
 
-    {/* More */}
+    {/* More — Certifications is credentials tied to Patrick's own name, so it
+        hides on cyberkit.win the same way (Privacy/Colophon are site-level,
+        not personal, so they stay everywhere). */}
     <nav aria-label="Footer — more">
       <p class={colHead}>More</p>
-      {moreLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
+      {moreLinks.map((l) => <a href={l.href} class={l.href === '/certifications/' ? `${fLink} ${css({ '[data-brand="cyberkit"] &': { display: 'none' } })}` : fLink}>{l.label}</a>)}
     </nav>
   </div>
 
@@ -150,7 +162,10 @@ const dfirFooterLinks = [
         color: 'textMuted',
       })}
     >
-      <span>© {year} {SITE.author}. Built with Astro + Panda CSS.</span>
+      <span>
+        <span class={css({ '[data-brand="cyberkit"] &': { display: 'none' } })}>© {year} {SITE.author}. Built with Astro + Panda CSS.</span>
+        <span class={css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } })}>© {year} CyberKit. Built with Astro + Panda CSS.</span>
+      </span>
 
       {/* Live status line — a forensic/terminal touch. The UTC clock ties to the
           UTC-keyed Term of the Day, which rolls over at 00:00 UTC. */}

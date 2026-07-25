@@ -1,34 +1,33 @@
 ---
 // OSI 7-Layer Model + TCP/IP 4-Layer Model Reference — general networking
 // fundamentals, IT-framed (no attacker/defender lens; see CLAUDE.md's IT vs.
-// DFIR framing rule). Same page shell as the other IT reference page
-// (ip-reference.astro): PageHeader -> intro aside -> body sections -> a
-// related-references cross-link block. Unlike ip-reference.astro/
-// network-ports.astro, there's no TagCombobox/ListFilter here — the entire
-// dataset is 7 + 4 fixed, well-known layers, not a large searchable catalog,
-// so it reads better as a linear reference than a filterable list. All
-// layer/port data is inlined below rather than split into src/data/ — it's
-// small, fixed, and only consumed by this one page. Static page — prerender
-// to HTML served from the CDN.
+// DFIR framing rule). Static page — prerender to HTML served from the CDN.
 //
-// Redesigned to teach visually first, text second: each layer's always-
-// visible content is a single compact line + example chips (not a paragraph)
-// — the original fuller explanation is one click away behind a native
-// <details> ("Show more"), so nothing was deleted, just deferred (see
-// CLAUDE.md invariant 12 — <details> gets the site's shared expand animation
-// and no-JS-safe native fallback for free, no new script needed for that
-// part). A reverse-order toggle (data-order attribute + plain CSS
-// flex-direction, debounced per invariant 12) lets a reader flip between
-// bottom-up (Physical -> Application, the classic teaching order) and
-// top-down (Application -> Physical, how an outgoing request actually
-// builds up its headers) for both stacks at once. The OSI-to-TCP/IP mapping
-// — previously a plain table only — gains a CSS Grid "derivation" diagram on
-// wider screens: TCP/IP's 4 layers are rendered as grid cells that literally
-// span the same row-lines as the OSI layers they merge (Link spans OSI rows
-// 1-2, Application spans OSI rows 5-7), color-matched, so the merge is
-// something you SEE, not just read in a table row. The table stays as the
-// accessible, always-available baseline on narrow screens (a 2-column
-// spanning grid gets cramped there) and is never removed.
+// REBUILT from scratch (not a port of the prior implementation) after a
+// long-running, never-conclusively-resolved report of a stray visual
+// rectangle on this page. The rebuild deliberately drops the highest-
+// complexity piece the page used to have — a CSS Grid "derivation diagram"
+// where each TCP/IP layer's cell spanned a computed range of grid-row
+// lines via a per-element inline `gridRow` style, color-coded with a
+// `hue-rotate()` filter per layer. That specific grid already had one
+// confirmed, fixed bug earlier (Panda silently emitting no CSS for a
+// dynamic `gridTemplateRows` template literal); this rebuild avoids the
+// whole category by not doing per-element dynamic grid placement at all.
+// The OSI->TCP/IP mapping is conveyed instead by: (a) a plain, always-
+// present HTML table (zero dynamic positioning, the same safe pattern
+// every other reference page on this site already uses for tabular data),
+// and (b) a "Maps to" badge directly on each TCP/IP layer card. No
+// `hue-rotate()`/`filter` anywhere in this file — every accent uses the
+// single `primary` token directly, which is simpler and removes an entire
+// class of "does this style value survive Panda's static extraction"
+// question. The per-layer stacks also drop the earlier absolutely-
+// positioned "spine" line + dot in favor of a plain bordered card list —
+// visually plainer, but every box here is a normal document-flow element
+// with no `position: absolute` at all.
+//
+// Content (the OSI/TCP-IP layer descriptions, the derivation mapping, the
+// port ranges) is unchanged from the verified version of this page —
+// rebuilding the presentation isn't a reason to re-verify settled facts.
 export const prerender = true;
 import { css } from 'styled-system/css';
 import { tag, card } from 'styled-system/recipes';
@@ -123,9 +122,8 @@ interface TcpIpLayer {
   gist: string;
   what: string;
   examples: string[];
-  /** The real OSI layer numbers this TCP/IP layer collapses — drives BOTH the
-   *  text label ("OSI Layers 1–2") and the derivation grid's row-span, so the
-   *  two can never drift apart the way two hand-written copies eventually would. */
+  /** The real OSI layer numbers this TCP/IP layer collapses — drives the
+   *  text label ("OSI Layers 1–2") in both the card badge and the table. */
   osiLayers: number[];
 }
 
@@ -170,10 +168,6 @@ function osiLabel(nums: number[]): string {
   return `OSI Layers ${nums[0]}–${nums[nums.length - 1]}`;
 }
 
-// Same ordering as the cards above, for the accessible table (always
-// present; the visual derivation grid below is an md+ enhancement on top of it).
-const MAPPING_ROWS = TCPIP_LAYERS.map((l) => ({ name: l.name, osiLabel: osiLabel(l.osiLayers) }));
-
 const PORT_RANGES = [
   {
     title: '0 – 1023 · Well-known',
@@ -200,20 +194,6 @@ const WELL_KNOWN_PORTS = [
   { port: '67 / 68', protocol: 'UDP', service: 'DHCP', desc: 'Automatic IP configuration — 67 is the server, 68 is the client.' },
 ];
 
-// Per-layer accent hue — evenly spaced around the wheel, same `hue-rotate()`
-// idiom ToolSidebar.astro uses for its own per-category color coding: applied
-// only to small, isolated, childless decorative elements (the number badge's
-// background, the spine dot), never to anything containing text, since
-// `filter` recolors an element's whole rendered subtree.
-const OSI_HUES = OSI_LAYERS.map((_, i) => Math.round((360 / OSI_LAYERS.length) * i));
-const TCPIP_HUES = TCPIP_LAYERS.map((_, i) => Math.round((360 / TCPIP_LAYERS.length) * i));
-// Which TCP/IP layer (and therefore which hue) each OSI layer belongs to —
-// derived from TCPIP_LAYERS.osiLayers, not hand-duplicated, so the two
-// visualizations (per-layer stacks + derivation grid) can never disagree
-// about the mapping.
-const osiNumToTcpIndex = new Map<number, number>();
-TCPIP_LAYERS.forEach((l, i) => l.osiLayers.forEach((n) => osiNumToTcpIndex.set(n, i)));
-
 const sectionH2 = css({
   display: 'flex',
   alignItems: 'center',
@@ -226,24 +206,44 @@ const sectionH2 = css({
   borderTop: '1px solid token(colors.border)',
   scrollMarginTop: '90px',
 });
+const sectionIcon = css({ color: 'primary' });
 const bodyP = css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1rem' });
 
-// "Why this matters" 3-cell grid — same shape as network-ports.astro's rangeGrid.
-const whyGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(3, 1fr)' }, gap: '0.85rem' });
-const whyCell = css({ p: '1rem 1.1rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md' });
-const whyCellTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.92rem', color: 'text', display: 'block' });
-const whyCellDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.65, mt: '0.4rem' });
+const introBox = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+const introText = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 });
 
-// Reverse-order toggle — a plain 2-segment switch (same visual language as
-// ViewToggle/ModeToggle: bordered track, active segment gets bgCard+primary).
-// Deliberately NOT wired into the shared animatedSwitch.ts sliding-thumb
-// system (invariant 12) — that system is for switches whose two options
-// are both meant to look equally "normal"; here the flat active/inactive
-// treatment alone is enough for a control that's read once, then ignored
-// while scanning the stack below it, and skipping it avoids pulling every
-// per-page instance of this page's own reverse-toggle into the site-wide
-// thumb-retrofit contract for a one-page control.
+// "Why this matters" 3-cell grid — same shape used across the site's other
+// reference pages (network-ports.astro's rangeGrid, etc.).
+const threeGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(3, 1fr)' }, gap: '0.85rem' });
+const infoCell = css({ p: '1rem 1.1rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const infoCellTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.92rem', color: 'text', display: 'block' });
+const infoCellDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.65, mt: '0.4rem' });
+
+// Reverse-order toggle — a plain 2-segment switch (bordered track, active
+// segment gets bgCard+primary). Its `role="radiogroup"` markup below means
+// AnimatedSwitch.astro (mounted site-wide in BaseLayout) auto-wires it with
+// no opt-out — CLAUDE.md invariant 12's own retrofit contract requires
+// exactly one change for that: `position: 'relative', zIndex: 0` here, so
+// the inserted thumb's `position: absolute` resolves its containing block
+// to THIS track, not up the tree to <main> (which — because of its own
+// `animation: fadeIn ... both` in BaseLayout.astro — is itself an
+// unintended containing block once the animation completes and leaves a
+// non-`none` computed transform behind). Omitting this is exactly what
+// produced a switch-thumb sized to <main>'s entire height instead of this
+// track's — a real, confirmed instance of the "stray rectangle" bug this
+// page was rebuilt to get rid of, caught by an adversarial code-quality
+// review after the rebuild, not by the rebuild itself.
 const orderToggleTrack = css({
+  position: 'relative',
+  zIndex: 0,
   display: 'inline-flex',
   gap: '0.15rem',
   p: '0.2rem',
@@ -271,32 +271,18 @@ const orderSegBtn = css({
   '&[data-active]': { bg: 'bgCard', color: 'primary', borderColor: 'border', boxShadow: 'card' },
 });
 
-// The per-layer visual stack — a vertical spine (the left border) connecting
-// numbered badges, closer to a real stack diagram than a plain card list.
-// `flexDirection` flips via the shared `[data-order]` attribute on `<body>`
-// (set by the page-local script below) so BOTH stacks (OSI + TCP/IP) reverse
-// together from one control.
+// Per-layer card list — plain bordered cards in normal document flow, no
+// absolutely-positioned decoration of any kind. `flexDirection` flips via
+// the shared `[data-order]` attribute on <main> (set by the page-local
+// script below) so both stacks (OSI + TCP/IP) reverse together.
 const stack = css({
   display: 'flex',
   flexDirection: 'column',
   gap: '0.6rem',
   mt: '1.25rem',
-  position: 'relative',
-  pl: '1.4rem',
-  borderLeft: '2px solid token(colors.border)',
   '[data-order="top-down"] &': { flexDirection: 'column-reverse' },
 });
-const layerRow = `${card()} ${css({ cursor: 'default', position: 'relative' })}`;
-const spineDot = css({
-  position: 'absolute',
-  left: 'calc(-1.4rem - 5px)',
-  top: '1.1rem',
-  w: '8px',
-  h: '8px',
-  borderRadius: 'full',
-  bg: 'primary',
-  boxShadow: '0 0 0 3px token(colors.bg)',
-});
+const layerCard = `${card()} ${css({ cursor: 'default' })}`;
 const layerHead = css({ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' });
 const numBadge = css({
   display: 'inline-flex',
@@ -316,6 +302,7 @@ const layerIconTile = css({ color: 'primary', flexShrink: 0 });
 const layerName = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '1.02rem', color: 'text' });
 const gistText = css({ color: 'text', fontSize: '0.88rem', lineHeight: 1.6, mt: '0.5rem', m: 0 });
 const exampleRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', mt: '0.6rem' });
+const mapBadgeRow = css({ mt: '0.6rem' });
 
 const moreDetails = css({ mt: '0.6rem' });
 const moreSummary = css({
@@ -345,99 +332,15 @@ const moreWhyLabel = css({
   mt: '0.7rem',
   mb: '0.2rem',
 });
+const noMargin = css({ m: 0 });
 
-const mapNote = css({ color: 'textMuted', fontSize: '0.82rem', mt: '0.65rem', mb: 0 });
-const mapNoteStrong = css({ color: 'text', fontWeight: 700 });
-
-// The visual derivation diagram — a single CSS Grid with 7 row-tracks (one
-// per OSI layer). OSI cells sit in column 1 at their own row; each TCP/IP
-// cell sits in column 3 with `gridRow` spanning the exact row-lines its own
-// `osiLayers` covers (computed in frontmatter, see `rowSpan()` below) — so a
-// TCP/IP layer's box literally overlaps the vertical space of the OSI rows
-// it merges, on screen, rather than needing a reader to cross-reference a
-// table. Column 2 is a thin connector rail. md+ only (see `diagramWrap`) —
-// a 3-column grid with row-spanning gets cramped below that, where the
-// plain `<table>` (always rendered, see `mapTableWrap`) is the accessible
-// baseline instead. Deliberately does NOT participate in the reverse-order
-// toggle — this is a structural fact ("these layers merge into this one"),
-// not a flow direction, so it always reads top-to-bottom in the canonical
-// Physical->Application numbering, same as the mapping table underneath it.
-const diagramWrap = css({ display: { base: 'none', md: 'block' }, mt: '1.5rem' });
-// Guards diagramGrid's hard-coded row count (see its own comment for why it
-// can't be interpolated). Fails the build rather than silently rendering a
-// diagram whose grid has fewer rows than there are OSI layers to place in it.
-if (OSI_LAYERS.length !== 7) {
-  throw new Error(
-    `osi-model: diagramGrid declares a literal 7 grid rows but OSI_LAYERS.length is ${OSI_LAYERS.length}. Panda needs a static value there, so update both together.`,
-  );
-}
-const diagramGrid = css({
-  display: 'grid',
-  gridTemplateColumns: '1fr 2rem 1fr',
-  // Every OSI layer is ONE equal-height unit, so a TCP/IP box spanning N of
-  // them is exactly N units tall — that proportionality is the whole point of
-  // the diagram. `auto` rows broke it: a TCP/IP cell spanning a single row
-  // (Internet -> L3, Transport -> L4) sized that row to its own content, so
-  // rows 3-4 rendered ~73px against ~42px for the other five, leaving the OSI
-  // column visibly ragged. A fixed row height (plus the single-line cell
-  // layout below, which is what makes one line actually fit) keeps all seven
-  // identical. If a label ever needs more room, raise this value — don't go
-  // back to `auto`, which re-introduces the raggedness.
-  //
-  // The row count is a LITERAL, not `repeat(${OSI_LAYERS.length}, …)`, and
-  // that matters: Panda only extracts statically-analyzable style values. A
-  // dynamic template literal still yields a class *name* at SSR (the element
-  // really does get `grid-tr_repeat(7,_2.75rem)`) but Panda never emits a
-  // matching CSS rule for it, so the declaration silently does nothing —
-  // which is why the original `repeat(${OSI_LAYERS.length}, auto)` here had
-  // no effect at all. The assertion above `diagramGrid` keeps this literal
-  // honest against the real data.
-  gridTemplateRows: 'repeat(7, 2.75rem)',
-  gap: '0.4rem 0',
-  alignItems: 'stretch',
-});
-const diagCellBase = css({
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-  px: '0.75rem',
-  py: '0.55rem',
-  borderRadius: 'md',
-  border: '1px solid token(colors.border)',
-  fontSize: '0.82rem',
-  fontWeight: 600,
-  color: 'text',
-});
-const diagOsiCell = css({ gridColumn: 1 });
-// One LINE — name on the left, the "OSI Layers x-y" label pushed right —
-// rather than the two stacked lines this used to be. Stacking forced a
-// single-row cell to be two lines tall, which is what made its grid row
-// outgrow the others (see diagramGrid above).
-const diagTcpCell = css({
-  gridColumn: 3,
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '0.5rem',
-  bg: 'bgCard',
-});
-const diagRail = css({ gridColumn: 2, display: 'flex', alignItems: 'stretch', justifyContent: 'center' });
-const diagRailBar = css({ w: '2px', bg: 'token(colors.border)' });
-// Isolated, childless swatches — the only elements that get `hue-rotate()`
-// in this diagram (see spineDot's own comment above: `filter` recolors an
-// element's whole rendered subtree, so it must never land on anything that
-// also contains text, or the text itself silently shifts hue along with it).
-const diagSwatch = css({ display: 'inline-block', w: '9px', h: '9px', borderRadius: 'full', bg: 'primary', flexShrink: 0 });
-const diagTcpNameRow = css({ display: 'flex', alignItems: 'center', gap: '0.4rem', minW: 0 });
-const diagTcpName = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.85rem', whiteSpace: 'nowrap' });
-// `flexShrink: 0` + `nowrap`: this label is the diagram's actual payload (which
-// OSI layers this box absorbs), so it must never wrap to a second line — a
-// wrap here would overflow the now-fixed row height.
-const diagTcpSpan = css({ fontFamily: 'sans', fontWeight: 500, fontSize: '0.72rem', color: 'textMuted', whiteSpace: 'nowrap', flexShrink: 0 });
-
-const mapTableWrap = css({ mt: '1.5rem', border: '1px solid token(colors.border)', borderRadius: 'md', overflowX: 'auto', '[data-has-diagram] &': { display: { base: 'block', md: 'none' } } });
-const mapTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
-const mapTh = css({
+// Accessible mapping table — the single source of truth for the OSI<->TCP/IP
+// derivation, always rendered (no responsive breakpoint gate, no separate
+// "diagram" competing with it). Plain <table> markup only, no dynamic grid
+// positioning of any kind.
+const tableWrap = css({ mt: '1.5rem', border: '1px solid token(colors.border)', borderRadius: 'md', overflowX: 'auto' });
+const dataTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const th = css({
   textAlign: 'left',
   color: 'textMuted',
   fontFamily: 'sans',
@@ -449,23 +352,12 @@ const mapTh = css({
   p: '0.55rem 0.85rem',
   borderBottom: '1px solid token(colors.border)',
 });
-const mapTd = css({ fontSize: '0.88rem', color: 'text', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)' });
-const mapTdMono = css({ fontFamily: 'mono', fontWeight: 700, color: 'primary' });
-
-// Port-range cards — same 3-column shape as the OSI-adjacent whyGrid above,
-// reused rather than forked.
-const rangeGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(3, 1fr)' }, gap: '0.85rem', mt: '1.25rem' });
-const rangeCell = css({ p: '1rem 1.1rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md' });
-const rangeCellTitle = css({ fontFamily: 'mono', fontWeight: 700, fontSize: '0.85rem', color: 'primary', display: 'block' });
-const rangeCellDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.65, mt: '0.4rem' });
-
-const portTableWrap = css({ mt: '1.5rem', border: '1px solid token(colors.border)', borderRadius: 'md', overflowX: 'auto' });
-const portTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
-const portTh = mapTh;
-const portTdPort = css({ fontFamily: 'mono', fontWeight: 700, color: 'primary', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
-const portTdProto = css({ fontFamily: 'mono', fontSize: '0.8rem', color: 'textMuted', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
-const portTdService = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.85rem', color: 'text', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
-const portTdDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)' });
+const td = css({ fontSize: '0.88rem', color: 'text', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)' });
+const tdMono = css({ fontFamily: 'mono', fontWeight: 700, color: 'primary' });
+const tdPort = css({ fontFamily: 'mono', fontWeight: 700, color: 'primary', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
+const tdProto = css({ fontFamily: 'mono', fontSize: '0.8rem', color: 'textMuted', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
+const tdService = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.85rem', color: 'text', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
+const tdDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)' });
 
 const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
 const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
@@ -473,27 +365,17 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 
 <BaseLayout
   title="OSI & TCP/IP Model Reference"
-  description="The OSI seven-layer model and the practical four-layer TCP/IP model it's usually simplified to — what each layer does, the protocols that actually run there, a visual derivation diagram, and the three IANA port ranges with the ports that matter most day to day."
+  description="The OSI seven-layer model and the practical four-layer TCP/IP model it's usually simplified to — what each layer does, the protocols that actually run there, how the two map onto each other, and the three IANA port ranges with the ports that matter most day to day."
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'OSI & TCP/IP Model Reference' }]}
     eyebrow="Reference"
     title="OSI & TCP/IP Model Reference"
-    description="The OSI seven-layer model, the four-layer TCP/IP model it collapses into in practice, a visual derivation diagram, and the IANA port ranges every connection on the network draws from."
+    description="The OSI seven-layer model, the four-layer TCP/IP model it collapses into in practice, how the two map onto each other, and the IANA port ranges every connection on the network draws from."
   />
 
-  <aside
-    class={css({
-      bg: 'bgSubtle',
-      border: '1px solid token(colors.border)',
-      borderLeftWidth: '3px',
-      borderLeftColor: 'primary',
-      borderRadius: 'md',
-      p: '1rem 1.25rem',
-      mb: '1.5rem',
-    })}
-  >
-    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+  <aside class={introBox}>
+    <p class={introText}>
       Neither model is a protocol — both are just ways of organizing where a given protocol's job starts and
       ends. OSI is the seven-layer teaching framework; TCP/IP is the simpler four-layer version real networking
       is actually built on.
@@ -501,26 +383,26 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </aside>
 
   <h2 id="why-it-matters" class={sectionH2}>
-    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Why the layers matter
+    <Icon name="crosshair" size={20} class={sectionIcon} /> Why the layers matter
   </h2>
-  <div class={whyGrid}>
-    <div class={whyCell}>
-      <span class={whyCellTitle}>It defines scope</span>
-      <p class={whyCellDesc}>
+  <div class={threeGrid}>
+    <div class={infoCell}>
+      <span class={infoCellTitle}>It defines scope</span>
+      <p class={infoCellDesc}>
         A Layer 2 problem (an ARP conflict, a switching loop) and a Layer 7 problem (a broken API response) live
         in different parts of the stack — knowing which one you're looking at points you at the right evidence.
       </p>
     </div>
-    <div class={whyCell}>
-      <span class={whyCellTitle}>It makes packet captures readable</span>
-      <p class={whyCellDesc}>
+    <div class={infoCell}>
+      <span class={infoCellTitle}>It makes packet captures readable</span>
+      <p class={infoCellDesc}>
         Every protocol wraps the one above it — an Ethernet frame carries an IP packet, which carries a TCP
         segment, which carries an HTTP request. A raw capture opens with link-layer headers first because of this.
       </p>
     </div>
-    <div class={whyCell}>
-      <span class={whyCellTitle}>It locates where controls sit</span>
-      <p class={whyCellDesc}>
+    <div class={infoCell}>
+      <span class={infoCellTitle}>It locates where controls sit</span>
+      <p class={infoCellDesc}>
         A stateless ACL only ever looks at Layer 3/4 — source, destination, port, protocol. A proxy or IDS doing
         signature matching works at Layer 7, reading actual content. Knowing the difference tells you what a
         control can and can't see.
@@ -529,7 +411,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </div>
 
   <h2 id="osi-model" class={sectionH2}>
-    <Icon name="layers" size={20} class={css({ color: 'primary' })} /> The OSI 7-layer model
+    <Icon name="layers" size={20} class={sectionIcon} /> The OSI 7-layer model
   </h2>
   <p class={bodyP}>
     Standardized by ISO in 1984 — seven layers, each depending only on the one directly beneath it. Almost
@@ -549,10 +431,9 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   <div class={stack} data-layer-stack>
     {
       OSI_LAYERS.map((l) => (
-        <div class={layerRow} id={`osi-${l.num}`}>
-          <span class={spineDot} aria-hidden="true" style={{ filter: `hue-rotate(${OSI_HUES[l.num - 1]}deg)` }} />
+        <div class={layerCard} id={`osi-${l.num}`}>
           <div class={layerHead}>
-            <span class={numBadge} style={{ filter: `hue-rotate(${OSI_HUES[l.num - 1]}deg)` }}>{`0${l.num}`}</span>
+            <span class={numBadge}>{`0${l.num}`}</span>
             <Icon name={l.icon} size={20} class={layerIconTile} />
             <span class={layerName}>{`Layer ${l.num} — ${l.name}`}</span>
           </div>
@@ -567,9 +448,9 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
               <Icon name="chevron-right" size={13} /> Show more
             </summary>
             <div class={moreBody}>
-              <p class={css({ m: 0 })}>{l.what}</p>
+              <p class={noMargin}>{l.what}</p>
               <p class={moreWhyLabel}>Why it matters</p>
-              <p class={css({ m: 0 })}>{l.why}</p>
+              <p class={noMargin}>{l.why}</p>
             </div>
           </details>
         </div>
@@ -578,7 +459,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </div>
 
   <h2 id="tcpip-model" class={sectionH2}>
-    <Icon name="globe" size={20} class={css({ color: 'primary' })} /> The TCP/IP 4-layer model
+    <Icon name="globe" size={20} class={sectionIcon} /> The TCP/IP 4-layer model
   </h2>
   <p class={bodyP}>
     The Internet Protocol Suite — what's actually running underneath every connection — predates OSI and
@@ -588,9 +469,8 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 
   <div class={stack} data-layer-stack>
     {
-      TCPIP_LAYERS.map((l, i) => (
-        <div class={layerRow}>
-          <span class={spineDot} aria-hidden="true" style={{ filter: `hue-rotate(${TCPIP_HUES[i]}deg)` }} />
+      TCPIP_LAYERS.map((l) => (
+        <div class={layerCard}>
           <div class={layerHead}>
             <Icon name={l.icon} size={20} class={layerIconTile} />
             <span class={layerName}>{l.name}</span>
@@ -601,15 +481,15 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
               <span class={tag({ tone: 'muted' })}>{e}</span>
             ))}
           </div>
-          <p class={mapNote}>
-            Maps to <span class={mapNoteStrong}>{osiLabel(l.osiLayers)}</span>
-          </p>
+          <div class={mapBadgeRow}>
+            <span class={tag({ tone: 'primary' })}>Maps to {osiLabel(l.osiLayers)}</span>
+          </div>
           <details class={moreDetails}>
             <summary class={moreSummary}>
               <Icon name="chevron-right" size={13} /> Show more
             </summary>
             <div class={moreBody}>
-              <p class={css({ m: 0 })}>{l.what}</p>
+              <p class={noMargin}>{l.what}</p>
             </div>
           </details>
         </div>
@@ -618,71 +498,28 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </div>
 
   <h2 id="derivation" class={sectionH2}>
-    <Icon name="columns" size={20} class={css({ color: 'primary' })} /> How TCP/IP's layers are derived
+    <Icon name="columns" size={20} class={sectionIcon} /> How TCP/IP's layers are derived
   </h2>
   <p class={bodyP}>
-    TCP/IP's four layers aren't a different model — they're OSI's seven, merged. The diagram below lines each
-    TCP/IP layer up against the exact OSI layers it absorbs.
+    TCP/IP's four layers aren't a different model — they're OSI's seven, merged. The table below lines each
+    TCP/IP layer up against the exact OSI layers it absorbs (the same mapping the "Maps to" badges above show,
+    collected in one place).
   </p>
 
-  <div class={diagramWrap} data-has-diagram>
-    <div class={diagramGrid}>
-      {
-        OSI_LAYERS.map((l) => {
-          const tcpIdx = osiNumToTcpIndex.get(l.num) ?? 0;
-          return (
-            <div class={`${diagCellBase} ${diagOsiCell}`} style={{ gridRow: String(l.num) }}>
-              <span class={diagSwatch} aria-hidden="true" style={{ filter: `hue-rotate(${TCPIP_HUES[tcpIdx]}deg)` }} />
-              <Icon name={l.icon} size={15} class={css({ color: 'textMuted', flexShrink: 0 })} />
-              {`${l.num}. ${l.name}`}
-            </div>
-          );
-        })
-      }
-      {
-        TCPIP_LAYERS.map((l, i) => {
-          const start = l.osiLayers[0];
-          const end = l.osiLayers[l.osiLayers.length - 1] + 1;
-          return (
-            <div class={diagRail} style={{ gridRow: `${start} / ${end}` }} aria-hidden="true">
-              <span class={diagRailBar} style={{ filter: `hue-rotate(${TCPIP_HUES[i]}deg)` }} />
-            </div>
-          );
-        })
-      }
-      {
-        TCPIP_LAYERS.map((l, i) => {
-          const start = l.osiLayers[0];
-          const end = l.osiLayers[l.osiLayers.length - 1] + 1;
-          return (
-            <div class={`${diagCellBase} ${diagTcpCell}`} style={{ gridRow: `${start} / ${end}` }}>
-              <span class={diagTcpNameRow}>
-                <span class={diagSwatch} aria-hidden="true" style={{ filter: `hue-rotate(${TCPIP_HUES[i]}deg)` }} />
-                <Icon name={l.icon} size={15} class={css({ color: 'textMuted', flexShrink: 0 })} />
-                <span class={diagTcpName}>{l.name}</span>
-              </span>
-              <span class={diagTcpSpan}>{osiLabel(l.osiLayers)}</span>
-            </div>
-          );
-        })
-      }
-    </div>
-  </div>
-
-  <div class={mapTableWrap} data-has-diagram>
-    <table class={mapTable}>
+  <div class={tableWrap}>
+    <table class={dataTable}>
       <thead>
         <tr>
-          <th class={mapTh}>TCP/IP layer</th>
-          <th class={mapTh}>OSI layer(s)</th>
+          <th class={th}>TCP/IP layer</th>
+          <th class={th}>OSI layer(s)</th>
         </tr>
       </thead>
       <tbody>
         {
-          MAPPING_ROWS.map((r) => (
+          TCPIP_LAYERS.map((l) => (
             <tr>
-              <td class={`${mapTd} ${mapTdMono}`}>{r.name}</td>
-              <td class={mapTd}>{r.osiLabel}</td>
+              <td class={`${td} ${tdMono}`}>{l.name}</td>
+              <td class={td}>{osiLabel(l.osiLayers)}</td>
             </tr>
           ))
         }
@@ -691,42 +528,42 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </div>
 
   <h2 id="ports" class={sectionH2}>
-    <Icon name="hash" size={20} class={css({ color: 'primary' })} /> Well-known ports &amp; the transport layer
+    <Icon name="hash" size={20} class={sectionIcon} /> Well-known ports &amp; the transport layer
   </h2>
   <p class={bodyP}>
     Every TCP/UDP conversation involves a port on each end; RFC 6335 splits the 16-bit port space into three
     IANA-maintained ranges. For how specific ports get read as indicators during an investigation, see the{' '}
     <a href="/network-ports/" class={css({ color: 'primary', textDecoration: 'underline' })}>Network Port Reference</a>.
   </p>
-  <div class={rangeGrid}>
+  <div class={threeGrid}>
     {
       PORT_RANGES.map((r) => (
-        <div class={rangeCell}>
-          <span class={rangeCellTitle}>{r.title}</span>
-          <p class={rangeCellDesc}>{r.desc}</p>
+        <div class={infoCell}>
+          <span class={infoCellTitle}>{r.title}</span>
+          <p class={infoCellDesc}>{r.desc}</p>
         </div>
       ))
     }
   </div>
 
-  <div class={portTableWrap}>
-    <table class={portTable}>
+  <div class={tableWrap}>
+    <table class={dataTable}>
       <thead>
         <tr>
-          <th class={portTh}>Port</th>
-          <th class={portTh}>Protocol</th>
-          <th class={portTh}>Service</th>
-          <th class={portTh}>What it's for</th>
+          <th class={th}>Port</th>
+          <th class={th}>Protocol</th>
+          <th class={th}>Service</th>
+          <th class={th}>What it's for</th>
         </tr>
       </thead>
       <tbody>
         {
           WELL_KNOWN_PORTS.map((p) => (
             <tr>
-              <td class={portTdPort}>{p.port}</td>
-              <td class={portTdProto}>{p.protocol}</td>
-              <td class={portTdService}>{p.service}</td>
-              <td class={portTdDesc}>{p.desc}</td>
+              <td class={tdPort}>{p.port}</td>
+              <td class={tdProto}>{p.protocol}</td>
+              <td class={tdService}>{p.service}</td>
+              <td class={tdDesc}>{p.desc}</td>
             </tr>
           ))
         }
@@ -735,7 +572,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </div>
 
   <h2 id="related" class={sectionH2}>
-    <Icon name="link" size={20} class={css({ color: 'primary' })} /> Related references
+    <Icon name="link" size={20} class={sectionIcon} /> Related references
   </h2>
   <div class={relatedList}>
     <div>
@@ -763,58 +600,54 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   // @ts-nocheck — vanilla DOM client script
   // Reverse-order toggle: flips BOTH per-layer stacks (OSI + TCP/IP) between
   // bottom-up (the DOM's own order, Physical first) and top-down, via a
-  // single `data-order` attribute read by each `stack`'s own CSS
+  // single `data-order` attribute on <main>, read by each `stack`'s own CSS
   // (`[data-order="top-down"] &` -> `flex-direction: column-reverse`) — no
   // DOM reordering, so scroll position and focus stay sane across a toggle.
-  // Debounced per CLAUDE.md invariant 12 (any button that cycles state must
-  // debounce its own clicks) even though the visual change is an instant
-  // CSS flex-direction flip with no transition to thrash mid-animation —
+  // Debounced per CLAUDE.md invariant 12 even though the visual change is an
+  // instant CSS flex-direction flip with no transition to thrash mid-way —
   // the guard is cheap and keeps this consistent with every other stateful
   // toggle on the site.
   (function () {
     function init() {
-      var groups = document.querySelectorAll('[data-order-toggle]:not([data-ready])');
-      Array.prototype.forEach.call(groups, function (group) {
-        var bottomBtn = group.querySelector('[data-order-btn="bottom-up"]');
-        var topBtn = group.querySelector('[data-order-btn="top-down"]');
-        var root = document.querySelector('main') || document.body;
-        if (!bottomBtn || !topBtn) return;
-        var KEY = 'osi-model-order';
+      var group = document.querySelector('[data-order-toggle]');
+      if (!group) return;
+      var bottomBtn = group.querySelector('[data-order-btn="bottom-up"]');
+      var topBtn = group.querySelector('[data-order-btn="top-down"]');
+      var root = document.querySelector('main') || document.body;
+      if (!bottomBtn || !topBtn) return;
+      var KEY = 'osi-model-order';
 
-        function setOrder(order) {
-          root.setAttribute('data-order', order);
-          var topActive = order === 'top-down';
-          [
-            [bottomBtn, !topActive],
-            [topBtn, topActive],
-          ].forEach(function (pair) {
-            var btn = pair[0], active = pair[1];
-            if (active) btn.setAttribute('data-active', '');
-            else btn.removeAttribute('data-active');
-            btn.setAttribute('aria-checked', String(active));
-          });
-          try { localStorage.setItem(KEY, order); } catch (e) {}
-        }
+      function setOrder(order) {
+        root.setAttribute('data-order', order);
+        var topActive = order === 'top-down';
+        [
+          [bottomBtn, !topActive],
+          [topBtn, topActive],
+        ].forEach(function (pair) {
+          var btn = pair[0], active = pair[1];
+          if (active) btn.setAttribute('data-active', '');
+          else btn.removeAttribute('data-active');
+          btn.setAttribute('aria-checked', String(active));
+        });
+        try { localStorage.setItem(KEY, order); } catch (e) {}
+      }
 
-        function debounceClick(el, cooldownMs, handler) {
-          var busy = false;
-          el.addEventListener('click', function () {
-            if (busy) return;
-            busy = true;
-            handler();
-            setTimeout(function () { busy = false; }, cooldownMs);
-          });
-        }
+      var busy = false;
+      function debounceClick(el, cooldownMs, handler) {
+        el.addEventListener('click', function () {
+          if (busy) return;
+          busy = true;
+          handler();
+          setTimeout(function () { busy = false; }, cooldownMs);
+        });
+      }
 
-        debounceClick(bottomBtn, 200, function () { setOrder('bottom-up'); });
-        debounceClick(topBtn, 200, function () { setOrder('top-down'); });
+      debounceClick(bottomBtn, 200, function () { setOrder('bottom-up'); });
+      debounceClick(topBtn, 200, function () { setOrder('top-down'); });
 
-        var saved = null;
-        try { saved = localStorage.getItem(KEY); } catch (e) {}
-        if (saved === 'top-down') setOrder('top-down');
-
-        group.setAttribute('data-ready', '');
-      });
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      if (saved === 'top-down') setOrder('top-down');
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();

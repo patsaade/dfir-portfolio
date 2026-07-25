@@ -6,7 +6,16 @@
     { "source": "/tags", "destination": "/blog/", "permanent": true },
     { "source": "/tags/", "destination": "/blog/", "permanent": true },
     { "source": "/tags/:tag", "destination": "/blog/?tag=:tag", "permanent": true },
-    { "source": "/tags/:tag/", "destination": "/blog/?tag=:tag", "permanent": true }
+    { "source": "/tags/:tag/", "destination": "/blog/?tag=:tag", "permanent": true },
+    { "source": "/", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/about", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/about/", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/certifications", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/certifications/", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/blog", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/blog/:path*", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/labs", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false },
+    { "source": "/labs/:path*", "has": [{ "type": "host", "value": "cyberkit.win" }], "destination": "/dfir/", "permanent": false }
   ],
   "headers": [
     {
