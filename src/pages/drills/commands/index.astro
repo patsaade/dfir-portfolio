@@ -1,0 +1,75 @@
+---
+// Terminal Commands — OS picker landing page. Redesigned from a single
+// text-box quiz (the now-deleted src/data/drills/commands.ts) into three
+// dedicated interactive terminal drills — a genuine simulated shell per OS,
+// not one mixed multi-shell quiz. See src/data/terminalEnvironments.ts for
+// the shared fake-host simulation (files/processes/listeners/scheduled
+// tasks, identical facts across all three) and
+// src/data/drills/terminalChallenges.ts for each track's challenge bank.
+// Same "picker page, no ExternalResources/Related section of its own"
+// pattern as the top-level src/pages/drills/index.astro — those sections
+// live on each of the three destination pages instead.
+export const prerender = true;
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import Icon from '../../../components/Icon.astro';
+import { css } from 'styled-system/css';
+import { card } from 'styled-system/recipes';
+import { BASH_CHALLENGES, CMD_CHALLENGES, POWERSHELL_CHALLENGES } from '../../../data/drills/terminalChallenges';
+
+// Exact hrefs/labels — kept in sync with search-index.json.ts's STATIC_PAGES
+// and og/routes.ts's STATIC_ENTRIES by whoever owns those files (out of
+// scope for this change — see this task's own "do NOT touch" list).
+const TRACKS = [
+  {
+    href: '/drills/commands/bash/',
+    label: 'Bash',
+    icon: 'terminal',
+    description: `Linux/macOS shell — ${BASH_CHALLENGES.length} challenges, from pwd to hunting a rogue listener with netstat | grep.`,
+  },
+  {
+    href: '/drills/commands/cmd/',
+    label: 'cmd.exe',
+    icon: 'monitor',
+    description: `Windows Command Prompt — ${CMD_CHALLENGES.length} challenges, from dir to querying scheduled tasks.`,
+  },
+  {
+    href: '/drills/commands/powershell/',
+    label: 'PowerShell',
+    icon: 'cpu',
+    description: `Windows PowerShell — ${POWERSHELL_CHALLENGES.length} challenges, including the object pipeline (Where-Object).`,
+  },
+] as const;
+
+const cardsGrid = css({ mt: '0.5rem' }); // columns/gap come from the shared .card-grid class
+const linkCard = `${card()} ${css({ _hover: { boxShadow: 'card' } })}`;
+const cardHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem' });
+const cardTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.95rem', color: 'text', lineHeight: 1.3 });
+const cardDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.45, mt: '0.3rem' });
+---
+
+<BaseLayout
+  title="Terminal Commands Drill"
+  description="Pick a shell — bash, cmd.exe, or PowerShell — and work through a real simulated terminal, not a quiz. Type actual commands against a small fixed fake host and get realistic output back, including a working help system."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills' }, { label: 'Terminal Commands' }]}
+    eyebrow="Practice"
+    title="Terminal Commands Drill"
+    description="A real interactive terminal, not multiple choice — pick a shell below and type actual commands against a small fixed fake host (a few files, a handful of processes, one suspicious listener). help, man, and Get-Help all work, so you can explore your way to the answer instead of only recalling it."
+  />
+
+  <div class={`card-grid ${cardsGrid}`}>
+    {
+      TRACKS.map((t) => (
+        <a href={t.href} class={linkCard}>
+          <span class={cardHead}>
+            <Icon name={t.icon} size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+            <span class={cardTitle}>{t.label}</span>
+          </span>
+          <p class={cardDesc}>{t.description}</p>
+        </a>
+      ))
+    }
+  </div>
+</BaseLayout>

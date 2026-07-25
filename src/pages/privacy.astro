@@ -32,30 +32,35 @@ const updated = 'July 8, 2026';
 
   <h2 class={h2}>Analytics</h2>
   <p class={para}>
-    The site uses <strong class={strongText}>Vercel Web Analytics</strong> and
+    The site uses <strong class={strongText}>Vercel Web Analytics</strong> and{' '}
     <strong class={strongText}>Vercel Speed Insights</strong> — both
     privacy-friendly and <strong class={strongText}>cookieless</strong>. Web
     Analytics records aggregate, anonymized visit data (page views, referrer, approximate
     country, device/browser type); Speed Insights records anonymized page-performance metrics
     (load times and Core Web Vitals). Neither uses cookies, builds advertising profiles, nor
-    tracks you across other websites, and <strong class={strongText}>no</strong>
-    personally identifiable information is collected or stored. See Vercel's
-    <a class={link} href="https://vercel.com/docs/analytics/privacy-policy" target="_blank" rel="noopener">Web Analytics</a>
-    and
-    <a class={link} href="https://vercel.com/docs/speed-insights/privacy-policy" target="_blank" rel="noopener">Speed Insights</a>
+    tracks you across other websites, and <strong class={strongText}>no</strong>{' '}
+    personally identifiable information is collected or stored. See Vercel's{' '}
+    <a class={link} href="https://vercel.com/docs/analytics/privacy-policy" target="_blank" rel="noopener">Web Analytics</a>{' '}
+    and{' '}
+    <a class={link} href="https://vercel.com/docs/speed-insights/privacy-policy" target="_blank" rel="noopener">Speed Insights</a>{' '}
     privacy documentation for details.
   </p>
 
   <h2 class={h2}>Cookies & local storage</h2>
   <p class={para}>
     This site sets <strong class={strongText}>no cookies</strong>. A handful of small
-    interface preferences are saved in your browser's
+    interface preferences are saved in your browser's{' '}
     <code class={inlineCode}>localStorage</code> instead — for
     example your theme (light/dark mode and chosen color palette per mode), whether you've turned
     on the optional interface sounds, your preferred list/matrix view on the ATT&CK and D3FEND
-    maps, whether the site-wide DFIR sidebar is hidden, collapsed to icons, or expanded and which
-    category it's showing, and your last search/filter on pages with one (so returning to a page
-    like Tools or the Glossary picks up where you left off). Those values stay on your device, are
+    maps, whether the site-wide DFIR/IT/Drills sidebar is hidden or shown and which of the three
+    datasets (DFIR, IT, or Drills) it's showing, and if you've dragged it, where you left it
+    vertically, your last
+    search/filter on pages with one (so returning to a page
+    like Tools or the Glossary picks up where you left off), and, on each interactive tool page,
+    whatever you last typed or selected in that tool's own fields — keyed to that page, so coming
+    back to it picks up where you left off. Each tool with saved input has its own "reset" button
+    to clear just that tool back to its defaults. Those values stay on your device, are
     never transmitted to a server, and you can clear them any time via your browser settings.
   </p>
   <p class={para}>
@@ -64,23 +69,27 @@ const updated = 'July 8, 2026';
     works offline. That's simply your own copy of this public site — nothing about you is collected
     or sent anywhere. A few other interactive touches — the ⌘K search palette and the tap/hover
     reference cards on terms and tools — fetch a small, public data file from this same site and
-    filter it entirely in your browser; nothing is sent anywhere, and nothing is stored. The daily
+    filter it entirely in your browser; nothing is sent anywhere, and nothing is stored. The daily{' '}
     <strong class={strongText}>Term of the Day</strong> is chosen when the site is built,
     not computed about you, so there's nothing to fetch or store for it at all.
   </p>
   <p class={para}>
     The interactive tools — the <a class={link} href="/tools/timestamp-converter/">Timestamp
-    Decoder</a>, <a class={link} href="/tools/ioc-extractor/">IOC Extractor</a>, and
+    Decoder</a>, <a class={link} href="/tools/ioc-extractor/">IOC Extractor</a>, and{' '}
     <a class={link} href="/tools/hash-calculator/">Hash Calculator</a> — run entirely in your
     browser. Whatever you type or paste into them (timestamps, indicators, files being hashed)
-    is never uploaded anywhere; there's no server-side component to send it to.
+    is never uploaded anywhere; there's no server-side component to send it to. The same
+    boundary applies to what a tool remembers locally for next time: only text-field, dropdown,
+    checkbox, and switch values are saved, and only by name (e.g. an algorithm choice or a typed
+    string) — never a file's contents. A tool with a file-upload input never writes anything
+    about that file to <code class={inlineCode}>localStorage</code>.
   </p>
 
   <h2 class={h2}>Hosting & server logs</h2>
   <p class={para}>
     The site is hosted on <a class={link} href="https://vercel.com" target="_blank" rel="noopener">Vercel</a>,
     which may process standard request data (such as IP address and user-agent) transiently
-    to deliver pages and protect against abuse, per
+    to deliver pages and protect against abuse, per{' '}
     <a class={link} href="https://vercel.com/legal/privacy-policy" target="_blank" rel="noopener">Vercel's privacy policy</a>.
     This site's owner does not maintain its own separate logs of visitors.
   </p>
@@ -95,16 +104,16 @@ const updated = 'July 8, 2026';
   <h2 class={h2}>Your choices</h2>
   <ul class={list}>
     <li>Use your browser's "Do Not Track" / privacy settings — analytics here is already cookieless and anonymous.</li>
-    <li>Clear site data / <code class={inlineCode}>localStorage</code> to reset all saved preferences (theme, sound, sidebar layout, and any saved view/filter choices).</li>
+    <li>Clear site data / <code class={inlineCode}>localStorage</code> to reset all saved preferences (theme, sound, sidebar layout, any saved view/filter choices, and any tool inputs left behind) — or use a tool's own "reset" button to clear just that one.</li>
     <li>Block scripts for <code class={inlineCode}>patricksaade.com</code> — the site still renders and reads normally.</li>
   </ul>
 
   <h2 class={h2}>Contact</h2>
   <p class={para}>
-    Questions about this policy, or want to report a security issue? Reach out via
-    <a class={link} href={SOCIALS.linkedin} target="_blank" rel="noopener">LinkedIn</a> or
+    Questions about this policy, or want to report a security issue? Reach out via{' '}
+    <a class={link} href={SOCIALS.linkedin} target="_blank" rel="noopener">LinkedIn</a> or{' '}
     <a class={link} href={SOCIALS.github} target="_blank" rel="noopener">GitHub</a>. Security
-    contact details are also published at
+    contact details are also published at{' '}
     <a class={link} href="/.well-known/security.txt">/.well-known/security.txt</a>.
   </p>
 

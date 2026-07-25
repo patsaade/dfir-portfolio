@@ -1,0 +1,1005 @@
+---
+// YARA Rule Tester & Builder — build a rule with a guided, string-by-string
+// builder (src/utils/yara.ts owns every piece of matching/condition logic,
+// unit-tested in test/yara.test.ts) and scan it live against a pasted sample.
+// The sample is scanned FOR REAL, byte by byte, in the browser: every reported
+// match offset comes from utils/yara.ts's own scanner, never from a canned
+// result. A second tab renders the same rule as YARA source, generated from
+// the builder's current state, and can parse a pasted rule back into the
+// builder — but only within this tool's documented subset (see yara.ts's file
+// header for exactly what is and isn't covered).
+// Same "Scratch-inspired workspace" visual language as this site's other
+// builder tools, and the direct sibling of SigmaTester.astro. Genuinely
+// requires JS (there's no meaningful static rule scanner), so the workspace
+// stays hidden until the script confirms it's running — same JS-armed,
+// no-JS-safe philosophy as SigmaTester/DorkBuilder/HashCalculator.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { YARA_TEXT_MODIFIERS, YARA_CONDITION_UI_TYPES, STARTER_YARA_RULE, STARTER_YARA_SAMPLE } from '../utils/yara';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted' });
+const scopeNote = css({ color: 'textMuted', fontSize: '0.84rem', lineHeight: 1.6, m: 0 });
+
+const switchRow = css({
+  position: 'relative', // containing block + stacking context for the animated switch thumb (see AnimatedSwitch)
+  zIndex: 0,
+  display: 'inline-flex',
+  gap: '0.15rem',
+  p: '0.2rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  alignSelf: 'flex-start',
+});
+const switchBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  px: '0.8rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  borderRadius: 'sm',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'text' },
+  '&[data-active]': { bg: 'bgSubtle', color: 'primary', borderColor: 'border', boxShadow: 'card' },
+  // Once armed, this button's own bg/border/shadow is suppressed by a
+  // hand-written global rule in motion.css (Panda's css() can't express the
+  // compound ancestor+self condition needed — see that rule's comment).
+});
+
+const nameInput = css({
+  fontFamily: 'mono',
+  fontSize: '0.9rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.7rem',
+  py: '0.5rem',
+  width: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+
+const stringsStack = css({ display: 'flex', flexDirection: 'column', gap: '0.65rem' });
+const stringCard = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md', p: '0.7rem 0.75rem' });
+const stringTopRow = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem' });
+const kindSelect = css({
+  flex: '0 0 auto',
+  minW: '96px',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  color: 'text',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.5rem',
+  py: '0.4rem',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const idWrap = css({ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', flex: '0 1 130px', minW: '104px' });
+const dollarSign = css({ fontFamily: 'mono', fontSize: '0.85rem', fontWeight: 700, color: 'primary' });
+const idInput = css({
+  flex: 1,
+  minW: 0,
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  fontWeight: 700,
+  color: 'primary',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.45rem',
+  py: '0.4rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const valueInput = css({
+  flex: '3 1 200px',
+  minW: '140px',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  color: 'text',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.55rem',
+  py: '0.4rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+const iconBtn = css({
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '1.75rem',
+  h: '1.75rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+const modifierRow = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.75rem',
+  pl: '0.1rem',
+  // Toggled by both SSR (`hidden={s.kind === 'hex'}`) and JS
+  // (`mods.hidden = kind === 'hex'`) — needs an explicit override, since
+  // this element's own unconditional `display: flex` otherwise beats the
+  // UA `[hidden]{display:none}` rule regardless of specificity. See
+  // CLAUDE.md's `[hidden]` cascade gotcha.
+  '&[hidden]': { display: 'none' },
+});
+const checkboxLabel = css({ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontFamily: 'mono', fontSize: '0.78rem', color: 'textMuted', cursor: 'pointer', _hover: { color: 'text' } });
+
+const addStringBtn = css({
+  alignSelf: 'flex-start',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.7rem',
+  py: '0.4rem',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const conditionBox = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+const selectInput = css({
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.45rem',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  alignSelf: 'flex-start',
+  minW: '280px',
+});
+const numberInput = css({
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.4rem',
+  w: '5.5rem',
+  alignSelf: 'flex-start',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const conditionNames = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.75rem',
+  // Same `[hidden]` cascade gotcha as `modifierRow` above — JS sets
+  // `conditionNamesEl.hidden`, which needs this explicit override to work.
+  '&[hidden]': { display: 'none' },
+});
+const conditionPreview = css({ m: 0, fontSize: '0.82rem', color: 'textMuted', display: 'flex', alignItems: 'baseline', gap: '0.4rem', flexWrap: 'wrap' });
+const conditionPreviewCode = css({ fontFamily: 'mono', fontSize: '0.82rem', color: 'primary', wordBreak: 'break-word' });
+
+const textarea = css({
+  width: '100%',
+  minH: '6.5rem',
+  fontFamily: 'mono',
+  fontSize: '0.83rem',
+  lineHeight: 1.5,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.75rem',
+  py: '0.6rem',
+  resize: 'vertical',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+const hintCaption = css({ color: 'textMuted', fontSize: '0.78rem', lineHeight: 1.5, m: 0, mt: '0.3rem' });
+
+const verdictBox = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontFamily: 'sans',
+  fontSize: '0.9rem',
+  fontWeight: 700,
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.7rem 0.85rem',
+  color: 'textMuted',
+});
+const resultsList = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxH: '24rem', overflowY: 'auto', mt: '0.6rem' });
+const resultRow = css({ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md', p: '0.6rem 0.75rem' });
+const resultBadge = css({
+  flexShrink: 0,
+  fontFamily: 'sans',
+  fontSize: '0.66rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  borderRadius: 'sm',
+  px: '0.4rem',
+  py: '0.2rem',
+  mt: '0.1rem',
+  color: 'textMuted',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+});
+const resultBody = css({ display: 'flex', flexDirection: 'column', gap: '0.25rem', minW: 0, flex: 1 });
+const resultId = css({ m: 0, fontFamily: 'mono', fontSize: '0.82rem', fontWeight: 700, color: 'primary' });
+const resultDetail = css({ m: 0, fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5, wordBreak: 'break-word' });
+const resultHex = css({ m: 0, fontFamily: 'mono', fontSize: '0.75rem', color: 'text', whiteSpace: 'pre-wrap', wordBreak: 'break-all' });
+
+const sourceNote = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.6, m: 0 });
+const importBox = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.5rem',
+  mt: '1rem',
+  pt: '1rem',
+  borderTop: '1px solid token(colors.border)',
+});
+const importStatusBox = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.6, m: 0 });
+// Kept as a plain object (not a pre-atomized css() call) so the spaced variant
+// below can css(sourceBoxBase, { mt, mb }) — a deep object merge that
+// deterministically overrides sourceBoxBase's own margin, unlike concatenating
+// two independently-atomized class strings (see SigmaTester.astro's own note
+// on this, and STYLE_GUIDE.md "Buttons" for the general failure mode).
+const sourceBoxBase = {
+  mt: 0,
+  mr: 0,
+  mb: 0,
+  ml: 0,
+  p: '0.85rem 0.95rem',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  lineHeight: 1.6,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  maxH: '24rem',
+  overflowY: 'auto',
+  overflowX: 'auto',
+  whiteSpace: 'pre',
+} as const;
+const sourceBoxSpaced = css(sourceBoxBase, { mt: '0.6rem', mb: '0.6rem' });
+const actionBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.82rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+---
+
+<WorkspaceShell hook="data-yara-tester" noJsMessage="The YARA rule tester needs JavaScript enabled." gap="1.25rem">
+  <p class={scopeNote}>
+    This tester covers a focused slice of YARA: a <code>strings:</code> section of text strings (with the{' '}
+    <code>ascii</code>, <code>wide</code> and <code>nocase</code> modifiers) and hex byte patterns with nibble
+    wildcards, plus five condition shapes. Matching is real — the sample below is scanned byte by byte in your
+    browser and every offset shown is where the bytes were actually found. The reference tables further down spell
+    out exactly what is and isn't supported.
+  </p>
+
+  <div class={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' })}>
+    <div class={switchRow} role="radiogroup" aria-label="Rule view" data-session-field="view">
+      <button type="button" role="radio" aria-checked="true" data-active data-yara-view="builder" data-sound="tick" class={switchBtn}>Builder</button>
+      <button type="button" role="radio" aria-checked="false" data-yara-view="source" data-sound="tick" class={switchBtn}>Rule source</button>
+    </div>
+    <button type="button" class={actionBtn} data-yara-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={14} /> Reset
+    </button>
+  </div>
+
+  {/* Builder pane */}
+  <div data-yara-pane="builder">
+    <div class={css({ display: 'flex', flexDirection: 'column', gap: '1.1rem' })}>
+      <div>
+        <label class={fieldLabel} for="yara-name">Rule name</label>
+        <input
+          id="yara-name"
+          type="text"
+          class={nameInput}
+          value={STARTER_YARA_RULE.name}
+          autocomplete="off"
+          spellcheck="false"
+          data-yara-name
+          data-session-field="name"
+        />
+        <p class={hintCaption}>Letters, digits and underscores; can't start with a digit.</p>
+      </div>
+
+      <div>
+        <p class={paneLabel}>Strings</p>
+        <div class={stringsStack} data-yara-strings>
+          {
+            STARTER_YARA_RULE.strings.map((s) => (
+              <div class={stringCard} data-yara-string>
+                <div class={stringTopRow}>
+                  <select class={kindSelect} aria-label="String kind" data-yara-kind>
+                    <option value="text" selected={s.kind === 'text'}>Text</option>
+                    <option value="hex" selected={s.kind === 'hex'}>Hex bytes</option>
+                  </select>
+                  <span class={idWrap}>
+                    <span class={dollarSign} aria-hidden="true">$</span>
+                    <input type="text" class={idInput} value={s.id} aria-label="String identifier" data-yara-id autocomplete="off" spellcheck="false" />
+                  </span>
+                  <input
+                    type="text"
+                    class={valueInput}
+                    value={s.value}
+                    aria-label="String value"
+                    placeholder={s.kind === 'hex' ? 'E8 ?? ?? ?? ??' : 'text to search for'}
+                    data-yara-value
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                  <button type="button" class={iconBtn} data-yara-remove-string aria-label="Remove this string" title="Remove string">
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+                <div class={modifierRow} data-yara-modifiers hidden={s.kind === 'hex'}>
+                  {
+                    YARA_TEXT_MODIFIERS.map((m) => (
+                      <label class={checkboxLabel} title={m.hint}>
+                        <input type="checkbox" data-yara-modifier={m.id} checked={s.kind === 'text' && s.modifiers.includes(m.id)} />
+                        {m.label}
+                      </label>
+                    ))
+                  }
+                </div>
+              </div>
+            ))
+          }
+        </div>
+        <button type="button" class={`${addStringBtn} ${css({ mt: '0.65rem' })}`} data-yara-add-string>+ Add string</button>
+      </div>
+
+      <div class={conditionBox}>
+        <label class={fieldLabel} for="yara-condition-type">Condition — how the strings above have to combine</label>
+        <select id="yara-condition-type" class={selectInput} data-yara-condition-type data-session-field="condition-type">
+          {YARA_CONDITION_UI_TYPES.map((t) => <option value={t.id} selected={t.id === 'all-of-them'}>{t.label}</option>)}
+        </select>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value="1"
+          class={numberInput}
+          aria-label="How many strings have to match"
+          data-yara-condition-n
+          data-session-field="condition-n"
+          hidden
+        />
+        <div class={conditionNames} data-yara-condition-names hidden></div>
+        <p class={conditionPreview}>
+          Condition: <code class={conditionPreviewCode} data-yara-condition-preview></code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {/* Rule-source pane (generated from the Builder pane's current state) */}
+  <div data-yara-pane="source" hidden>
+    <p class={sourceNote}>
+      Generated live from the Builder tab's current state. Editing happens in Builder — but you can paste a rule
+      into the box below to load it back in, as long as it stays inside this tool's supported subset.
+    </p>
+    <pre class={sourceBoxSpaced}><code data-yara-source>&nbsp;</code></pre>
+    <button type="button" class={actionBtn} data-yara-copy-source data-copy-pop data-sound="copy">
+      <Icon name="copy" size={14} /> Copy rule
+    </button>
+
+    <div class={importBox}>
+      <label class={fieldLabel} for="yara-import">Paste an existing rule to load it into the Builder</label>
+      <textarea
+        id="yara-import"
+        class={`${textarea} ${css({ mt: '0.3rem' })}`}
+        rows={7}
+        spellcheck="false"
+        placeholder={'rule My_Rule\n{\n    strings:\n        $a = "suspicious" nocase\n        $h = { E8 ?? ?? ?? ?? }\n\n    condition:\n        any of them\n}'}
+        data-yara-import></textarea>
+      <button type="button" class={actionBtn} data-yara-load-rule data-sound="tick">
+        <Icon name="download" size={14} /> Load rule
+      </button>
+      <p class={importStatusBox} data-yara-import-status role="status" aria-live="polite"></p>
+      <p class={hintCaption}>
+        Only this tool's own supported subset round-trips. A rule using modules, meta, regex strings, hex jumps or a
+        condition outside the five supported shapes comes back as a specific error naming what's unsupported, never
+        a silent partial load.
+      </p>
+    </div>
+  </div>
+
+  {/* Sample */}
+  <div>
+    <div class={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', mb: '0.4rem' })}>
+      <label class={fieldLabel} for="yara-sample">Sample to scan</label>
+      <div class={switchRow} role="radiogroup" aria-label="Sample input format" data-session-field="sample-mode">
+        <button type="button" role="radio" aria-checked="true" data-active data-yara-sample-mode="text" data-sound="tick" class={switchBtn}>Text</button>
+        <button type="button" role="radio" aria-checked="false" data-yara-sample-mode="hex" data-sound="tick" class={switchBtn}>Hex bytes</button>
+      </div>
+    </div>
+    <textarea id="yara-sample" class={textarea} rows={6} spellcheck="false" data-yara-sample data-session-field="sample">{STARTER_YARA_SAMPLE}</textarea>
+    <p class={hintCaption} data-yara-sample-hint></p>
+  </div>
+
+  {/* Results */}
+  <div>
+    <p class={paneLabel}>Scan result</p>
+    <div class={verdictBox} data-yara-verdict role="status" aria-live="polite"></div>
+    <div class={resultsList} data-yara-results></div>
+  </div>
+
+  {/* Cloned per "+ Add string" click */}
+  <template data-yara-string-template>
+    <div class={stringCard} data-yara-string>
+      <div class={stringTopRow}>
+        <select class={kindSelect} aria-label="String kind" data-yara-kind>
+          <option value="text">Text</option>
+          <option value="hex">Hex bytes</option>
+        </select>
+        <span class={idWrap}>
+          <span class={dollarSign} aria-hidden="true">$</span>
+          <input type="text" class={idInput} aria-label="String identifier" data-yara-id autocomplete="off" spellcheck="false" />
+        </span>
+        <input type="text" class={valueInput} aria-label="String value" placeholder="text to search for" data-yara-value autocomplete="off" spellcheck="false" />
+        <button type="button" class={iconBtn} data-yara-remove-string aria-label="Remove this string" title="Remove string">
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+      <div class={modifierRow} data-yara-modifiers>
+        {
+          YARA_TEXT_MODIFIERS.map((m) => (
+            <label class={checkboxLabel} title={m.hint}>
+              <input type="checkbox" data-yara-modifier={m.id} />
+              {m.label}
+            </label>
+          ))
+        }
+      </div>
+    </div>
+  </template>
+
+  {/* Cloned per result row */}
+  <template data-yara-result-template>
+    <div class={resultRow} data-yara-result-row>
+      <span class={resultBadge} data-yara-result-badge></span>
+      <div class={resultBody}>
+        <p class={resultId} data-yara-result-id></p>
+        <p class={resultDetail} data-yara-result-detail></p>
+        <p class={resultHex} data-yara-result-hex hidden></p>
+      </div>
+    </div>
+  </template>
+
+  {/* Cloned per identifier checkbox in the and/or condition modes */}
+  <template data-yara-condition-name-template>
+    <label class={checkboxLabel}>
+      <input type="checkbox" data-yara-condition-name-checkbox />
+      <span data-yara-condition-name-label></span>
+    </label>
+  </template>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import {
+    evaluateYaraRule,
+    parseYaraSample,
+    generateYaraRule,
+    parseYaraRule,
+    buildYaraCondition,
+    parseYaraCondition,
+    previewBytes,
+    hexBytes,
+    formatOffset,
+    STARTER_YARA_RULE,
+  } from '../utils/yara';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var NEEDS_N = { 'n-of-them': true };
+    var NEEDS_NAMES = { 'list-and': true, 'list-or': true };
+    var SAMPLE_HINTS = {
+      text: 'Scanned as UTF-8 bytes — the same bytes YARA would read out of a UTF-8 file. Fabricated example content, not captured data from a real investigation.',
+      hex: 'Hex byte pairs; whitespace, newlines, commas and 0x prefixes are all fine. An offset column or ASCII gutter from a hex dump has to be stripped first.',
+    };
+
+    function init() {
+      var roots = document.querySelectorAll('[data-yara-tester]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var viewBtns = Array.prototype.slice.call(root.querySelectorAll('[data-yara-view]'));
+        var panes = {
+          builder: root.querySelector('[data-yara-pane="builder"]'),
+          source: root.querySelector('[data-yara-pane="source"]'),
+        };
+        var nameInput = root.querySelector('[data-yara-name]');
+        var stringsEl = root.querySelector('[data-yara-strings]');
+        var addStringBtn = root.querySelector('[data-yara-add-string]');
+        var stringTemplate = root.querySelector('[data-yara-string-template]');
+        var conditionTypeSelect = root.querySelector('[data-yara-condition-type]');
+        var conditionNInput = root.querySelector('[data-yara-condition-n]');
+        var conditionNamesEl = root.querySelector('[data-yara-condition-names]');
+        var conditionNameTemplate = root.querySelector('[data-yara-condition-name-template]');
+        var conditionPreviewEl = root.querySelector('[data-yara-condition-preview]');
+        var sampleInput = root.querySelector('[data-yara-sample]');
+        var sampleHintEl = root.querySelector('[data-yara-sample-hint]');
+        var sampleModeBtns = Array.prototype.slice.call(root.querySelectorAll('[data-yara-sample-mode]'));
+        var verdictEl = root.querySelector('[data-yara-verdict]');
+        var resultsEl = root.querySelector('[data-yara-results]');
+        var resultTemplate = root.querySelector('[data-yara-result-template]');
+        var sourceOutput = root.querySelector('[data-yara-source]');
+        var copySourceBtn = root.querySelector('[data-yara-copy-source]');
+        var importInput = root.querySelector('[data-yara-import]');
+        var loadRuleBtn = root.querySelector('[data-yara-load-rule]');
+        var importStatusEl = root.querySelector('[data-yara-import-status]');
+        if (!nameInput || !stringsEl || !stringTemplate || !conditionTypeSelect || !sampleInput || !resultsEl || !resultTemplate || !verdictEl) return;
+
+        var currentView = 'builder';
+        var sampleMode = 'text';
+        var stringCounter = root.querySelectorAll('[data-yara-string]').length;
+
+        // -------------------------------------------------------------------
+        // Builder state <-> DOM
+        // -------------------------------------------------------------------
+
+        function readStrings() {
+          var cards = Array.prototype.slice.call(stringsEl.querySelectorAll('[data-yara-string]'));
+          return cards.map(function (card) {
+            var kind = card.querySelector('[data-yara-kind]').value === 'hex' ? 'hex' : 'text';
+            var id = (card.querySelector('[data-yara-id]').value || '').trim();
+            var value = card.querySelector('[data-yara-value]').value || '';
+            if (kind === 'hex') return { kind: 'hex', id: id, value: value };
+            var modifiers = [];
+            Array.prototype.forEach.call(card.querySelectorAll('[data-yara-modifier]'), function (cb) {
+              if (cb.checked) modifiers.push(cb.getAttribute('data-yara-modifier'));
+            });
+            return { kind: 'text', id: id, value: value, modifiers: modifiers };
+          });
+        }
+
+        // Keeps each card's kind-dependent affordances in step with its own
+        // kind dropdown: modifiers are text-only, and the placeholder should
+        // show the shape that kind actually expects.
+        function syncCardKind(card) {
+          var kind = card.querySelector('[data-yara-kind]').value;
+          var mods = card.querySelector('[data-yara-modifiers]');
+          if (mods) mods.hidden = kind === 'hex';
+          var value = card.querySelector('[data-yara-value]');
+          if (value) value.placeholder = kind === 'hex' ? 'E8 ?? ?? ?? ??' : 'text to search for';
+        }
+
+        function addString(kind) {
+          stringCounter += 1;
+          var card = stringTemplate.content.firstElementChild.cloneNode(true);
+          card.querySelector('[data-yara-id]').value = 's' + stringCounter;
+          if (kind === 'hex') card.querySelector('[data-yara-kind]').value = 'hex';
+          stringsEl.appendChild(card);
+          syncCardKind(card);
+          return card;
+        }
+
+        root.addEventListener('click', function (e) {
+          var removeBtn = e.target.closest('[data-yara-remove-string]');
+          if (removeBtn) {
+            removeBtn.closest('[data-yara-string]').remove();
+            syncAll();
+          }
+        });
+        if (addStringBtn) {
+          addStringBtn.addEventListener('click', function () {
+            addString('text');
+            syncAll();
+          });
+        }
+        root.addEventListener('input', function (e) {
+          if (e.target === nameInput || e.target.closest('[data-yara-string]')) syncAll();
+        });
+        root.addEventListener('change', function (e) {
+          var card = e.target.closest('[data-yara-string]');
+          if (card) {
+            if (e.target.matches('[data-yara-kind]')) syncCardKind(card);
+            syncAll();
+          }
+        });
+
+        // -------------------------------------------------------------------
+        // Condition
+        // -------------------------------------------------------------------
+
+        function updateConditionVisibility() {
+          var type = conditionTypeSelect.value;
+          if (conditionNInput) conditionNInput.hidden = !NEEDS_N[type];
+          if (conditionNamesEl) conditionNamesEl.hidden = !NEEDS_NAMES[type];
+        }
+        conditionTypeSelect.addEventListener('change', function () {
+          updateConditionVisibility();
+          syncAll();
+        });
+        if (conditionNInput) conditionNInput.addEventListener('input', syncAll);
+
+        function getCheckedNames() {
+          if (!conditionNamesEl) return [];
+          return Array.prototype.slice.call(conditionNamesEl.querySelectorAll('[data-yara-condition-name-checkbox]:checked')).map(function (cb) {
+            return cb.value;
+          });
+        }
+
+        // Rebuilds the and/or checklist to match the current strings,
+        // preserving which identifiers were ticked where possible (falls back
+        // to "all ticked" on first render, or after a rename it can't match).
+        function syncConditionNames(strings, previouslyChecked) {
+          if (!conditionNamesEl || !conditionNameTemplate) return;
+          conditionNamesEl.innerHTML = ''; // cleared before repopulating via cloneNode — the one established safe exception
+          strings.forEach(function (s) {
+            if (!s.id) return;
+            var node = conditionNameTemplate.content.firstElementChild.cloneNode(true);
+            var cb = node.querySelector('[data-yara-condition-name-checkbox]');
+            cb.value = s.id;
+            cb.checked = previouslyChecked ? previouslyChecked.indexOf(s.id) !== -1 : true;
+            cb.addEventListener('change', syncAll);
+            node.querySelector('[data-yara-condition-name-label]').textContent = '$' + s.id;
+            conditionNamesEl.appendChild(node);
+          });
+        }
+
+        function computeCondition(strings) {
+          var type = conditionTypeSelect.value;
+          if (NEEDS_N[type]) {
+            var n = conditionNInput ? parseInt(conditionNInput.value, 10) : 1;
+            return buildYaraCondition(type, { n: isNaN(n) ? 1 : n });
+          }
+          if (NEEDS_NAMES[type]) {
+            var checked = getCheckedNames();
+            var ids = checked.length
+              ? checked
+              : strings
+                  .map(function (s) {
+                    return s.id;
+                  })
+                  .filter(Boolean);
+            return buildYaraCondition(type, { ids: ids });
+          }
+          return buildYaraCondition(type, {});
+        }
+
+        // -------------------------------------------------------------------
+        // Scanning + rendering
+        // -------------------------------------------------------------------
+
+        function setVerdict(state, text) {
+          verdictEl.setAttribute('data-state', state);
+          verdictEl.textContent = text;
+        }
+
+        // "2 matches as the ascii form at 0x0029, 0x0041" — the form note is
+        // dropped for hex strings, which have only the one form.
+        function describeMatches(result) {
+          var where = result.matches
+            .map(function (m) {
+              return formatOffset(m.offset);
+            })
+            .join(', ');
+          var more = result.totalMatches > result.matches.length ? ' (+' + (result.totalMatches - result.matches.length) + ' more)' : '';
+          var formNote = result.matches[0].form === 'hex' ? '' : ' as the ' + result.matches[0].form + ' form';
+          return result.totalMatches + (result.totalMatches === 1 ? ' match' : ' matches') + formNote + ' at ' + where + more;
+        }
+
+        function renderResults(rule, data) {
+          resultsEl.innerHTML = ''; // cleared before repopulating via cloneNode — never a raw HTML string
+          var evaluated = evaluateYaraRule(rule, data);
+
+          evaluated.stringResults.forEach(function (result) {
+            var node = resultTemplate.content.firstElementChild.cloneNode(true);
+            var badge = node.querySelector('[data-yara-result-badge]');
+            var idEl = node.querySelector('[data-yara-result-id]');
+            var detailEl = node.querySelector('[data-yara-result-detail]');
+            var hexEl = node.querySelector('[data-yara-result-hex]');
+            idEl.textContent = '$' + result.id;
+            if (result.error) {
+              badge.textContent = 'Error';
+              badge.setAttribute('data-state', 'error');
+              detailEl.textContent = result.error;
+            } else if (result.matched) {
+              badge.textContent = 'Found';
+              badge.setAttribute('data-state', 'match');
+              detailEl.textContent = describeMatches(result);
+              var m = result.matches[0];
+              hexEl.textContent = hexBytes(data, m.offset, m.length) + '   ' + previewBytes(data, m.offset, m.length);
+              hexEl.hidden = false;
+            } else {
+              badge.textContent = 'Not found';
+              badge.setAttribute('data-state', 'no-match');
+              detailEl.textContent = 'These bytes do not occur anywhere in the sample.';
+            }
+            resultsEl.appendChild(node);
+          });
+
+          if (evaluated.conditionError) {
+            setVerdict('error', evaluated.conditionError);
+          } else if (evaluated.matched) {
+            setVerdict(
+              'match',
+              'Rule matched — condition "' + rule.condition + '" is satisfied by ' + evaluated.matchedIds.map(function (id) { return '$' + id; }).join(', ') + '.',
+            );
+          } else {
+            setVerdict('no-match', 'No match — condition "' + rule.condition + '" is not satisfied by this sample.');
+          }
+        }
+
+        function syncAll() {
+          var strings = readStrings();
+          var previouslyChecked = getCheckedNames();
+          syncConditionNames(strings, previouslyChecked.length ? previouslyChecked : null);
+
+          var rule = {
+            name: (nameInput.value || '').trim() || 'Untitled_rule',
+            // Half-written rows (blank identifier or blank value) are dropped
+            // from evaluation and from the generated source — they're mid-edit,
+            // not a real pattern yet.
+            strings: strings.filter(function (s) {
+              return s.id && s.value.trim();
+            }),
+            condition: computeCondition(strings),
+          };
+
+          if (conditionPreviewEl) conditionPreviewEl.textContent = rule.condition || '(no strings yet)';
+          if (currentView === 'source' && sourceOutput) sourceOutput.textContent = generateYaraRule(rule);
+          if (sampleHintEl) sampleHintEl.textContent = SAMPLE_HINTS[sampleMode];
+
+          var parsed = parseYaraSample(sampleInput.value, sampleMode);
+          if (!parsed.bytes) {
+            resultsEl.innerHTML = '';
+            setVerdict('idle', parsed.error);
+            return;
+          }
+          if (rule.strings.length === 0) {
+            resultsEl.innerHTML = '';
+            setVerdict('idle', 'Add at least one string with an identifier and a value to scan for.');
+            return;
+          }
+          renderResults(rule, parsed.bytes);
+        }
+
+        // -------------------------------------------------------------------
+        // View + sample-mode switches
+        // -------------------------------------------------------------------
+
+        function setView(view) {
+          currentView = view;
+          viewBtns.forEach(function (b) {
+            var active = b.getAttribute('data-yara-view') === view;
+            if (active) b.setAttribute('data-active', '');
+            else b.removeAttribute('data-active');
+            b.setAttribute('aria-checked', String(active));
+          });
+          if (panes.builder) panes.builder.hidden = view !== 'builder';
+          if (panes.source) panes.source.hidden = view !== 'source';
+          syncAll();
+        }
+        viewBtns.forEach(function (b) {
+          b.addEventListener('click', function () {
+            setView(b.getAttribute('data-yara-view'));
+          });
+        });
+
+        function setSampleMode(mode) {
+          sampleMode = mode;
+          sampleModeBtns.forEach(function (b) {
+            var active = b.getAttribute('data-yara-sample-mode') === mode;
+            if (active) b.setAttribute('data-active', '');
+            else b.removeAttribute('data-active');
+            b.setAttribute('aria-checked', String(active));
+          });
+          syncAll();
+        }
+        sampleModeBtns.forEach(function (b) {
+          b.addEventListener('click', function () {
+            setSampleMode(b.getAttribute('data-yara-sample-mode'));
+          });
+        });
+
+        var debounceTimer = null;
+        sampleInput.addEventListener('input', function () {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(syncAll, 150);
+        });
+
+        if (copySourceBtn) {
+          copySourceBtn.addEventListener('click', function () {
+            var text = sourceOutput ? sourceOutput.textContent : '';
+            if (!text) return;
+            navigator.clipboard
+              .writeText(text)
+              .then(function () {
+                pop(copySourceBtn);
+              })
+              .catch(function () {});
+          });
+        }
+
+        // -------------------------------------------------------------------
+        // Import / session / reset — all three plant a whole strings list at
+        // once, so they share one construction path (applyStringsList) that
+        // itself only ever clones the existing template via addString().
+        // -------------------------------------------------------------------
+
+        function applyStringsList(strings) {
+          stringsEl.innerHTML = ''; // cleared before repopulating via cloneNode — the one established safe exception
+          stringCounter = 0;
+          strings.forEach(function (s) {
+            var card = addString(s.kind); // same path as clicking "+ Add string"
+            card.querySelector('[data-yara-id]').value = s.id;
+            card.querySelector('[data-yara-value]').value = s.value;
+            var mods = Array.isArray(s.modifiers) ? s.modifiers : [];
+            Array.prototype.forEach.call(card.querySelectorAll('[data-yara-modifier]'), function (cb) {
+              cb.checked = mods.indexOf(cb.getAttribute('data-yara-modifier')) !== -1;
+            });
+            syncCardKind(card);
+          });
+        }
+
+        function loadRuleIntoBuilder(rule) {
+          nameInput.value = rule.name;
+          applyStringsList(rule.strings);
+
+          // The guided dropdown only covers the five canonical shapes, so map
+          // the parsed condition onto the matching one rather than storing
+          // arbitrary condition text.
+          var parsed = parseYaraCondition(rule.condition).parsed;
+          if (parsed) {
+            if (parsed.type === 'them') {
+              conditionTypeSelect.value = parsed.op === 'any' ? 'any-of-them' : 'all-of-them';
+            } else if (parsed.type === 'them-n') {
+              conditionTypeSelect.value = 'n-of-them';
+              if (conditionNInput) conditionNInput.value = String(parsed.n);
+            } else {
+              conditionTypeSelect.value = parsed.op === 'and' ? 'list-and' : 'list-or';
+            }
+            updateConditionVisibility();
+            // Tick exactly the parsed rule's own identifiers (rather than the
+            // "all ticked" default) so syncAll()'s rebuild preserves this set.
+            if (parsed.type === 'list') syncConditionNames(readStrings(), parsed.ids);
+          }
+        }
+
+        if (loadRuleBtn && importInput && importStatusEl) {
+          loadRuleBtn.addEventListener('click', function () {
+            var result = parseYaraRule(importInput.value);
+            if (!result.rule) {
+              importStatusEl.textContent = result.error || 'Could not parse this rule.';
+              importStatusEl.setAttribute('data-state', 'error');
+              return;
+            }
+            loadRuleIntoBuilder(result.rule);
+            importStatusEl.textContent = 'Loaded into the Builder tab.';
+            importStatusEl.setAttribute('data-state', 'ok');
+            setView('builder');
+          });
+        }
+
+        // Session persistence — the strings list and the ticked condition
+        // identifiers are this tool's wizard state: both are built entirely by
+        // client JS (template clones), so neither can be captured by a plain
+        // data-session-field the way name/view/condition-type/-n/sample can.
+        function serializeForSession() {
+          return { strings: readStrings(), checkedConditionNames: getCheckedNames() };
+        }
+        function restoreFromSession(data) {
+          applyStringsList(data && Array.isArray(data.strings) ? data.strings : []);
+          var checked = data && Array.isArray(data.checkedConditionNames) ? data.checkedConditionNames : null;
+          syncConditionNames(readStrings(), checked);
+          syncAll();
+        }
+        function resetToDefault() {
+          applyStringsList(STARTER_YARA_RULE.strings);
+          syncConditionNames(readStrings(), null); // null -> "all ticked", the genuine first-load default
+          syncAll();
+        }
+
+        updateConditionVisibility();
+        setSampleMode('text');
+        setView('builder');
+
+        // Must run after every field's own listeners above are wired, since
+        // restoring a value re-dispatches through them.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-yara-reset]',
+          serialize: serializeForSession,
+          restore: restoreFromSession,
+          onReset: resetToDefault,
+        });
+
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<style>
+  [data-yara-result-badge][data-state='match'] {
+    color: var(--colors-primary);
+    background: color-mix(in srgb, var(--colors-primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--colors-primary) 30%, transparent);
+  }
+  [data-yara-result-badge][data-state='no-match'] {
+    color: var(--colors-text-muted);
+  }
+  [data-yara-result-badge][data-state='error'] {
+    color: color-mix(in srgb, red 65%, var(--colors-text));
+  }
+  [data-yara-verdict][data-state='match'] {
+    color: var(--colors-primary);
+    border-color: color-mix(in srgb, var(--colors-primary) 35%, transparent);
+    background: color-mix(in srgb, var(--colors-primary) 8%, transparent);
+  }
+  [data-yara-verdict][data-state='error'] {
+    color: color-mix(in srgb, red 65%, var(--colors-text));
+    border-color: color-mix(in srgb, red 30%, transparent);
+  }
+  [data-yara-import-status][data-state='error'] {
+    color: color-mix(in srgb, red 65%, var(--colors-text));
+  }
+  [data-yara-import-status][data-state='ok'] {
+    color: var(--colors-primary);
+  }
+</style>

@@ -169,7 +169,13 @@ still uses normal sentence case, e.g. "…detection-and-response and incident re
 - Certifications in progress are **"in pursuit of"**, never "in progress". (A degree may use
   "(in progress)".)
 - Dates: `Mon YYYY` (e.g. `Jun 2026`); ranges with an en dash: `Aug 2025 – Jun 2026`;
-  current roles end in `Present`.
+  current roles end in `Present`. **This exact shape is load-bearing, not just style** —
+  `src/utils/experience.ts` parses every `period` string on the About page to compute and
+  display each role's duration (and a company's total tenure), auto-recomputed from the
+  real build date on every rebuild for a `Present` role. A period that doesn't match
+  `Mon YYYY – Mon YYYY`/`Present` silently gets no duration shown (see that file's own
+  `roleDurationMonths`) rather than breaking the page — but it does mean the two need to
+  change together if this date format convention is ever revisited.
 - Write **DFIR**, **SIEM**, **EDR**, **SOC**, **IR** in caps. Product names as branded
   (Volatility 3, Velociraptor, CrowdStrike).
 - Use em dashes — like this — for asides; "·" as an inline separator in meta rows.
@@ -236,6 +242,14 @@ still uses normal sentence case, e.g. "…detection-and-response and incident re
   `platform` and D3FEND's `tactic` already are; and (d) `DefinedTerm` (or equivalent)
   structured data on the detail page. A dataset that ships with search-and-toggles but
   without these reads as behind its siblings — that's what happened with Event ID Reference.
+  **This checklist governs the heavier index + per-entry-detail-page shape only** (Glossary,
+  Tools, Cheat Sheet, Event ID Reference, ATT&CK Map, D3FEND Map — each entry gets its own
+  route). A **single-page reference** with no per-entry detail routes (IP & CIDR Reference,
+  OSI & TCP/IP Model Reference, and other pages built the same way) has nothing to attach a
+  "Mentioned in my writeups" cross-link *to* per entry, so it doesn't need this machinery —
+  it still wants at least one outbound cross-link to a related page/tool, just not the full
+  writeup-frontmatter-field + FilterToggle + DefinedTerm apparatus. Pick the shape by whether
+  the content actually has a real per-item detail page worth linking to, not by category.
 - **Icon tile** (stat/section/timeline markers): rounded square (`borderRadius: 'md'`,
   ~2.25rem), `bg` = primary tint (`color-mix … 13%`), `color: 'primary'`, icon ~18px.
 - **Badges** ([Badge.astro](../src/components/Badge.astro)): variants `default` (muted),

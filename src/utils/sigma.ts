@@ -24,9 +24,14 @@
 //     AND'd together within a selection, never OR'd by shared field name.
 //   - logsource, level, tags, and any other rule metadata beyond title +
 //     detection — see generateYaml.
-//   - a real bidirectional YAML parser. generateYaml is a one-way,
-//     display-only renderer of the builder's current state; there is no
-//     matching parser to read arbitrary YAML back into builder state.
+//   - parseSigmaYaml (below) is the matching import-side half of
+//     generateYaml — it round-trips exactly the line shape generateYaml
+//     itself emits (title + detection: selections + condition), not a
+//     general-purpose Sigma/YAML parser. Anything outside that shape
+//     (logsource/level/tags, glob field names, list-of-values-under-one-key,
+//     mixed and/or conditions, multi-document YAML, block scalars, etc.)
+//     comes back as a specific friendly error naming what's unsupported,
+//     never a silent best-effort guess.
 
 export type SigmaModifier = 'equals' | 'contains' | 'startswith' | 'endswith' | 're';
 
@@ -349,6 +354,156 @@ export function generateYaml(rule: SigmaRule): string {
   }
   lines.push(`  condition: ${rule.condition.trim() || '<no condition set>'}`);
   return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Parsing pasted YAML back into builder state (import side of generateYaml
+// above — see file header for exactly what's in vs. out of scope). This is
+// a line-oriented parser of generateYaml's own output shape, not a general
+// YAML parser: it never throws, and any unsupported construct comes back as
+// a specific, friendly error rather than a guess.
+// ---------------------------------------------------------------------------
+
+export interface SigmaParseResult {
+  rule: SigmaRule | null;
+  error: string | null;
+}
+
+const SIGMA_MODIFIER_IDS = SIGMA_MODIFIERS.map((m) => m.id);
+
+/** A friendly name for Sigma rule fields this tool deliberately doesn't
+ *  collect (logsource/level/tags/etc — see file header). Used to give a
+ *  specific "that's out of scope" error instead of a generic parse failure
+ *  when a pasted rule includes one of them. */
+const OUT_OF_SCOPE_TOP_KEYS = [
+  'logsource', 'level', 'tags', 'status', 'description', 'references',
+  'author', 'date', 'modified', 'falsepositives', 'id', 'related', 'fields',
+];
+
+/** Reverse of yamlScalar(): unquote a single-quoted YAML scalar (the ''
+ *  escaped-quote convention), or return a bare scalar as-is. Never throws. */
+function parseYamlScalar(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).replace(/''/g, "'");
+  }
+  return trimmed;
+}
+
+const LIST_VALUE_ERROR = 'This rule uses list-valued fields (one key mapped to multiple values) — that OR-list shorthand isn’t supported by this tool.';
+
+/** Parse text in the exact subset of Sigma YAML that generateYaml() itself
+ *  produces (title + detection: selections + condition — see file header)
+ *  back into a SigmaRule. Never throws — any problem, from a missing
+ *  required line to a construct outside this tool's scope, comes back as
+ *  { rule: null, error: <friendly message> } instead. */
+export function parseSigmaYaml(text: string): SigmaParseResult {
+  try {
+    const rawLines = text.split(/\r\n|\r|\n/);
+    const lines: { indent: number; content: string }[] = [];
+    for (const raw of rawLines) {
+      if (/^\s*#/.test(raw)) continue; // comment line — skip/ignore
+      if (raw.trim() === '') continue; // blank line — skip/ignore
+      const m = /^( *)(.*)$/.exec(raw);
+      const indent = m ? m[1].length : 0;
+      const content = (m ? m[2] : raw).replace(/\s+$/, '');
+      lines.push({ indent, content });
+    }
+
+    const titleIdx = lines.findIndex((l) => l.indent === 0 && l.content.startsWith('title:'));
+    if (titleIdx === -1) return { rule: null, error: 'Missing a "title:" line.' };
+    const title = parseYamlScalar(lines[titleIdx].content.slice('title:'.length));
+
+    const detectionIdx = lines.findIndex((l, idx) => idx > titleIdx && l.indent === 0 && l.content.trim() === 'detection:');
+    if (detectionIdx === -1) return { rule: null, error: 'Missing a "detection:" line.' };
+
+    // Anything at indent 0 between title and detection is metadata this tool
+    // doesn't collect (or unrecognized) — call it out specifically rather
+    // than silently skipping it.
+    for (let idx = titleIdx + 1; idx < detectionIdx; idx++) {
+      const line = lines[idx];
+      if (line.indent !== 0) continue;
+      const key = line.content.split(':')[0].trim().toLowerCase();
+      if (OUT_OF_SCOPE_TOP_KEYS.includes(key)) {
+        return { rule: null, error: `"${key}:" is outside this tool’s scope — only title and detection are supported.` };
+      }
+      return { rule: null, error: `Unrecognized line before "detection:": "${line.content}"` };
+    }
+
+    const selections: SigmaSelection[] = [];
+    let condition: string | null = null;
+    let currentSelection: SigmaSelection | null = null;
+
+    for (let idx = detectionIdx + 1; idx < lines.length; idx++) {
+      const line = lines[idx];
+      if (line.indent === 0) break; // back out to top level — outside this tool's title+detection scope
+
+      if (line.indent === 2) {
+        if (line.content.startsWith('condition:')) {
+          condition = line.content.slice('condition:'.length).trim();
+          currentSelection = null;
+          continue;
+        }
+        const headerMatch = /^([A-Za-z0-9_]+):\s*$/.exec(line.content);
+        if (!headerMatch) {
+          if (/[*?]/.test(line.content.split(':')[0])) {
+            return { rule: null, error: 'Glob/wildcard selection names aren’t supported by this tool.' };
+          }
+          return { rule: null, error: `Unrecognized line in detection: "${line.content}"` };
+        }
+        currentSelection = { name: headerMatch[1], fields: [] };
+        selections.push(currentSelection);
+        continue;
+      }
+
+      if (line.indent === 4) {
+        if (!currentSelection) {
+          return { rule: null, error: `Found a field row before any selection name: "${line.content}"` };
+        }
+        if (line.content === '{}') continue; // empty selection body — zero field rows
+        if (/^-\s/.test(line.content)) return { rule: null, error: LIST_VALUE_ERROR };
+
+        const colonIdx = line.content.indexOf(':');
+        if (colonIdx === -1) return { rule: null, error: `Unrecognized field row: "${line.content}"` };
+        const rawKey = line.content.slice(0, colonIdx).trim();
+        const rawValue = line.content.slice(colonIdx + 1).trim();
+        if (rawValue === '') return { rule: null, error: LIST_VALUE_ERROR };
+        if (/^\[.*\]$/.test(rawValue)) return { rule: null, error: LIST_VALUE_ERROR };
+
+        let field: string;
+        let modifier: SigmaModifier;
+        const pipeIdx = rawKey.indexOf('|');
+        if (pipeIdx === -1) {
+          field = rawKey;
+          modifier = 'equals';
+        } else {
+          field = rawKey.slice(0, pipeIdx);
+          const modStr = rawKey.slice(pipeIdx + 1);
+          if (!SIGMA_MODIFIER_IDS.includes(modStr as SigmaModifier)) {
+            return { rule: null, error: `Unrecognized modifier "|${modStr}" — supported modifiers are ${SIGMA_MODIFIER_IDS.join(', ')}.` };
+          }
+          modifier = modStr as SigmaModifier;
+        }
+        if (field.includes('*') || field.includes('?')) {
+          return { rule: null, error: 'Glob/wildcard field names aren’t supported by this tool.' };
+        }
+        currentSelection.fields.push({ field, modifier, value: parseYamlScalar(rawValue) });
+        continue;
+      }
+
+      return { rule: null, error: `Unexpected indentation in detection: "${line.content}"` };
+    }
+
+    if (condition === null) return { rule: null, error: 'Missing a "condition:" line.' };
+    if (selections.length === 0) return { rule: null, error: 'No selections found under "detection:".' };
+
+    const { error: conditionError } = parseCondition(condition);
+    if (conditionError) return { rule: null, error: conditionError };
+
+    return { rule: { title, selections, condition }, error: null };
+  } catch {
+    return { rule: null, error: 'Couldn’t parse this rule — check that it matches the format this tool generates.' };
+  }
 }
 
 // ---------------------------------------------------------------------------

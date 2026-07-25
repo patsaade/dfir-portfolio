@@ -1,0 +1,58 @@
+---
+// Drills section landing page — 7 short, focused knowledge-check modules
+// built from the SAME real data the site's own tools/references already
+// use (see each module's own page for its data source). Deliberately framed
+// as quick drills, not a simulated network/VM environment or "cyber range"
+// — there's no lab infrastructure here, just interactive quiz UI over real
+// site data (DrillEngine.astro + src/scripts/drillEngine.ts).
+export const prerender = true;
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import { css } from 'styled-system/css';
+import { card } from 'styled-system/recipes';
+
+// Exact hrefs/labels/icons — shared verbatim with search-index.json.ts's
+// STATIC_PAGES and og/routes.ts's STATIC_ENTRIES so the three stay in sync.
+const MODULES = [
+  { href: '/drills/regex/', label: 'RegEx Range', icon: 'search', description: 'Build a pattern that solves progressively harder challenges.' },
+  { href: '/drills/ip-cidr/', label: 'Subnetting', icon: 'wifi', description: 'Subnet arithmetic and special-use range recognition.' },
+  { href: '/drills/hashing/', label: 'Hash Identification', icon: 'hash', description: 'Recognize hash algorithms by format and context.' },
+  { href: '/drills/attack/', label: 'MITRE ATT&CK', icon: 'crosshair', description: 'Technique recognition drawn from real ATT&CK data.' },
+  { href: '/drills/event-ids/', label: 'Windows Event IDs', icon: 'list', description: 'Identify Security/Sysmon events from real sample logs.' },
+  { href: '/drills/commands/', label: 'Terminal Commands', icon: 'terminal', description: 'Native bash, cmd.exe, and PowerShell — the terminal itself, not a tool.' },
+  { href: '/drills/threat-actors/', label: 'Threat Actor / APT', icon: 'user', description: 'Resolve aliases and malware to a group, and apply real vendor naming rules.' },
+] as const;
+
+const cardsGrid = css({ mt: '0.5rem' }); // columns/gap come from the shared .card-grid class
+const linkCard = `${card()} ${css({ _hover: { boxShadow: 'card' } })}`;
+const cardHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem' });
+const cardTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.95rem', color: 'text', lineHeight: 1.3 });
+const cardDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.45, mt: '0.3rem' });
+---
+
+<BaseLayout
+  title="Drills"
+  description="Short, focused DFIR knowledge-check drills — regex, IP/CIDR math, hash identification, MITRE ATT&CK, Windows Event IDs, threat actor groups, and command line — built from the same real data this site's own tools and references use."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills' }]}
+    eyebrow="Practice"
+    title="Drills"
+    description="Seven short, focused knowledge-check drills, built from the same real data this site's own tools and reference pages already use — not a simulated network or VM environment, just quick recall practice: match a pattern, work out a subnet, identify a hash, name a technique, read a log, recall a threat actor, remember a command."
+  />
+
+  <div class={`card-grid ${cardsGrid}`}>
+    {
+      MODULES.map((m) => (
+        <a href={m.href} class={linkCard}>
+          <span class={cardHead}>
+            <Icon name={m.icon} size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+            <span class={cardTitle}>{m.label}</span>
+          </span>
+          <p class={cardDesc}>{m.description}</p>
+        </a>
+      ))
+    }
+  </div>
+</BaseLayout>

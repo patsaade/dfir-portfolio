@@ -220,7 +220,7 @@ const fieldDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5
     {/* Paste box */}
     <div>
       <label class={fieldLabel} for="eha-input">Paste raw headers — a full RFC 5322 header block (e.g. your mail client's "Show original" / "View source")</label>
-      <textarea id="eha-input" class={textarea} spellcheck="false" autocomplete="off" data-eha-input>{FABRICATED_EXAMPLE}</textarea>
+      <textarea id="eha-input" class={textarea} spellcheck="false" autocomplete="off" data-eha-input data-session-field="input">{FABRICATED_EXAMPLE}</textarea>
       <p class={exampleNote}>
         The text above is a <strong class={css({ color: 'text' })}>fabricated demo</strong> — RFC 5737
         documentation-range IPs (<code class={inlineCode}>203.0.113.0/24</code> etc.) and{' '}
@@ -351,6 +351,7 @@ const fieldDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5
     detectMismatches,
     decodeM365Headers,
   } from '../utils/emailHeaders';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     function init() {
@@ -498,6 +499,16 @@ const fieldDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5
             input.focus();
           });
         }
+
+        // Session persistence: auto-saves the pasted header block and
+        // restores it on the next visit to this page. "Reload example"
+        // already restores the true server-rendered default (the
+        // fabricated demo block), so it does double duty as this tool's
+        // reset button — clicking it also flushes the saved session.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-eha-reset]',
+        });
 
         run();
         root.setAttribute('data-ready', '');

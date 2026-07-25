@@ -273,6 +273,15 @@ const eventLine = css({ m: 0, fontFamily: 'mono', fontSize: '0.78rem', color: 't
 const eventDetail = css({ m: 0, fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5, wordBreak: 'break-word' });
 
 const yamlNote = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.6, m: 0 });
+const importBox = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.5rem',
+  mt: '1rem',
+  pt: '1rem',
+  borderTop: '1px solid token(colors.border)',
+});
+const importStatusBox = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.6, m: 0 });
 // Kept as a plain object (not a pre-atomized css() call) so the spaced
 // variant below can css(yamlBoxBase, { mt, mb }) — a deep object merge that
 // deterministically overrides yamlBoxBase's own margin, unlike concatenating
@@ -337,9 +346,14 @@ const actionBtn = css(actionBtnBase);
     on this page spells out exactly what's supported.
   </p>
 
-  <div class={viewRow} role="radiogroup" aria-label="Rule view">
-    <button type="button" role="radio" aria-checked="true" data-active data-sigma-view="builder" data-sound="tick" class={viewBtn}>Builder</button>
-    <button type="button" role="radio" aria-checked="false" data-sigma-view="yaml" data-sound="tick" class={viewBtn}>YAML</button>
+  <div class={css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' })}>
+    <div class={viewRow} role="radiogroup" aria-label="Rule view" data-session-field="view">
+      <button type="button" role="radio" aria-checked="true" data-active data-sigma-view="builder" data-sound="tick" class={viewBtn}>Builder</button>
+      <button type="button" role="radio" aria-checked="false" data-sigma-view="yaml" data-sound="tick" class={viewBtn}>YAML</button>
+    </div>
+    <button type="button" class={actionBtn} data-sigma-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={14} /> Reset
+    </button>
   </div>
 
   {/* Builder pane */}
@@ -355,6 +369,7 @@ const actionBtn = css(actionBtnBase);
           autocomplete="off"
           spellcheck="false"
           data-sigma-title
+          data-session-field="title"
         />
       </div>
 
@@ -396,10 +411,10 @@ const actionBtn = css(actionBtnBase);
 
       <div class={conditionBox}>
         <label class={fieldLabel} for="sigma-condition-type">Combination logic — how the selections above combine in detection.condition</label>
-        <select id="sigma-condition-type" class={selectInput} data-sigma-condition-type>
+        <select id="sigma-condition-type" class={selectInput} data-sigma-condition-type data-session-field="condition-type">
           {CONDITION_UI_TYPES.map((t) => <option value={t.id} selected={t.id === 'list-and'}>{t.label}</option>)}
         </select>
-        <input type="text" class={inlineInput} placeholder="selection" aria-label="Selection-name prefix" data-sigma-condition-prefix hidden />
+        <input type="text" class={inlineInput} placeholder="selection" aria-label="Selection-name prefix" data-sigma-condition-prefix data-session-field="condition-prefix" hidden />
         <div class={conditionNames} data-sigma-condition-names></div>
         <p class={conditionPreview}>
           Condition: <code class={conditionPreviewCode} data-sigma-condition-preview></code>
@@ -418,11 +433,31 @@ const actionBtn = css(actionBtnBase);
     <button type="button" class={actionBtn} data-sigma-copy-yaml data-copy-pop data-sound="copy">
       <Icon name="copy" size={14} /> Copy YAML
     </button>
+
+    <div class={importBox}>
+      <label class={fieldLabel} for="sigma-import">Paste an existing rule to load it into the Builder</label>
+      <textarea
+        id="sigma-import"
+        class={`${textarea} ${css({ mt: '0.3rem' })}`}
+        rows={6}
+        spellcheck="false"
+        placeholder={'title: My rule\ndetection:\n  selection1:\n    Field|contains: value\n  condition: selection1'}
+        data-sigma-import
+      ></textarea>
+      <button type="button" class={actionBtn} data-sigma-load-rule data-sound="tick">
+        <Icon name="download" size={14} /> Load rule
+      </button>
+      <p class={importStatusBox} data-sigma-import-status role="status" aria-live="polite"></p>
+      <p class={hintCaption}>
+        Only this tool's own supported subset round-trips — see the scope note above (title + detection, five field
+        modifiers, five condition shapes). Anything else comes back as a specific error instead of a silent guess.
+      </p>
+    </div>
   </div>
 
   <div>
     <label class={fieldLabel} for="sigma-events">Sample events — one per line, JSON or key=value (auto-detected)</label>
-    <textarea id="sigma-events" class={`${textarea} ${css({ mt: '0.3rem' })}`} rows={4} spellcheck="false" data-sigma-events>{STARTER_EVENTS}</textarea>
+    <textarea id="sigma-events" class={`${textarea} ${css({ mt: '0.3rem' })}`} rows={4} spellcheck="false" data-sigma-events data-session-field="events">{STARTER_EVENTS}</textarea>
     <p class={hintCaption}>Fabricated example events for illustration — not captured telemetry from a real investigation.</p>
   </div>
 
@@ -481,8 +516,9 @@ const actionBtn = css(actionBtnBase);
 
 <script>
   // @ts-nocheck — vanilla DOM client script
-  import { evaluateRule, parseEventLine, generateYaml, buildConditionString } from '../utils/sigma';
+  import { evaluateRule, parseEventLine, generateYaml, buildConditionString, parseCondition, parseSigmaYaml, STARTER_RULE } from '../utils/sigma';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     var CONDITION_TYPE_NEEDS_PREFIX = { 'wildcard-any': true, 'wildcard-all': true };
@@ -511,6 +547,9 @@ const actionBtn = css(actionBtnBase);
         var eventRowTemplate = root.querySelector('[data-sigma-event-row-template]');
         var yamlOutput = root.querySelector('[data-sigma-yaml]');
         var copyYamlBtn = root.querySelector('[data-sigma-copy-yaml]');
+        var importInput = root.querySelector('[data-sigma-import]');
+        var loadRuleBtn = root.querySelector('[data-sigma-load-rule]');
+        var importStatusEl = root.querySelector('[data-sigma-import-status]');
         if (!titleInput || !selectionsEl || !selectionTemplate || !fieldRowTemplate || !conditionTypeSelect || !eventsInput || !eventResultsEl || !eventRowTemplate) return;
 
         var currentView = 'builder';
@@ -718,8 +757,143 @@ const actionBtn = css(actionBtnBase);
           });
         }
 
+        // Fills an already-constructed field row's inputs (from addFieldRow, or
+        // the one addSelection() already adds) — direct property assignment on
+        // cloned template nodes, same convention syncConditionNames uses, never
+        // a new innerHTML-with-content construction.
+        function fillFieldRow(row, fv) {
+          row.querySelector('[data-sigma-field-name]').value = fv.field;
+          row.querySelector('[data-sigma-field-modifier]').value = fv.modifier;
+          row.querySelector('[data-sigma-field-value]').value = fv.value;
+        }
+
+        // Rebuilds the Builder pane's selections tree from a plain {name,
+        // fields} list, reusing the exact same addSelection()/addFieldRow()
+        // construction paths the "+ Add selection"/"+ Add field" buttons
+        // themselves use — this never constructs new DOM, it only clones the
+        // existing templates (via those functions) and fills in values.
+        // Shared by rule import, session restore, and reset-to-defaults
+        // below — the three places that need to plant a whole selections
+        // tree at once rather than growing it one click at a time.
+        function applySelectionsList(selections) {
+          selectionsEl.innerHTML = ''; // clear before repopulating via cloneNode — the one established safe exception
+          selectionCounter = 0;
+          selections.forEach(function (sel) {
+            addSelection(); // same path as clicking "+ Add selection" (card + one blank field row)
+            var card = selectionsEl.lastElementChild;
+            card.querySelector('[data-sigma-selection-name]').value = sel.name;
+            var rows = Array.prototype.slice.call(card.querySelectorAll('[data-sigma-field-row]'));
+            var fields = Array.isArray(sel.fields) ? sel.fields : [];
+            if (fields.length > 0) {
+              fillFieldRow(rows[0], fields[0]);
+              for (var i = 1; i < fields.length; i++) {
+                fillFieldRow(addFieldRow(card), fields[i]); // same path as clicking "+ Add field"
+              }
+            }
+            // fields.length === 0 (e.g. an imported "{}" selection): keep the
+            // single blank row addSelection() already added — matches what a
+            // manually-created empty selection looks like in this builder.
+          });
+        }
+
+        // Rebuilds the Builder pane from a successfully-parsed rule.
+        function loadRuleIntoBuilder(rule) {
+          titleInput.value = rule.title;
+          applySelectionsList(rule.selections);
+
+          // The guided condition dropdown only covers the 5 canonical shapes in
+          // CONDITION_UI_TYPES — map the parsed condition onto the matching one
+          // instead of trying to store arbitrary condition text.
+          var parsedCondition = parseCondition(rule.condition).parsed;
+          if (parsedCondition) {
+            if (parsedCondition.type === 'them') {
+              conditionTypeSelect.value = parsedCondition.op === 'any' ? 'them-any' : 'them-all';
+            } else if (parsedCondition.type === 'wildcard') {
+              conditionTypeSelect.value = parsedCondition.op === 'any' ? 'wildcard-any' : 'wildcard-all';
+              if (conditionPrefixInput) conditionPrefixInput.value = parsedCondition.prefix;
+            } else {
+              conditionTypeSelect.value = parsedCondition.op === 'and' ? 'list-and' : 'list-or';
+            }
+            updateConditionVisibility();
+            // Explicitly check the parsed rule's own selection names (rather
+            // than the "all checked" default) so syncAll()'s own rebuild below
+            // preserves exactly this set — see getCheckedConditionNames() /
+            // syncConditionNames()'s "previouslyChecked" contract above.
+            if (parsedCondition.type === 'list') syncConditionNames(readSelections(), parsedCondition.names);
+          }
+        }
+
+        // Session persistence — the selections tree + which condition-name
+        // checkboxes are checked are this tool's wizard state: both are
+        // built/rebuilt entirely by client JS (dynamic template clones), so
+        // they can't be captured by a single data-session-field the way
+        // title/view/condition-type/-prefix/sample-events can. These three
+        // functions are the "extra" half of the toolSession contract —
+        // serialize()/restore() for save/load, onReset() for snapping back
+        // to the true server-rendered STARTER_RULE (not just blanking it).
+
+        // Snapshot for config.serialize — everything else in the blob is a
+        // plain data-session-field the utility binds/reads itself.
+        function serializeSelectionsForSession() {
+          return { selections: readSelections(), checkedConditionNames: getCheckedConditionNames() };
+        }
+
+        // Applied for config.restore — only called when there's a stored
+        // blob to restore from.
+        function restoreSelectionsFromSession(data) {
+          var selections = data && Array.isArray(data.selections) ? data.selections : [];
+          applySelectionsList(selections);
+          var checkedNames = data && Array.isArray(data.checkedConditionNames) ? data.checkedConditionNames : null;
+          // Rebuild the checklist against the just-restored selections and
+          // re-apply the saved checked set explicitly — syncAll()'s own
+          // "preserve previous checks by name" heuristic can't be trusted
+          // here since the pre-restore checkboxes belong to a different
+          // (starter) selection set.
+          syncConditionNames(readSelections(), checkedNames);
+          syncAll();
+        }
+
+        // Wired as config.onReset — runs after every plain field above has
+        // already been snapped back to its own native default.
+        function resetSelectionsToDefault() {
+          applySelectionsList(STARTER_RULE.selections);
+          syncConditionNames(readSelections(), null); // null -> "all checked", the genuine first-load default
+          syncAll();
+        }
+
+        if (loadRuleBtn && importInput && importStatusEl) {
+          loadRuleBtn.addEventListener('click', function () {
+            var result = parseSigmaYaml(importInput.value);
+            if (!result.rule) {
+              importStatusEl.textContent = result.error || 'Could not parse this rule.';
+              importStatusEl.setAttribute('data-state', 'error');
+              return;
+            }
+            loadRuleIntoBuilder(result.rule);
+            importStatusEl.textContent = 'Loaded into the Builder tab.';
+            importStatusEl.setAttribute('data-state', 'ok');
+            setView('builder');
+          });
+        }
+
         updateConditionVisibility();
         setView('builder');
+
+        // Remembers title/view/condition-type/-prefix/sample-events (plain
+        // data-session-field elements) plus the selections tree + checked
+        // condition names (via serialize/restore above) across visits. The
+        // Reset button doubles as the reset control, snapping the whole
+        // wizard — not just the plain fields — back to STARTER_RULE (see
+        // onReset above). Must run after every field's own listeners above
+        // are wired, since restoring a value re-dispatches through them.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-sigma-reset]',
+          serialize: serializeSelectionsForSession,
+          restore: restoreSelectionsFromSession,
+          onReset: resetSelectionsToDefault,
+        });
+
         root.setAttribute('data-ready', '');
       });
     }
@@ -741,5 +915,11 @@ const actionBtn = css(actionBtnBase);
     color: color-mix(in srgb, red 65%, var(--colors-text));
     background: color-mix(in srgb, red 12%, transparent);
     border-color: color-mix(in srgb, red 30%, transparent);
+  }
+  [data-sigma-import-status][data-state='error'] {
+    color: color-mix(in srgb, red 65%, var(--colors-text));
+  }
+  [data-sigma-import-status][data-state='ok'] {
+    color: var(--colors-primary);
   }
 </style>

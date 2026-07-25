@@ -9,17 +9,26 @@
 // Header, the Optional Header (PE32 vs PE32+, entry point, image base, data
 // directories), the Section Table, the Import Directory Table (DLL names +
 // imported function names, falling back to "ordinal N" for by-ordinal
-// imports), the Export Table when present, and a computed imphash (the
-// Mandiant-style MD5 of the lowercased, comma-joined "dllbasename.function"
-// import list, in import-table order — see computeImphash below). MD5 itself
-// is never reimplemented here; it's imported from ../utils/hashes.
+// imports), the Export Table when present, the Resource Directory tree
+// (Type -> Name/ID -> Language, walked structurally — see
+// parseResourceDirectory below), and a computed imphash (the Mandiant-style
+// MD5 of the lowercased, comma-joined "dllbasename.function" import list, in
+// import-table order — see computeImphash below). MD5 itself is never
+// reimplemented here; it's imported from ../utils/hashes.
+//
+// The Resource Directory walk is structure-only, the same scope discipline
+// already applied to imports/exports/sections above: every resource entry's
+// type, name-or-ID, language, and size is surfaced, but no resource's actual
+// content (icon bitmaps, version-string values, manifest XML text, dialog
+// templates, ...) is ever read or rendered.
 //
 // Deliberately out of scope (the caller surfaces this as a plain note, never
-// a silent no-op): disassembly, resource section (.rsrc) rendering, .NET/CLR
-// metadata (a CLR binary is still a normal PE underneath — its DOS/COFF/
-// Optional headers, sections, and native import/export tables all parse the
-// same as any other PE; only the COR20/.NET-specific metadata inside the CLR
-// runtime header's data is skipped), and digital-signature verification.
+// a silent no-op): disassembly, resource *content* rendering (see above),
+// .NET/CLR metadata (a CLR binary is still a normal PE underneath — its
+// DOS/COFF/Optional headers, sections, and native import/export tables all
+// parse the same as any other PE; only the COR20/.NET-specific metadata
+// inside the CLR runtime header's data is skipped), and digital-signature
+// verification.
 //
 // Every multi-byte field is read little-endian, explicitly, via a small
 // bounds-checked Cursor over a DataView — a truncated or malformed file never
@@ -100,6 +109,22 @@ interface ExportedFunction {
   rva: number;
 }
 
+interface ResourceEntry {
+  /** Numeric RT_* type ID, or null if the Type-level directory entry was
+   *  itself a string name rather than numeric (rare, but the spec allows it). */
+  typeId: number | null;
+  /** RT_* friendly name (e.g. "VERSION"), the string name if Type was named,
+   *  or a "Type <N>" fallback for an unrecognized numeric type. */
+  typeName: string;
+  /** Resolved string name, or the numeric ID rendered as a string. */
+  nameOrId: string;
+  /** Numeric language ID, or null when the tree didn't go a full 3 levels
+   *  deep (Type -> Name/ID -> Language) to reach this leaf. */
+  languageId: number | null;
+  size: number;
+  codePage: number;
+}
+
 interface PeInfo {
   dos: DosHeaderInfo;
   coff: CoffHeaderInfo;
@@ -110,7 +135,12 @@ interface PeInfo {
   exportDllName: string | null;
   /** MD5 imphash, or null when the file has no imports to hash. */
   imphash: string | null;
-  /** Plain-language out-of-scope call-outs (CLR metadata, .rsrc, etc.) — always includes the disassembly/signature note. */
+  /** Resource directory tree entries (structure only — see ResourceEntry),
+   *  or null when the file has no Resource Table data directory at all.
+   *  An empty array means the directory is present but has no entries (or
+   *  none survived a corrupt/truncated tree). */
+  resources: ResourceEntry[] | null;
+  /** Plain-language out-of-scope call-outs (CLR metadata, resource content, etc.) — always includes the disassembly/signature note. */
   notes: string[];
   isDll: boolean;
   isPe32Plus: boolean;
@@ -223,6 +253,33 @@ function decodeFlags(value: number, table: { bit: number; name: string }[]): str
   return table.filter((f) => (value & f.bit) !== 0).map((f) => f.name);
 }
 
+// Well-known RT_* resource type IDs (winuser.h). Anything not in this table
+// renders as `Type <N>`, matching MACHINE_TYPES/SUBSYSTEMS's "Unknown (0x...)"
+// fallback convention above.
+const RESOURCE_TYPES: Record<number, string> = {
+  1: 'CURSOR',
+  2: 'BITMAP',
+  3: 'ICON',
+  4: 'MENU',
+  5: 'DIALOG',
+  6: 'STRING',
+  7: 'FONTDIR',
+  8: 'FONT',
+  9: 'ACCELERATOR',
+  10: 'RCDATA',
+  11: 'MESSAGETABLE',
+  12: 'GROUP_CURSOR',
+  14: 'GROUP_ICON',
+  16: 'VERSION',
+  17: 'DLGINCLUDE',
+  19: 'PLUGPLAY',
+  20: 'VXD',
+  21: 'ANICURSOR',
+  22: 'ANIICON',
+  23: 'HTML',
+  24: 'MANIFEST',
+};
+
 // ---------------------------------------------------------------------------
 // Bounds-checked byte reader — every read explicitly little-endian, every
 // out-of-range read throws a BoundsError with a specific message that
@@ -330,6 +387,127 @@ function computeImphash(imports: ImportedDll[]): string | null {
   }
   if (parts.length === 0) return null;
   return md5Hex(new TextEncoder().encode(parts.join(',')));
+}
+
+// ---------------------------------------------------------------------------
+// Resource Directory (.rsrc) tree walk — structural metadata only (type,
+// name-or-ID, language, size). Every offset inside the resource tree (a
+// Name field that's a string offset, or an OffsetToData field pointing at a
+// subdirectory or a leaf IMAGE_RESOURCE_DATA_ENTRY) is relative to the START
+// of the resource section (resourceBaseOffset — the file offset the
+// Resource Table data directory's virtualAddress resolves to via
+// rvaToOffset), never to the current subdirectory's own position. The tree
+// is conventionally exactly 3 levels deep (Type -> Name/ID -> Language) but
+// this walks generically/recursively — any entry with the subdirectory bit
+// set recurses, any entry without it is a leaf — so a non-conventional depth
+// doesn't break it. Bounded by a hard depth cap and a hard total-entries-
+// visited cap so a corrupt or adversarial resource directory can never hang
+// or crash the parser, mirroring this file's existing
+// "for (let d = 0; d < 1000; d++)" / "for (let t = 0; t < 10000; t++)"
+// defensive loop caps. Every read is manually bounds-checked before it's
+// made (rather than relying on Cursor's throwing bounds check), so a
+// truncated/corrupt subtree degrades to a partial (or empty) result — it
+// never throws BoundsError and never fails the overall parse.
+// ---------------------------------------------------------------------------
+
+const RESOURCE_MAX_DEPTH = 8;
+const RESOURCE_MAX_VISITED = 5000;
+
+/** One resolved IMAGE_RESOURCE_DIRECTORY_ENTRY name at some level of the
+ *  tree — either a numeric ID (top bit of Name clear) or a resolved string
+ *  name (top bit set). */
+interface ResourcePathLevel {
+  idValue: number | null;
+  nameValue: string | null;
+}
+
+function parseResourceDirectory(c: Cursor, fileLen: number, resourceBaseOffset: number): ResourceEntry[] {
+  const entries: ResourceEntry[] = [];
+  let visited = 0;
+
+  /** Reads an IMAGE_RESOURCE_DIR_STRING_U (u16 char count followed by that
+   *  many UTF-16LE code units, NOT null-terminated) at a resourceBaseOffset-
+   *  relative offset. Returns null if it doesn't fully fit in the file —
+   *  the caller degrades that to an empty name rather than aborting the walk. */
+  function readResourceString(relOffset: number): string | null {
+    const abs = resourceBaseOffset + relOffset;
+    if (abs < 0 || abs + 2 > fileLen) return null;
+    const count = c.u16(abs);
+    const charsStart = abs + 2;
+    const byteLen = count * 2;
+    if (charsStart + byteLen > fileLen) return null;
+    let s = '';
+    for (let i = 0; i < count; i++) {
+      s += String.fromCharCode(c.u16(charsStart + i * 2));
+    }
+    return s;
+  }
+
+  function walk(dirRelOffset: number, depth: number, path: ResourcePathLevel[]): void {
+    if (depth >= RESOURCE_MAX_DEPTH || visited >= RESOURCE_MAX_VISITED) return;
+    const dirAbs = resourceBaseOffset + dirRelOffset;
+    if (dirAbs < 0 || dirAbs + 16 > fileLen) return; // truncated IMAGE_RESOURCE_DIRECTORY header — stop this branch
+
+    const numNamed = c.u16(dirAbs + 12);
+    const numId = c.u16(dirAbs + 14);
+    const total = numNamed + numId;
+    const entriesStart = dirAbs + 16;
+
+    for (let i = 0; i < total; i++) {
+      if (visited >= RESOURCE_MAX_VISITED) break;
+      visited++;
+      const entryOff = entriesStart + i * 8;
+      if (entryOff + 8 > fileLen) break; // truncated entry table — keep what parsed so far, same style as the section/import table loops above
+
+      const nameField = c.u32(entryOff + 0);
+      const offsetField = c.u32(entryOff + 4);
+
+      let idValue: number | null = null;
+      let nameValue: string | null = null;
+      if ((nameField & 0x80000000) !== 0) {
+        nameValue = readResourceString(nameField & 0x7fffffff) ?? '';
+      } else {
+        idValue = nameField;
+      }
+      const nextPath = path.concat([{ idValue, nameValue }]);
+
+      if ((offsetField & 0x80000000) !== 0) {
+        // Subdirectory — recurse one level deeper.
+        walk(offsetField & 0x7fffffff, depth + 1, nextPath);
+        continue;
+      }
+
+      // Leaf — IMAGE_RESOURCE_DATA_ENTRY (16 bytes).
+      const dataAbs = resourceBaseOffset + offsetField;
+      if (dataAbs < 0 || dataAbs + 16 > fileLen) continue; // corrupt leaf pointer — skip just this one entry
+
+      const size = c.u32(dataAbs + 4);
+      const codePage = c.u32(dataAbs + 8);
+      // dataAbs+0 (OffsetToData) is a real image RVA; not resolved further —
+      // only the tree's own structural metadata is surfaced, never the
+      // resource's actual bytes (icon/version/manifest/dialog content).
+
+      const typeLevel = nextPath[0] ?? null;
+      const nameLevel = nextPath[1] ?? null;
+      const langLevel = nextPath[2] ?? null;
+
+      const typeId = typeLevel?.idValue ?? null;
+      const typeName =
+        typeLevel == null
+          ? 'Type ?'
+          : typeLevel.idValue != null
+            ? (RESOURCE_TYPES[typeLevel.idValue] ?? `Type ${typeLevel.idValue}`)
+            : typeLevel.nameValue || 'Type ?';
+      const nameOrId =
+        nameLevel == null ? '' : nameLevel.idValue != null ? String(nameLevel.idValue) : (nameLevel.nameValue ?? '');
+      const languageId = langLevel?.idValue ?? null;
+
+      entries.push({ typeId, typeName, nameOrId, languageId, size, codePage });
+    }
+  }
+
+  walk(0, 0, []);
+  return entries;
 }
 
 // ---------------------------------------------------------------------------
@@ -562,6 +740,17 @@ export function parsePe(bytes: Uint8Array): PeParseResult {
       }
     }
 
+    // --- Resource Directory (.rsrc) -----------------------------------------
+    let resources: ResourceEntry[] | null = null;
+    const resourceDir = dataDirectories[2];
+    if (resourceDir && resourceDir.virtualAddress > 0) {
+      resources = [];
+      const resourceBaseOffset = rvaToOffset(resourceDir.virtualAddress, sections, sizeOfHeaders);
+      if (resourceBaseOffset != null) {
+        resources = parseResourceDirectory(c, bytes.byteLength, resourceBaseOffset);
+      }
+    }
+
     // --- Out-of-scope notes --------------------------------------------------
     const notes: string[] = [];
     const clrDir = dataDirectories[14];
@@ -571,7 +760,9 @@ export function parsePe(bytes: Uint8Array): PeParseResult {
       );
     }
     if (sections.some((s) => s.name === '.rsrc')) {
-      notes.push('This file has a resource section (.rsrc) — its contents (icons, version info, manifests, dialogs) are not rendered here.');
+      notes.push(
+        "This file has a resource section (.rsrc) — its resource directory tree (type, name/ID, language, and size) is listed below, but the resources' actual content (icon bitmaps, version-string values, manifest XML text, dialog templates) is not rendered here.",
+      );
     }
     notes.push('Disassembly and digital-signature verification are out of scope for this tool.');
 
@@ -602,6 +793,7 @@ export function parsePe(bytes: Uint8Array): PeParseResult {
       sections,
       imports,
       exports,
+      resources,
       exportDllName,
       imphash: computeImphash(imports),
       notes,

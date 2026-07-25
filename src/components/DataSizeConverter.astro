@@ -1,0 +1,261 @@
+---
+// Data Size & Storage Unit Converter — twelve synced fields (bit/byte, plus
+// the decimal SI prefixes kB-PB and the binary IEC prefixes KiB-PiB): type
+// into any one and every other field updates live (src/utils/dataSize.ts).
+// Grouped into three panes — Base units, Decimal (SI, ×1000), Binary (IEC,
+// ×1024) — so the two competing prefix families read as visually distinct
+// groups, reinforcing the page's own "these are two different systems" copy.
+// Same "Scratch-inspired workspace" visual language as the site's other
+// builder tools (BaseConverter, HashCalculator). Plain floating-point
+// arithmetic through a fixed, NIST-verified multiplier table — see
+// src/utils/dataSize.ts's own header comment for the citation.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { DATA_UNITS, convertDataSize, formatDataValue, type DataUnitId, type DataUnitSystem } from '../utils/dataSize';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const paneSubLabel = css({ color: 'textMuted', fontSize: '0.8rem', m: 0, mb: '0.75rem', lineHeight: 1.6 });
+const helperText = css({ color: 'textMuted', fontSize: '0.85rem', m: 0, mb: '0.9rem', lineHeight: 1.6 });
+const fieldLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+  mb: '0.3rem',
+  display: 'block',
+});
+const input = css({
+  fontFamily: 'mono',
+  fontSize: '0.92rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.6rem 0.85rem',
+  w: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const fieldsWrap = css({
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', sm: 'repeat(2, 1fr)' },
+  gap: '0.75rem',
+});
+const fieldRow = css({ display: 'block' });
+const inputWithBtn = css({ display: 'flex', alignItems: 'stretch', gap: '0.5rem' });
+const copyBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '2.4rem',
+  color: 'textMuted',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'primary', borderColor: 'primary' },
+});
+const errorBox = css({
+  color: 'textMuted',
+  fontSize: '0.88rem',
+  p: '0.75rem 1rem',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  mt: '0.75rem',
+});
+const pane = css({
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: { base: '0.9rem', md: '1.1rem' },
+});
+
+// Top action row — matches every other tool's own reset-button pattern.
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end' });
+const resetBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+// Default: 500 GB — the exact "500 GB drive" example the page's own copy
+// walks through, so the tool loads already showing the discrepancy between
+// the decimal GB field (500) and the binary GiB field (~465.66) instead of
+// a bare, unillustrative zero.
+const DEFAULT_VALUE = 500;
+const DEFAULT_UNIT: DataUnitId = 'GB';
+const defaults = convertDataSize(DEFAULT_VALUE, DEFAULT_UNIT);
+
+const PANES: { system: DataUnitSystem; title: string; blurb: string }[] = [
+  { system: 'base', title: 'Base units', blurb: 'Bits and bytes — everything else on this page is a multiple of one of these two.' },
+  { system: 'decimal', title: 'Decimal (SI) — ×1000 per step', blurb: 'What storage manufacturers print on the box: kB, MB, GB, TB, PB.' },
+  { system: 'binary', title: 'Binary (IEC) — ×1024 per step', blurb: 'What most operating systems traditionally report: KiB, MiB, GiB, TiB, PiB.' },
+];
+---
+
+<WorkspaceShell
+  hook="data-size-convert"
+  noJsMessage="This converter requires JavaScript to convert between data-size units live as you type."
+  gap="1.25rem"
+>
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-size-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <div>
+    <p class={paneLabel}>
+      <Icon name="hard-drive" size={13} class={css({ display: 'inline', verticalAlign: '-2px', mr: '0.3rem' })} /> Data size converter
+    </p>
+    <p class={helperText}>
+      Type a value into any field below and every other unit updates automatically — bit and byte, the decimal
+      (SI) prefixes, and the binary (IEC) prefixes.
+    </p>
+  </div>
+
+  {
+    PANES.map((p) => (
+      <div class={pane}>
+        <p class={paneLabel}>{p.title}</p>
+        <p class={paneSubLabel}>{p.blurb}</p>
+        <div class={fieldsWrap}>
+          {DATA_UNITS.filter((u) => u.system === p.system).map((u) => (
+            <div class={fieldRow}>
+              <label class={fieldLabel} for={`size-${u.id}`}>
+                {u.label} ({u.symbol})
+              </label>
+              <div class={inputWithBtn}>
+                <input
+                  type="text"
+                  id={`size-${u.id}`}
+                  class={input}
+                  inputmode="decimal"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-label={`${u.label} value`}
+                  value={u.id === DEFAULT_UNIT ? String(DEFAULT_VALUE) : formatDataValue(defaults[u.id])}
+                  data-size-field={u.id}
+                  data-session-field={u.id}
+                />
+                <button
+                  type="button"
+                  class={copyBtn}
+                  data-size-copy={u.id}
+                  data-sound="copy"
+                  title={`Copy ${u.label.toLowerCase()} value`}
+                  aria-label={`Copy ${u.label.toLowerCase()} value`}
+                >
+                  <Icon name="copy" size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ))
+  }
+
+  <p id="size-error" hidden class={errorBox} data-size-error></p>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { DATA_UNITS, parseDataSizeInput, convertDataSize, formatDataValue } from '../utils/dataSize';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var root = document.querySelector('[data-size-convert]:not([data-ready])');
+    if (!root) return;
+
+    var UNIT_IDS = DATA_UNITS.map(function (u) {
+      return u.id;
+    });
+    var inputs = {};
+    UNIT_IDS.forEach(function (id) {
+      inputs[id] = root.querySelector('[data-size-field="' + id + '"]');
+    });
+    var errorEl = root.querySelector('[data-size-error]');
+
+    var allPresent = UNIT_IDS.every(function (id) {
+      return !!inputs[id];
+    });
+    if (!allPresent) return;
+
+    function updateFrom(unit) {
+      var raw = inputs[unit].value;
+      var value = parseDataSizeInput(raw);
+      if (value === null) {
+        errorEl.hidden = raw.trim() === '';
+        if (!errorEl.hidden) errorEl.textContent = 'Enter a non-negative number.';
+        return;
+      }
+      errorEl.hidden = true;
+      var result = convertDataSize(value, unit);
+      UNIT_IDS.forEach(function (id) {
+        if (id === unit) return; // don't clobber the field the user is actively typing in
+        inputs[id].value = formatDataValue(result[id]);
+      });
+    }
+
+    UNIT_IDS.forEach(function (id) {
+      inputs[id].addEventListener('input', function () {
+        updateFrom(id);
+      });
+    });
+
+    Array.prototype.slice.call(root.querySelectorAll('[data-size-copy]')).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-size-copy');
+        var el = inputs[id];
+        if (!el) return;
+        navigator.clipboard
+          .writeText(el.value)
+          .then(function () {
+            pop(btn);
+          })
+          .catch(function () {});
+      });
+    });
+
+    // Renders the server-rendered defaults' derived state (error clearing)
+    // on load, and again re-syncs everything after a session restore or
+    // reset (each of those fires an 'input' event on whichever field it
+    // applies, which itself calls updateFrom — this call only covers the
+    // very first render, before any restore/reset has run).
+    updateFrom('GB');
+
+    persistToolSession({
+      root: root,
+      resetButton: '[data-size-reset]',
+    });
+
+    root.setAttribute('data-ready', '');
+  })();
+</script>

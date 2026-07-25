@@ -1,0 +1,222 @@
+---
+// Data Size & Storage Unit Converter — convert a value between bit, byte,
+// the decimal (SI) size prefixes (kB-PB, ×1000 per step), and the binary
+// (IEC) size prefixes (KiB-PiB, ×1024 per step) live as you type. Pure
+// floating-point arithmetic through a fixed, NIST-verified multiplier table
+// (src/utils/dataSize.ts) — nothing here needs runtime lookup, it's unit
+// conversion. Same page shape as the other interactive tools (intro aside ->
+// tool -> reference notes). IT-fundamentals content, not DFIR-specific — see
+// consts.ts's IT_GROUPS comment and CLAUDE.md's "Nav grouping" invariant for
+// the framing rule this page follows. Static page — prerender to HTML
+// served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import DataSizeConverter from '../../components/DataSizeConverter.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { DATA_UNITS, convertDataSize, formatDataValue } from '../../utils/dataSize';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const refTd = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' });
+const refTdMuted = css({
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+  color: 'textMuted',
+  fontSize: '0.8rem',
+  verticalAlign: 'top',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.92em', color: 'primary' });
+const calloutBox = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'accent',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mt: '1.5rem',
+});
+
+// The worked example the page's copy walks through and the converter loads
+// with by default — computed here (not hand-typed in markup) so the prose
+// below is guaranteed to match what src/utils/dataSize.ts actually returns.
+// See test/dataSize.test.ts's own "worked example" tests for the same figures.
+const example500GB = convertDataSize(500, 'GB');
+const example5TB = convertDataSize(5, 'TB');
+---
+
+<BaseLayout
+  title="Data Size & Storage Unit Converter"
+  description="Convert a value between bit, byte, decimal (kB-PB) and binary (KiB-PiB) size units live as you type — and see exactly why a '500 GB' drive shows less in Windows."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Data Size & Storage Unit Converter' }]}
+    eyebrow="Tools"
+    title="Data Size & Storage Unit Converter"
+    description="Type a value into any unit — bit, byte, decimal kB-PB, or binary KiB-PiB — and every other field updates live, so you can see exactly how the two prefix systems diverge."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This is plain unit conversion through a fixed, published multiplier table — nothing here is looked up or
+      estimated, and it all happens locally, so nothing you type ever leaves your machine.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1rem' })}>
+    There are two entirely different, both-legitimate ways to define "kilobyte," and computing has never fully
+    settled on one. Storage manufacturers — hard drive, SSD, USB drive, and memory-card makers — label capacity
+    in the plain decimal sense: a kilobyte is 1,000 bytes, a megabyte is 1,000,000, and so on, the same way "kilo"
+    means 1,000 of anything else in the metric system. Operating systems and most software, on the other hand,
+    have traditionally reported storage in binary: because memory addressing is inherently a power of two, a
+    "kilobyte" there has usually meant 1,024 bytes, a "megabyte" 1,048,576, and so on — close to the decimal
+    values, but not the same number.
+  </p>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    That mismatch is exactly why a drive labeled "500 GB" shows up as roughly{' '}
+    <strong class={css({ color: 'text' })}>{formatDataValue(example500GB.GiB, 5)} GB</strong> in Windows' own
+    binary-based reporting — the drive has the full, honestly-labeled 500,000,000,000 bytes, it's just that
+    Windows is dividing that same byte count by 1,073,741,824 (2<sup>30</sup>) instead of 1,000,000,000. To remove
+    the ambiguity, the IEC standardized a separate set of prefixes for the binary case in 1998 —{' '}
+    <strong class={css({ color: 'text' })}>kibi, mebi, gibi, tebi, pebi</strong> (symbols Ki, Mi, Gi, Ti, Pi) — so
+    "KiB" unambiguously means 1,024 bytes and "kB" unambiguously means 1,000, even though most consumer software
+    still labels binary sizes "KB"/"MB"/"GB" out of habit. This tool keeps both families — and the base bit/byte
+    units — in sync as you type into any one of them, so you can see the real numbers side by side instead of
+    doing the arithmetic by hand.
+  </p>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    One more mismatch worth knowing: network speeds are conventionally measured in <em>bits</em> per second, not
+    bytes — a "100 Mbps" internet connection is 100 megabits per second, which is only 12.5 megabytes per second
+    (divide by 8, since 1 byte = 8 bit), not 100. A file-transfer or download-speed reading in MB/s versus a
+    plan's advertised Mbps looking "8x too slow" is almost always just this same bit-vs-byte distinction, not a
+    problem with the connection.
+  </p>
+
+  <h2 id="calculator" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="hard-drive" size={20} class={css({ color: 'primary' })} /> Calculator
+  </h2>
+  <DataSizeConverter />
+
+  <h2 id="reference" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Unit reference
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Unit</th>
+          <th class={refTh}>System</th>
+          <th class={refTh}>Multiplier</th>
+          <th class={refTh}>Bytes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          DATA_UNITS.map((u) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>
+                  {u.label} ({u.symbol})
+                </strong>
+              </td>
+              <td class={refTdMuted}>
+                {u.system === 'base' && 'Base unit'}
+                {u.system === 'decimal' && 'Decimal (SI)'}
+                {u.system === 'binary' && 'Binary (IEC)'}
+              </td>
+              <td class={refTdMuted}>
+                {u.id === 'bit' && '1/8'}
+                {u.id === 'byte' && '1'}
+                {u.system === 'decimal' && `1000^${Math.round(Math.log10(u.bytesPerUnit) / 3)}`}
+                {u.system === 'binary' && `1024^${Math.round(Math.log2(u.bytesPerUnit) / 10)}`}
+              </td>
+              <td class={refTdMuted}>{formatDataValue(u.bytesPerUnit, 16)}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <div class={calloutBox}>
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.92rem', m: 0, mb: '0.6rem' })}>
+      <strong>Worked example.</strong> A "500 GB" hard drive, labeled the way every manufacturer labels drives:
+    </p>
+    <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.8, m: 0 })}>
+      500 GB (decimal) = 500 × 1,000,000,000 = <code class={inlineCode}>{Math.round(example500GB.byte).toLocaleString('en-US')}</code>{' '}
+      bytes exactly.
+      <br />
+      That same byte count, read back in binary units: {formatDataValue(example500GB.GiB, 6)} GiB — which is why file
+      managers and Windows' own "Properties" dialog show a "500 GB" drive as roughly{' '}
+      {Math.trunc(example500GB.GiB)} GB, not 500. Nothing is missing; it's the same bytes, reported in a different
+      base.
+      <br />
+      The same math applies at every size — a "5 TB" drive is {formatDataValue(example5TB.TiB, 6)} TiB in binary
+      terms.
+    </p>
+  </div>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/base-converter/" class={toolChip}>
+        <Icon name="hash" size={13} /> Number Base Converter <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A byte is exactly two hex digits and eight binary digits — this converter handles the size-prefix math,
+        that one handles reading the raw binary/hex values a byte count is ultimately made of.
+      </p>
+    </div>
+    <div>
+      <a href="/osi-model/" class={toolChip}>
+        <Icon name="layers" size={13} /> OSI &amp; TCP/IP Model Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Covers where the bit-vs-byte distinction shows up in networking (link speeds in bits per second) alongside
+        the rest of the model those speeds are measured across.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['data-size-converter']} />
+</BaseLayout>

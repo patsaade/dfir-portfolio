@@ -1,0 +1,649 @@
+---
+// Windows Prefetch (.pf) Parser — decode an uncompressed Prefetch file
+// (format versions 17 / 23 / 26) entirely client-side via
+// src/utils/prefetch.ts. A chosen file is read locally through
+// File#arrayBuffer() and never uploaded, same pattern as the LNK Parser and
+// the MFT/USN analyzer; the hex-paste path reuses that analyzer's own
+// verified hexToBytes() rather than shipping a second copy.
+//
+// Three distinct outcomes are rendered, never blurred together:
+//   1. a supported uncompressed file  -> the results panel;
+//   2. a Windows 10/11 MAM container  -> the "compressed" panel, which
+//      reports the container header it CAN read and says plainly that
+//      LZXPRESS Huffman decompression is not implemented here (see
+//      utils/prefetch.ts's scope comment for why guessing would be worse);
+//   3. anything else                  -> a specific error on the status line.
+//
+// Same "Scratch-inspired workspace" visual language as the site's other
+// parser tools. Genuinely requires JS (there is no static parsing fallback),
+// so the workspace stays hidden until the script confirms it's running.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+});
+
+// position: relative + zIndex: 0 is the entire retrofit contract for
+// src/scripts/animatedSwitch.ts's site-wide sliding-thumb switch.
+const switchRow = css({
+  position: 'relative',
+  zIndex: 0,
+  display: 'inline-flex',
+  gap: '0.15rem',
+  p: '0.2rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const switchBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  px: '0.8rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  borderRadius: 'sm',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'text' },
+  '&[data-active]': { bg: 'bgSubtle', color: 'primary', borderColor: 'border', boxShadow: 'card' },
+});
+const switchField = css({ display: 'flex', flexDirection: 'column', gap: '0.3rem' });
+const topRow = css({ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' });
+
+const textarea = css({
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.7rem 0.85rem',
+  w: '100%',
+  minH: '8rem',
+  resize: 'vertical',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+  '&[hidden]': { display: 'none' },
+});
+const fileRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  flexWrap: 'wrap',
+  bg: 'bgCard',
+  border: '1px dashed token(colors.border)',
+  borderRadius: 'md',
+  p: '0.9rem',
+  '&[hidden]': { display: 'none' },
+});
+const fileBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  fontWeight: 600,
+  px: '0.8rem',
+  py: '0.45rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgSubtle',
+  color: 'text',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+const fileName = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
+
+const statusBox = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, m: 0 });
+
+const panel = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1.1rem',
+  '&[hidden]': { display: 'none' },
+});
+
+const calloutBox = css({
+  display: 'flex',
+  alignItems: 'baseline',
+  flexWrap: 'wrap',
+  gap: '0.5rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '0.75rem 0.95rem',
+});
+const calloutName = css({ fontFamily: 'mono', fontSize: '1.05rem', fontWeight: 700, color: 'primary', wordBreak: 'break-all' });
+const calloutMeta = css({ fontFamily: 'sans', fontSize: '0.8rem', color: 'textMuted' });
+
+const fieldGrid = css({
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+  gap: '0.5rem 1.25rem',
+});
+const fieldRow = css({
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: '0.75rem',
+  borderBottom: '1px dashed token(colors.border)',
+  pb: '0.35rem',
+});
+const fieldRowLabel = css({ fontFamily: 'sans', fontSize: '0.78rem', color: 'textMuted', flexShrink: 0 });
+const fieldRowValue = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'text', textAlign: 'right', wordBreak: 'break-all' });
+
+const runList = css({
+  listStyle: 'none',
+  m: 0,
+  p: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.3rem',
+  maxH: '14rem',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+});
+const runRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.6rem',
+  py: '0.4rem',
+});
+const runSlot = css({ flexShrink: 0, fontSize: '0.72rem', color: 'textMuted', w: '5.5rem' });
+// An unused slot keeps this class and is re-tinted muted/italic by the
+// [data-empty] rule in the <style> block below (a class swap in JS would
+// have to re-atomize Panda output at runtime, which isn't available there).
+const runValue = css({ flex: 1, minW: 0, color: 'primary', wordBreak: 'break-all' });
+
+const notesList = css({
+  listStyle: 'disc',
+  pl: '1.2rem',
+  m: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.35rem',
+  color: 'textMuted',
+  fontSize: '0.82rem',
+  lineHeight: 1.6,
+  '&[hidden]': { display: 'none' },
+});
+
+const warnBox = css({
+  color: 'accent',
+  fontSize: '0.88rem',
+  lineHeight: 1.7,
+  bg: 'color-mix(in srgb, token(colors.accent) 8%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.accent) 30%, transparent)',
+  borderRadius: 'md',
+  px: '0.95rem',
+  py: '0.75rem',
+});
+
+const miniCopyBtn = css({
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '1.6rem',
+  h: '1.6rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const actionRow = css({ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' });
+// Kept as plain objects (not pre-atomized css() calls) so the primary variant
+// can css(actionBtnBase, primaryBtnBase) — a deep object merge, not a
+// concatenation of two independently-atomized class strings (see
+// docs/STYLE_GUIDE.md "Buttons").
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.82rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
+const actionBtn = css(actionBtnBase);
+const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
+---
+
+<WorkspaceShell hook="data-pf-parser" noJsMessage="The Prefetch parser needs JavaScript enabled." gap="1.25rem">
+  <div class={topRow}>
+    <div class={switchField}>
+      <span class={fieldLabel} id="pf-input-mode-label">Input source</span>
+      <div class={switchRow} role="radiogroup" aria-labelledby="pf-input-mode-label" data-session-field="inputMode">
+        <button type="button" role="radio" aria-checked="true" data-active data-pf-input-mode="hex" data-sound="tick" class={switchBtn}>Hex text</button>
+        <button type="button" role="radio" aria-checked="false" data-pf-input-mode="file" data-sound="tick" class={switchBtn}>File</button>
+      </div>
+    </div>
+    <div class={actionRow}>
+      <button type="button" class={actionBtn} data-pf-sample="v23" data-sound="tick" title="Load a synthetic version 23 (Vista/7) sample">
+        <Icon name="file-text" size={14} /> Load v23 sample
+      </button>
+      <button type="button" class={actionBtn} data-pf-sample="mam" data-sound="tick" title="Load a synthetic Windows 10/11 MAM container header">
+        <Icon name="lock" size={14} /> Load Win10/11 header
+      </button>
+      <button type="button" class={actionBtn} data-pf-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+        <Icon name="rotate-cw" size={14} /> Reset
+      </button>
+    </div>
+  </div>
+
+  <div>
+    <label class={fieldLabel} for="pf-hex-input">Paste the raw bytes of a .pf file, as hex</label>
+    <div class={css({ mt: '0.4rem' })}>
+      <textarea
+        id="pf-hex-input"
+        class={textarea}
+        placeholder="e.g. 17 00 00 00 53 43 43 41 … — spaces, newlines, commas and 0x prefixes are all fine"
+        autocomplete="off"
+        spellcheck="false"
+        data-pf-hex
+        data-session-field="hex"></textarea>
+
+      <div class={fileRow} data-pf-file-row hidden>
+        <label class={fileBtn}>
+          <Icon name="download" size={15} /> Choose .pf file
+          <input type="file" accept=".pf" data-pf-file class={css({ display: 'none' })} />
+        </label>
+        <span class={fileName} data-pf-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
+      </div>
+    </div>
+  </div>
+
+  <p class={statusBox} data-pf-status role="status" aria-live="polite">Paste hex or choose a .pf file above to parse it.</p>
+
+  {/* ---------------------------------------------------------------- */}
+  {/* Supported (uncompressed) result                                   */}
+  {/* ---------------------------------------------------------------- */}
+  <div class={panel} data-pf-result-panel hidden>
+    <div class={calloutBox}>
+      <span class={calloutName} data-pf-field="executableName"></span>
+      <span class={calloutMeta} data-pf-field="expectedFileName"></span>
+    </div>
+
+    <div>
+      <p class={paneLabel}>File header</p>
+      <div class={fieldGrid}>
+        <div class={fieldRow}><span class={fieldRowLabel}>Signature</span><span class={fieldRowValue}>SCCA</span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Format version</span><span class={fieldRowValue} data-pf-field="formatVersion"></span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Written by</span><span class={fieldRowValue} data-pf-field="windows"></span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Run count</span><span class={fieldRowValue} data-pf-field="runCount"></span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Path hash</span><span class={fieldRowValue} data-pf-field="prefetchHash"></span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Size (declared / actual)</span><span class={fieldRowValue} data-pf-field="sizes"></span></div>
+      </div>
+    </div>
+
+    <div>
+      <p class={paneLabel}>Execution times (UTC)</p>
+      <ul class={runList} data-pf-run-list></ul>
+      <template data-pf-run-template>
+        <li class={runRow}>
+          <span class={runSlot} data-pf-run-slot></span>
+          <span class={runValue} data-pf-run-value></span>
+          <button type="button" class={miniCopyBtn} data-pf-run-copy data-copy-pop data-sound="copy" title="Copy timestamp" aria-label="Copy this execution timestamp">
+            <Icon name="copy" size={12} />
+          </button>
+        </li>
+      </template>
+    </div>
+
+    <ul class={notesList} data-pf-notes hidden></ul>
+
+    <div class={actionRow}>
+      <button type="button" class={primaryActionBtn} data-pf-copy-json data-copy-pop data-sound="copy">
+        <Icon name="copy" size={14} /> Copy full result as JSON
+      </button>
+    </div>
+  </div>
+
+  {/* ---------------------------------------------------------------- */}
+  {/* Windows 10/11 MAM container — detected, deliberately not decoded  */}
+  {/* ---------------------------------------------------------------- */}
+  <div class={panel} data-pf-mam-panel hidden>
+    <p class={warnBox}>
+      <strong>This is a compressed Windows 10/11 Prefetch file.</strong> Its real contents sit inside a
+      <code>MAM</code> container compressed with LZXPRESS Huffman, and this tool does not implement that
+      decompression. That is a deliberate choice, not an oversight: a subtly wrong Huffman decoder does not
+      fail loudly — it emits a plausible-looking but wrong executable name, run count and timestamps, which is
+      far worse in an investigation than plainly not supporting the format. Decompress it first with a tool
+      that does handle it (Eric Zimmerman's <strong>PECmd</strong> writes the decompressed bytes out with its
+      <code>-o</code> switch; libyal's <strong>sccainfo</strong> reads it directly), then bring the
+      decompressed <code>SCCA</code> data back here.
+    </p>
+
+    <div>
+      <p class={paneLabel}>MAM container header (the part that is readable)</p>
+      <div class={fieldGrid}>
+        <div class={fieldRow}><span class={fieldRowLabel}>Signature</span><span class={fieldRowValue} data-pf-mam-field="signature"></span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Compression method</span><span class={fieldRowValue} data-pf-mam-field="compressionMethod"></span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Method byte</span><span class={fieldRowValue} data-pf-mam-field="compressionMethodByte"></span></div>
+        <div class={fieldRow}><span class={fieldRowLabel}>Declared uncompressed size</span><span class={fieldRowValue} data-pf-mam-field="uncompressedSize"></span></div>
+      </div>
+    </div>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { parsePrefetch } from '../utils/prefetch';
+  import { SAMPLE_V23_HEX, SAMPLE_MAM_HEX } from '../utils/prefetch';
+  // Deliberate reuse: the MFT/USN analyzer already ships a tested, forgiving
+  // hex-paste reader (0x prefixes, whitespace, commas, newlines). Importing
+  // it keeps ONE implementation of that parsing rather than a second
+  // near-copy that could drift. The cost is honest and measured: Rollup puts
+  // utils/mftUsn.ts in a shared chunk (~11 KB raw / ~3 KB gzipped) that this
+  // page then loads for one 12-line function — accepted because the chunk is
+  // shared with, and cached across, the sibling artifact-parser page, and
+  // because a divergent second hex reader is the worse failure mode.
+  import { hexToBytes } from '../utils/mftUsn';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var NO_FILE = "No file chosen — nothing is uploaded, it's read locally in your browser.";
+    var IDLE = 'Paste hex or choose a .pf file above to parse it.';
+
+    function init() {
+      var roots = document.querySelectorAll('[data-pf-parser]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var hexInput = root.querySelector('[data-pf-hex]');
+        var fileRowEl = root.querySelector('[data-pf-file-row]');
+        var fileInput = root.querySelector('[data-pf-file]');
+        var fileNameEl = root.querySelector('[data-pf-file-name]');
+        var statusEl = root.querySelector('[data-pf-status]');
+        var resultPanel = root.querySelector('[data-pf-result-panel]');
+        var mamPanel = root.querySelector('[data-pf-mam-panel]');
+        var runListEl = root.querySelector('[data-pf-run-list]');
+        var runTemplate = root.querySelector('[data-pf-run-template]');
+        var notesEl = root.querySelector('[data-pf-notes]');
+        var copyJsonBtn = root.querySelector('[data-pf-copy-json]');
+        if (!hexInput || !fileInput || !statusEl || !resultPanel || !mamPanel || !runTemplate) return;
+
+        var inputModeBtns = Array.prototype.slice.call(root.querySelectorAll('[data-pf-input-mode]'));
+        var fieldEls = {};
+        Array.prototype.forEach.call(root.querySelectorAll('[data-pf-field]'), function (el) {
+          fieldEls[el.getAttribute('data-pf-field')] = el;
+        });
+        var mamFieldEls = {};
+        Array.prototype.forEach.call(root.querySelectorAll('[data-pf-mam-field]'), function (el) {
+          mamFieldEls[el.getAttribute('data-pf-mam-field')] = el;
+        });
+
+        var currentBytes = null;
+        var lastResult = null;
+        var debounceTimer = null;
+
+        function formatBytes(n) {
+          if (n < 1024) return n + ' B';
+          if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+          return (n / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        function copyText(btn, text) {
+          if (!text) return;
+          navigator.clipboard.writeText(text).then(function () { pop(btn); }).catch(function () {});
+        }
+
+        function setStatus(text, state) {
+          statusEl.textContent = text;
+          if (state) statusEl.setAttribute('data-state', state);
+          else statusEl.removeAttribute('data-state');
+        }
+
+        function hidePanels() {
+          resultPanel.hidden = true;
+          mamPanel.hidden = true;
+        }
+
+        function renderRunTimes(runTimes) {
+          runListEl.innerHTML = '';
+          runTimes.forEach(function (t) {
+            var li = runTemplate.content.firstElementChild.cloneNode(true);
+            var slotEl = li.querySelector('[data-pf-run-slot]');
+            var valueEl = li.querySelector('[data-pf-run-value]');
+            var copyBtn = li.querySelector('[data-pf-run-copy]');
+            slotEl.textContent = t.slot === 0 ? 'Last run' : 'Slot ' + t.slot;
+            if (t.iso) {
+              valueEl.textContent = t.iso;
+              copyBtn.addEventListener('click', function () { copyText(copyBtn, t.iso); });
+            } else {
+              valueEl.textContent = 'not set (raw value 0)';
+              valueEl.setAttribute('data-empty', '');
+              copyBtn.disabled = true;
+              copyBtn.setAttribute('aria-disabled', 'true');
+            }
+            runListEl.appendChild(li);
+          });
+        }
+
+        function renderNotes(notes) {
+          notesEl.innerHTML = '';
+          if (!notes || !notes.length) {
+            notesEl.hidden = true;
+            return;
+          }
+          notes.forEach(function (note) {
+            var li = document.createElement('li');
+            li.textContent = note;
+            notesEl.appendChild(li);
+          });
+          notesEl.hidden = false;
+        }
+
+        function renderResult(data) {
+          fieldEls.executableName.textContent = data.executableName || '(no name stored)';
+          fieldEls.expectedFileName.textContent = 'expected filename: ' + data.expectedFileName;
+          fieldEls.formatVersion.textContent = String(data.formatVersion);
+          fieldEls.windows.textContent = data.windows;
+          fieldEls.runCount.textContent = String(data.runCount);
+          fieldEls.prefetchHash.textContent = '0x' + data.prefetchHashHex;
+          fieldEls.sizes.textContent = data.declaredFileSize + ' / ' + data.actualFileSize + ' bytes';
+          renderRunTimes(data.runTimes);
+          renderNotes(data.notes);
+          mamPanel.hidden = true;
+          resultPanel.hidden = false;
+        }
+
+        function renderMam(mam) {
+          mamFieldEls.signature.textContent = mam.signature;
+          mamFieldEls.compressionMethod.textContent = mam.compressionMethod;
+          mamFieldEls.compressionMethodByte.textContent =
+            '0x' + mam.compressionMethodByte.toString(16).toUpperCase().padStart(2, '0');
+          mamFieldEls.uncompressedSize.textContent = mam.uncompressedSize.toLocaleString() + ' bytes';
+          resultPanel.hidden = true;
+          mamPanel.hidden = false;
+        }
+
+        function runParse() {
+          lastResult = null;
+          if (!currentBytes) {
+            hidePanels();
+            setStatus(IDLE, null);
+            return;
+          }
+          var result = parsePrefetch(currentBytes);
+          if (result.ok) {
+            lastResult = result.data;
+            setStatus(
+              'Parsed a valid, uncompressed format version ' + result.data.formatVersion + ' Prefetch file.',
+              'ok',
+            );
+            renderResult(result.data);
+            return;
+          }
+          if (result.reason === 'compressed') {
+            setStatus('Windows 10/11 compressed Prefetch file detected — see below.', 'warn');
+            renderMam(result.mam);
+            return;
+          }
+          hidePanels();
+          setStatus(result.error, 'error');
+        }
+
+        function setBytes(bytes) {
+          currentBytes = bytes;
+          runParse();
+        }
+
+        function parseHexNow(value) {
+          if (!value || !value.trim()) { setBytes(null); return; }
+          var bytes = hexToBytes(value);
+          if (!bytes) {
+            currentBytes = null;
+            lastResult = null;
+            hidePanels();
+            setStatus(
+              'Could not read that as hex — expected an even number of hex digits (0-9, a-f), optionally separated by spaces, newlines, commas, or "0x" prefixes.',
+              'error',
+            );
+            return;
+          }
+          setBytes(bytes);
+        }
+
+        hexInput.addEventListener('input', function () {
+          clearTimeout(debounceTimer);
+          var value = hexInput.value;
+          debounceTimer = setTimeout(function () { parseHexNow(value); }, 150);
+        });
+
+        fileInput.addEventListener('change', function () {
+          var file = fileInput.files && fileInput.files[0];
+          if (!file) {
+            fileNameEl.textContent = NO_FILE;
+            setBytes(null);
+            return;
+          }
+          fileNameEl.textContent = file.name + ' (' + formatBytes(file.size) + ') — read locally, never uploaded.';
+          file.arrayBuffer().then(function (buf) { setBytes(new Uint8Array(buf)); });
+        });
+
+        function setInputMode(next) {
+          inputModeBtns.forEach(function (b) {
+            var active = b.getAttribute('data-pf-input-mode') === next;
+            if (active) b.setAttribute('data-active', ''); else b.removeAttribute('data-active');
+            b.setAttribute('aria-checked', String(active));
+          });
+          hexInput.hidden = next !== 'hex';
+          fileRowEl.hidden = next !== 'file';
+        }
+        inputModeBtns.forEach(function (b) {
+          b.addEventListener('click', function () { setInputMode(b.getAttribute('data-pf-input-mode')); });
+        });
+
+        // Sample loaders — the exact byte strings test/prefetch.test.ts
+        // asserts against, so what the page demonstrates is what the parser
+        // really returns. Both switch the workspace back to hex mode so the
+        // loaded bytes are visible rather than silently applied.
+        Array.prototype.forEach.call(root.querySelectorAll('[data-pf-sample]'), function (btn) {
+          btn.addEventListener('click', function () {
+            clearTimeout(debounceTimer);
+            var hex = btn.getAttribute('data-pf-sample') === 'mam' ? SAMPLE_MAM_HEX : SAMPLE_V23_HEX;
+            setInputMode('hex');
+            hexInput.value = hex;
+            hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+            parseHexNow(hex);
+          });
+        });
+
+        if (copyJsonBtn) {
+          copyJsonBtn.addEventListener('click', function () {
+            if (!lastResult) return;
+            copyText(copyJsonBtn, JSON.stringify(lastResult, null, 2));
+          });
+        }
+
+        // Session persistence: the input-source switch and the hex textarea
+        // round-trip via data-session-field. The file input can't (see
+        // toolSession.ts), so Reset clears it by hand and forces an immediate
+        // re-parse rather than waiting on the hex field's 150ms debounce.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-pf-reset]',
+          onReset: function () {
+            clearTimeout(debounceTimer);
+            fileInput.value = '';
+            fileNameEl.textContent = NO_FILE;
+            setInputMode('hex');
+            setBytes(null);
+          },
+        });
+
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<style>
+  [data-pf-status][data-state='error'] {
+    color: color-mix(in srgb, var(--colors-accent) 85%, var(--colors-text));
+  }
+  [data-pf-status][data-state='warn'] {
+    color: var(--colors-accent);
+  }
+  [data-pf-status][data-state='ok'] {
+    color: var(--colors-primary);
+  }
+  /* An unused last-run slot reads as muted/italic rather than as a value. */
+  [data-pf-run-value][data-empty] {
+    color: var(--colors-textMuted);
+    font-style: italic;
+  }
+  [data-pf-run-copy][disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+</style>

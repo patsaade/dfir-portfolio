@@ -143,6 +143,160 @@ function buildValidPe32(): Uint8Array {
   return bytes;
 }
 
+/**
+ * A minimal valid PE32 image whose only section is ".rsrc", containing a
+ * conventional 3-level resource directory tree (Type -> Name/ID -> Language)
+ * with exactly one leaf: RT_VERSION (type 16) / ID 1 / language 0x409
+ * (en-US), pointing at a 0x1A4-byte, code-page-1200 resource blob.
+ *
+ * Layout (file offsets):
+ *   0x000            DOS header (64 bytes), e_lfanew = 0x40
+ *   0x040            "PE\0\0" signature
+ *   0x044            COFF File Header (20 bytes)
+ *   0x058            PE32 Optional Header (0xE0 = 224 bytes) — DataDirectory[2]
+ *                    (Resource Table) -> VirtualAddress 0x1000, Size 0x58
+ *   0x138            Section table, 1 entry (".rsrc", RVA 0x1000)
+ *   0x200            ".rsrc" raw data starts (resourceBaseOffset) — every
+ *                    offset inside the tree below is relative to THIS offset:
+ *     0x200 (+0x00)    root IMAGE_RESOURCE_DIRECTORY: 1 ID entry
+ *     0x210 (+0x10)    root entry: Name=16 (RT_VERSION), OffsetToData -> +0x18 (subdir)
+ *     0x218 (+0x18)    Name-level IMAGE_RESOURCE_DIRECTORY: 1 ID entry
+ *     0x228 (+0x28)    Name-level entry: Name=1, OffsetToData -> +0x30 (subdir)
+ *     0x230 (+0x30)    Language-level IMAGE_RESOURCE_DIRECTORY: 1 ID entry
+ *     0x240 (+0x40)    Language-level entry: Name=0x409, OffsetToData -> +0x48 (leaf)
+ *     0x248 (+0x48)    IMAGE_RESOURCE_DATA_ENTRY: OffsetToData(RVA)=0x1100, Size=0x1A4, CodePage=1200
+ *   0x300            end of file
+ */
+function buildPeWithResourceTree(): Uint8Array {
+  const bytes = new Uint8Array(0x300);
+  const view = new DataView(bytes.buffer);
+
+  // DOS header
+  bytes[0] = 0x4d;
+  bytes[1] = 0x5a;
+  u32(view, 0x3c, 0x40);
+
+  // PE signature
+  bytes[0x40] = 0x50;
+  bytes[0x41] = 0x45;
+  bytes[0x42] = 0x00;
+  bytes[0x43] = 0x00;
+
+  // COFF File Header @ 0x44
+  u16(view, 0x44, 0x14c); // Machine = I386
+  u16(view, 0x46, 1); // NumberOfSections
+  u32(view, 0x48, 1600000000); // TimeDateStamp
+  u32(view, 0x4c, 0);
+  u32(view, 0x50, 0);
+  u16(view, 0x54, 0xe0); // SizeOfOptionalHeader
+  u16(view, 0x56, 0x0102); // Characteristics
+
+  // PE32 Optional Header @ 0x58
+  const opt = 0x58;
+  u16(view, opt + 0, 0x10b); // Magic = PE32
+  u8(view, opt + 2, 14);
+  u8(view, opt + 3, 0);
+  u32(view, opt + 4, 0x200);
+  u32(view, opt + 8, 0x200);
+  u32(view, opt + 12, 0);
+  u32(view, opt + 16, 0x1000); // AddressOfEntryPoint
+  u32(view, opt + 20, 0x1000);
+  u32(view, opt + 24, 0x2000);
+  u32(view, opt + 28, 0x400000); // ImageBase
+  u32(view, opt + 32, 0x1000);
+  u32(view, opt + 36, 0x200);
+  u16(view, opt + 40, 6);
+  u16(view, opt + 42, 0);
+  u16(view, opt + 44, 0);
+  u16(view, opt + 46, 0);
+  u16(view, opt + 48, 6);
+  u16(view, opt + 50, 0);
+  u32(view, opt + 52, 0);
+  u32(view, opt + 56, 0x3000); // SizeOfImage
+  u32(view, opt + 60, 0x200); // SizeOfHeaders
+  u32(view, opt + 64, 0);
+  u16(view, opt + 68, 3); // Subsystem
+  u16(view, opt + 70, 0);
+  u32(view, opt + 72, 0x100000);
+  u32(view, opt + 76, 0x1000);
+  u32(view, opt + 80, 0x100000);
+  u32(view, opt + 84, 0x1000);
+  u32(view, opt + 88, 0);
+  u32(view, opt + 92, 16); // NumberOfRvaAndSizes
+  const dataDir = opt + 96;
+  u32(view, dataDir + 2 * 8 + 0, 0x1000); // Resource Table VirtualAddress
+  u32(view, dataDir + 2 * 8 + 4, 0x58); // Resource Table Size
+
+  // Section table @ 0x138, 1 entry: ".rsrc"
+  const sec = 0x138;
+  ascii(bytes, sec, '.rsrc');
+  u32(view, sec + 8, 0x58); // VirtualSize
+  u32(view, sec + 12, 0x1000); // VirtualAddress
+  u32(view, sec + 16, 0x58); // SizeOfRawData
+  u32(view, sec + 20, 0x200); // PointerToRawData
+  u32(view, sec + 24, 0);
+  u32(view, sec + 28, 0);
+  u16(view, sec + 32, 0);
+  u16(view, sec + 34, 0);
+  u32(view, sec + 36, 0x40000040); // CNT_INITIALIZED_DATA | MEM_READ
+
+  // Resource directory tree @ file offset 0x200 (RVA 0x1000) = resourceBaseOffset
+  const rsrcBase = 0x200;
+
+  // Root IMAGE_RESOURCE_DIRECTORY (Type level)
+  u32(view, rsrcBase + 0, 0); // Characteristics
+  u32(view, rsrcBase + 4, 0); // TimeDateStamp
+  u16(view, rsrcBase + 8, 0); // MajorVersion
+  u16(view, rsrcBase + 10, 0); // MinorVersion
+  u16(view, rsrcBase + 12, 0); // NumberOfNamedEntries
+  u16(view, rsrcBase + 14, 1); // NumberOfIdEntries
+  // Root entry @ rsrcBase+0x10 -> Type = RT_VERSION (16), subdir @ +0x18
+  u32(view, rsrcBase + 0x10 + 0, 16);
+  u32(view, rsrcBase + 0x10 + 4, 0x80000000 | 0x18);
+
+  // Name-level IMAGE_RESOURCE_DIRECTORY @ rsrcBase+0x18
+  u32(view, rsrcBase + 0x18 + 0, 0);
+  u32(view, rsrcBase + 0x18 + 4, 0);
+  u16(view, rsrcBase + 0x18 + 8, 0);
+  u16(view, rsrcBase + 0x18 + 10, 0);
+  u16(view, rsrcBase + 0x18 + 12, 0); // NumberOfNamedEntries
+  u16(view, rsrcBase + 0x18 + 14, 1); // NumberOfIdEntries
+  // Name-level entry @ rsrcBase+0x28 -> ID = 1, subdir @ +0x30
+  u32(view, rsrcBase + 0x28 + 0, 1);
+  u32(view, rsrcBase + 0x28 + 4, 0x80000000 | 0x30);
+
+  // Language-level IMAGE_RESOURCE_DIRECTORY @ rsrcBase+0x30
+  u32(view, rsrcBase + 0x30 + 0, 0);
+  u32(view, rsrcBase + 0x30 + 4, 0);
+  u16(view, rsrcBase + 0x30 + 8, 0);
+  u16(view, rsrcBase + 0x30 + 10, 0);
+  u16(view, rsrcBase + 0x30 + 12, 0); // NumberOfNamedEntries
+  u16(view, rsrcBase + 0x30 + 14, 1); // NumberOfIdEntries
+  // Language-level entry @ rsrcBase+0x40 -> language 0x409 (en-US), leaf @ +0x48
+  u32(view, rsrcBase + 0x40 + 0, 0x409);
+  u32(view, rsrcBase + 0x40 + 4, 0x48); // top bit clear -> leaf, not a subdirectory
+
+  // IMAGE_RESOURCE_DATA_ENTRY @ rsrcBase+0x48
+  u32(view, rsrcBase + 0x48 + 0, 0x1100); // OffsetToData (a real RVA — not resolved further)
+  u32(view, rsrcBase + 0x48 + 4, 0x1a4); // Size
+  u32(view, rsrcBase + 0x48 + 8, 1200); // CodePage
+  u32(view, rsrcBase + 0x48 + 12, 0); // Reserved
+
+  return bytes;
+}
+
+/** Same tree as buildPeWithResourceTree(), but the root directory's
+ *  NumberOfIdEntries is corrupted to claim 9999 entries while the file is
+ *  truncated immediately after the 16-byte root directory header — so not
+ *  even the first IMAGE_RESOURCE_DIRECTORY_ENTRY (8 bytes) actually fits. */
+function buildPeWithTruncatedResourceDirectory(): Uint8Array {
+  const full = buildPeWithResourceTree();
+  const view = new DataView(full.buffer);
+  const rsrcBase = 0x200;
+  u16(view, rsrcBase + 14, 9999); // NumberOfIdEntries lies — claims 9999 entries
+  return full.slice(0, rsrcBase + 16); // truncate right after the directory header
+}
+
 /** A minimal PE32+ (64-bit) header with no sections — just enough to prove
  *  the Magic=0x20b branch parses the widened ImageBase/no-BaseOfData layout
  *  correctly. ImageBase is deliberately > 0xFFFFFFFF so a 32-bit read could
@@ -255,6 +409,10 @@ describe('parsePe — valid PE32', () => {
     expect(result.info.exportDllName).toBeNull();
   });
 
+  it('has no resource directory (data directory entry is empty)', () => {
+    expect(result.info.resources).toBeNull();
+  });
+
   it('computes the correct imphash: MD5 of the lowercased "kernel32.exitprocess"', () => {
     const expected = md5Hex(new TextEncoder().encode('kernel32.exitprocess'));
     expect(result.info.imphash).toBe(expected);
@@ -267,6 +425,58 @@ describe('parsePe — valid PE32', () => {
   it('does not flag CLR or .rsrc notes for a plain native PE', () => {
     expect(result.info.notes.some((n) => /\.NET|CLR/i.test(n))).toBe(false);
     expect(result.info.notes.some((n) => /\.rsrc/i.test(n))).toBe(false);
+  });
+});
+
+describe('parsePe — Resource Directory (.rsrc) tree', () => {
+  it('walks a 3-level Type -> Name/ID -> Language tree and recovers exactly one RT_VERSION entry', () => {
+    const result = parsePe(buildPeWithResourceTree());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const resources = result.info.resources;
+    if (resources == null) throw new Error('expected a resolved resource directory'); // narrow the type for the rest of this test
+    expect(resources).toHaveLength(1);
+    const r = resources[0];
+    expect(r.typeId).toBe(16);
+    expect(r.typeName).toBe('VERSION');
+    expect(r.nameOrId).toBe('1');
+    expect(r.languageId).toBe(0x409);
+    expect(r.size).toBe(0x1a4);
+    expect(r.codePage).toBe(1200);
+  });
+
+  it('updates the .rsrc note to say entries are listed structurally but content is not rendered', () => {
+    const result = parsePe(buildPeWithResourceTree());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const note = result.info.notes.find((n) => /\.rsrc/.test(n));
+    expect(note).toBeDefined();
+    expect(note).toMatch(/resource directory tree/i);
+    expect(note).toMatch(/not rendered/i);
+  });
+
+  it('gracefully degrades a truncated/corrupt resource directory instead of failing the whole parse', () => {
+    const result = parsePe(buildPeWithTruncatedResourceDirectory());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The root directory (falsely) claims 9999 entries, but the file is
+    // truncated immediately after the 16-byte directory header, so not even
+    // the first 8-byte entry fits — the walk stops immediately, same
+    // "break early, keep what parsed so far" convention used by the
+    // truncated section/import-table loops above, rather than throwing.
+    expect(result.info.resources).toEqual([]);
+  });
+
+  it('never throws on a resource directory built from hostile/random bytes', () => {
+    const bytes = buildPeWithResourceTree();
+    const view = new DataView(bytes.buffer);
+    // Corrupt the Name-level directory's entry count to something huge
+    // without truncating the file — forces the walk to run off the end of
+    // legitimate resource data into the rest of the buffer.
+    view.setUint16(0x200 + 0x18 + 14, 0xffff, true);
+    expect(() => parsePe(bytes)).not.toThrow();
+    const result = parsePe(bytes);
+    expect(result.ok).toBe(true);
   });
 });
 

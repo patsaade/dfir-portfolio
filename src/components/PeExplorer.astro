@@ -2,19 +2,22 @@
 // PE Header Explorer — pick (or drag/drop) a local EXE/DLL and parse its
 // Windows PE headers entirely client-side (src/utils/pe.ts): DOS header, PE
 // signature + COFF File Header, Optional Header (PE32/PE32+), Section Table,
-// Import & Export Directory Tables, and a computed imphash. A file chosen
-// here is read locally via File#arrayBuffer() and never uploaded anywhere —
-// same file-read pattern as the Hash Calculator, including the monotonic
-// sequence-counter guard against a stale async parse landing after a newer
-// file was already chosen. Same "Scratch-inspired workspace" visual language
-// as the site's other builder tools. Genuinely requires JS (parsing has no
-// static fallback), so the workspace stays hidden until the script confirms
-// it's running.
+// Import & Export Directory Tables, the Resource Directory tree (structure
+// only — type/name-or-ID/language/size), and a computed imphash. A file
+// chosen here is read locally via File#arrayBuffer() and never uploaded
+// anywhere — same file-read pattern as the Hash Calculator, including the
+// monotonic sequence-counter guard against a stale async parse landing after
+// a newer file was already chosen. Same "Scratch-inspired workspace" visual
+// language as the site's other builder tools. Genuinely requires JS (parsing
+// has no static fallback), so the workspace stays hidden until the script
+// confirms it's running.
 //
-// Disassembly, resource-section (.rsrc) rendering, .NET/CLR metadata, and
-// digital-signature verification are explicitly out of scope — a parsed file
-// that has any of those surfaces a plain note rather than silently omitting
-// them (pe.ts's PeInfo.notes).
+// Disassembly, resource *content* rendering (icon bitmaps, version-string
+// values, manifest XML text, dialog templates — only the resource tree's own
+// structural metadata is shown), .NET/CLR metadata, and digital-signature
+// verification are explicitly out of scope — a parsed file that has any of
+// those surfaces a plain note rather than silently omitting them (pe.ts's
+// PeInfo.notes).
 import { css } from 'styled-system/css';
 import { tag } from 'styled-system/recipes';
 import Icon from './Icon.astro';
@@ -291,6 +294,25 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
       </div>
     </div>
 
+    {/* Resource directory */}
+    <div>
+      <p class={sectionLabel}><Icon name="grid" size={15} /> Resource directory (.rsrc)</p>
+      <div class={scrollBox} data-pe-resources-box>
+        <table class={table} data-pe-resources-table hidden>
+          <thead>
+            <tr>
+              <th class={th}>Type</th>
+              <th class={th}>Name/ID</th>
+              <th class={th}>Language</th>
+              <th class={th}>Size</th>
+            </tr>
+          </thead>
+          <tbody data-pe-resources-body></tbody>
+        </table>
+        <p class={emptyNote} data-pe-resources-empty>No resource directory found in this file.</p>
+      </div>
+    </div>
+
     {/* Imphash */}
     <div>
       <p class={sectionLabel}><Icon name="lock" size={15} /> Imphash</p>
@@ -347,6 +369,16 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
     </tr>
   </template>
 
+  {/* Cloned per resource directory entry row */}
+  <template data-pe-resource-row-template>
+    <tr>
+      <td class={td} data-cell="type"></td>
+      <td class={td} data-cell="name"></td>
+      <td class={td} data-cell="lang"></td>
+      <td class={td} data-cell="size"></td>
+    </tr>
+  </template>
+
   {/* Cloned per flag chip */}
   <template data-pe-flag-chip-template>
     <span class={tag({ tone: 'muted', mono: true })}></span>
@@ -379,6 +411,7 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
         var fnTemplate = root.querySelector('[data-pe-fn-template]');
         var fnOrdinalTemplate = root.querySelector('[data-pe-fn-ordinal-template]');
         var exportRowTemplate = root.querySelector('[data-pe-export-row-template]');
+        var resourceRowTemplate = root.querySelector('[data-pe-resource-row-template]');
         var flagChipTemplate = root.querySelector('[data-pe-flag-chip-template]');
         var noteTemplate = root.querySelector('[data-pe-note-template]');
 
@@ -490,6 +523,31 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
               row.querySelector('[data-cell="name"]').textContent = fn.name || '(ordinal only)';
               row.querySelector('[data-cell="rva"]').textContent = hex(fn.rva);
               exportsBody.appendChild(row);
+            });
+          }
+
+          // Resource directory
+          var resourcesTable = root.querySelector('[data-pe-resources-table]');
+          var resourcesBody = root.querySelector('[data-pe-resources-body]');
+          var resourcesEmpty = root.querySelector('[data-pe-resources-empty]');
+          resourcesBody.innerHTML = '';
+          if (!info.resources || !info.resources.length) {
+            resourcesTable.hidden = true;
+            resourcesEmpty.hidden = false;
+            resourcesEmpty.textContent =
+              info.resources === null
+                ? 'No resource directory found in this file.'
+                : 'This file has a resource directory, but no entries could be read from it (it may be empty, or the tree was truncated/corrupt).';
+          } else {
+            resourcesTable.hidden = false;
+            resourcesEmpty.hidden = true;
+            info.resources.forEach(function (r) {
+              var row = resourceRowTemplate.content.firstElementChild.cloneNode(true);
+              row.querySelector('[data-cell="type"]').textContent = r.typeName;
+              row.querySelector('[data-cell="name"]').textContent = r.nameOrId || '—';
+              row.querySelector('[data-cell="lang"]').textContent = r.languageId != null ? String(r.languageId) : '—';
+              row.querySelector('[data-cell="size"]').textContent = formatBytes(r.size);
+              resourcesBody.appendChild(row);
             });
           }
 

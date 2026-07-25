@@ -18,6 +18,7 @@ import TagCombobox from '../../components/TagCombobox.astro';
 import FilterToggle from '../../components/FilterToggle.astro';
 import ListFilter from '../../components/ListFilter.astro';
 import GroupOverview from '../../components/GroupOverview.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
 import { tagSlug, getSortedPosts, getSortedLabs } from '../../utils/posts';
 import { TOOL_PLATFORMS, costTone } from '../../data/tools';
 
@@ -134,6 +135,8 @@ const spotlightLabel = css({
   mb: '0.7rem',
 });
 const spotlightRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
 const spotlightChip = css({
   display: 'inline-flex',
   alignItems: 'center',
@@ -262,6 +265,18 @@ const spotlightChip = css({
       </details>
     ))
   }
+
+  <h2 class={sectionH2}>
+    <Icon name="terminal" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/drills/commands/" class={toolChip}>
+        <Icon name="terminal" size={13} /> Terminal Commands Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Practice native bash/cmd.exe/PowerShell commands from memory — the terminal itself, not a tool.</p>
+    </div>
+  </div>
 
   <ListFilter
     config={{

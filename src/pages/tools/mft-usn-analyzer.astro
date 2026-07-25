@@ -67,7 +67,7 @@ const attackChip = css({
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'MFT & USN Journal Timestomp Analyzer' }]}
-    eyebrow="Host Forensics"
+    eyebrow="Artifact Parsers"
     title="MFT & USN Journal Timestomp Analyzer"
     description="Parse one already-carved-out MFT FILE record or USN journal record and compare $STANDARD_INFORMATION against $FILE_NAME to spot the classic timestomping indicator — entirely local."
   />
@@ -84,9 +84,8 @@ const attackChip = css({
     })}
   >
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
-      Everything here runs entirely in your browser — <strong class={css({ color: 'text' })}>no external APIs, no
-      upload, nothing you paste or select ever leaves your machine</strong>. Paste hex bytes or choose a local file
-      and it's parsed with the File API in-page. This tool works on <strong class={css({ color: 'text' })}>one
+      Paste hex bytes or choose a local file and it's parsed with the File API in-page — entirely in your
+      browser, so nothing you paste or select here ever leaves your machine. This tool works on <strong class={css({ color: 'text' })}>one
       already-carved-out record at a time</strong> — a single 1024-byte (or otherwise fixed-size) entry from the{' '}
       <Term slug="master-file-table">Master File Table</Term> (MFT FILE record), or a single record from the{' '}
       <Term slug="usn-journal">USN Journal</Term> (USN_RECORD_V2), as extracted by a tool like MFTECmd, a hex
@@ -137,11 +136,11 @@ const attackChip = css({
   </h2>
   <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
     A USN_RECORD_V2's <code class={css({ fontFamily: 'mono', color: 'primary' })}>Reason</code> field is a
-    bitmask — a single journal entry commonly sets several of these flags at once (e.g. a rename sets both
+    bitmask — a single journal entry commonly sets several of these flags at once (e.g. a rename sets both{' '}
     <code class={css({ fontFamily: 'mono', color: 'primary' })}>RENAME_OLD_NAME</code> and a following record
     sets <code class={css({ fontFamily: 'mono', color: 'primary' })}>RENAME_NEW_NAME</code>). Full canonical
-    list per Microsoft's own <code class={css({ fontFamily: 'mono', fontSize: '0.82rem' })}>USN_RECORD_V2</code>
-    documentation (winioctl.h <code class={css({ fontFamily: 'mono', fontSize: '0.82rem' })}>USN_REASON_*</code>
+    list per Microsoft's own <code class={css({ fontFamily: 'mono', fontSize: '0.82rem' })}>USN_RECORD_V2</code>{' '}
+    documentation (winioctl.h <code class={css({ fontFamily: 'mono', fontSize: '0.82rem' })}>USN_REASON_*</code>{' '}
     constants).
   </p>
   <div class={css({ overflowX: 'auto' })}>
@@ -199,7 +198,7 @@ const attackChip = css({
     </div>
     <div>
       <a href="/tools/timestamp-converter/" class={toolChip}>
-        <Icon name="clock" size={13} /> Timestamp Decoder <Icon name="arrow-right" size={13} />
+        <Icon name="clock" size={13} /> Timestamp Converter <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
         Convert any FILETIME or USN timestamp value by hand, or double-check a converted value against this

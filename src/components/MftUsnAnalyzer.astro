@@ -224,6 +224,10 @@ const actionBtnBase = {
 } as const;
 const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
 const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
+// Plain (non-primary) variant of the same small-button shape, for the
+// top-of-workspace Reset control — actionBtnBase alone, same as every
+// "Copy full result as JSON" button minus the primary color treatment.
+const resetBtn = css(actionBtnBase);
 
 const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem' });
 ---
@@ -232,18 +236,24 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
   <div class={switchesRow}>
     <div class={switchField}>
       <span class={fieldLabel} id="mftusn-record-type-label">Record type</span>
-      <div class={switchRow} role="radiogroup" aria-labelledby="mftusn-record-type-label">
+      <div class={switchRow} role="radiogroup" aria-labelledby="mftusn-record-type-label" data-session-field="recordType">
         <button type="button" role="radio" aria-checked="true" data-active data-mftusn-record-type="mft" data-sound="tick" class={switchBtn}>MFT FILE record</button>
         <button type="button" role="radio" aria-checked="false" data-mftusn-record-type="usn" data-sound="tick" class={switchBtn}>USN journal record</button>
       </div>
     </div>
     <div class={switchField}>
       <span class={fieldLabel} id="mftusn-input-mode-label">Input source</span>
-      <div class={switchRow} role="radiogroup" aria-labelledby="mftusn-input-mode-label">
+      <div class={switchRow} role="radiogroup" aria-labelledby="mftusn-input-mode-label" data-session-field="inputMode">
         <button type="button" role="radio" aria-checked="true" data-active data-mftusn-input-mode="hex" data-sound="tick" class={switchBtn}>Hex text</button>
         <button type="button" role="radio" aria-checked="false" data-mftusn-input-mode="file" data-sound="tick" class={switchBtn}>File</button>
       </div>
     </div>
+  </div>
+
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-mftusn-reset title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={14} /> Reset
+    </button>
   </div>
 
   <div>
@@ -256,6 +266,7 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
         autocomplete="off"
         spellcheck="false"
         data-mftusn-hex
+        data-session-field="hex"
       ></textarea>
 
       <div class={fileRow} data-mftusn-file-row hidden>
@@ -418,6 +429,7 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
   // @ts-nocheck — vanilla DOM client script
   import { parseMftRecord, parseUsnRecord, hexToBytes } from '../utils/mftUsn';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     function init() {
@@ -748,6 +760,26 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
             copyText(usnCopyAllBtn, JSON.stringify(lastUsnRecord, jsonReplacer, 2));
           });
         }
+
+        // Session persistence: record type + input mode switches and the hex
+        // textarea auto-save/restore via data-session-field. The file input
+        // is intentionally untagged (can't round-trip through localStorage —
+        // see toolSession.ts), so Reset clears it manually here and forces an
+        // immediate re-parse instead of waiting on the hex field's own 150ms
+        // debounce, so the workspace snaps straight back to its true
+        // server-rendered empty state with no stale-results flash.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-mftusn-reset]',
+          onReset: function () {
+            clearTimeout(debounceTimer);
+            if (fileInput) fileInput.value = '';
+            if (fileNameEl) fileNameEl.textContent = 'No file chosen — nothing is uploaded, it\'s read locally in your browser.';
+            lastMftRecord = null;
+            lastUsnRecord = null;
+            setBytes(null);
+          },
+        });
 
         root.setAttribute('data-ready', '');
       });

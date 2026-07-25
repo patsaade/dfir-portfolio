@@ -1,0 +1,405 @@
+---
+// User-Agent String Parser — paste a raw User-Agent header value and get a
+// live, structured breakdown (browser family + version, rendering engine,
+// OS/platform, the "Mobi" token, and per-string caveats), computed entirely
+// client-side by src/utils/userAgent.ts's `parseUserAgent()`. Nothing pasted
+// here is ever transmitted anywhere; the tool only re-reads what's already in
+// the string you give it.
+//
+// *** A User-Agent is a self-reported claim, never evidence. *** Any HTTP
+// client can send any string it likes as its User-Agent header, so a
+// "recognized" result is not proof of what software made a request and an
+// "unrecognized" result is not proof it wasn't a real browser. That warning
+// is rendered prominently INSIDE the workspace (not only on the host page),
+// because this component is the part a reader actually interacts with —
+// don't remove it. See src/utils/userAgent.ts's own module header for the
+// full documented scope, the deliberate cuts, and the sourcing.
+//
+// Same paste-text -> live-parsed-results UX and "Scratch-inspired workspace"
+// visual language as the site's other Extractors (Email Header Analyzer, IOC
+// Extractor, JWT Decoder). Genuinely requires JS (parsing has no meaningful
+// static fallback), so the workspace stays hidden until the script confirms
+// it's running.
+import { css } from 'styled-system/css';
+import { tag } from 'styled-system/recipes';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+
+// MDN's own documented Chrome-on-Windows example from its User-Agent header
+// reference (developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/
+// User-Agent) — copied verbatim, not invented, and byte-for-byte the same
+// string test/userAgent.test.ts already asserts a full Chrome 143.0.0.0 /
+// Blink / Windows 10 parse for, so the demo this loads with can't silently
+// drift from what the parser actually does.
+const EXAMPLE_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', mb: '0.3rem', display: 'block' });
+const caption = css({ color: 'textMuted', fontSize: '0.85rem', m: 0, lineHeight: 1.5 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.76rem', color: 'primary' });
+
+const textarea = css({
+  width: '100%',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  lineHeight: 1.5,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.75rem',
+  py: '0.6rem',
+  minH: '5.5rem',
+  maxH: '14rem',
+  resize: 'vertical',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const exampleNote = css({ color: 'textMuted', fontSize: '0.78rem', lineHeight: 1.5, mt: '0.4rem', m: 0 });
+
+const actionRow = css({ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', mt: '0.6rem' });
+// Kept as a plain object (not a pre-atomized css() call) so a variant can be
+// built as css(actionBtnBase, variant) — a deep object merge that
+// deterministically overrides actionBtnBase's own _hover, unlike
+// concatenating two independently-atomized class strings (see
+// STYLE_GUIDE.md "Buttons" for the exact failure mode this avoids).
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.82rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const actionBtn = css(actionBtnBase);
+
+// The in-tool spoofability warning. Uses `accent` rather than a caution-red
+// so it reads as a permanent, structural caveat about the whole tool (it is
+// always true, for every string) rather than a per-result error banner.
+const disclaimer = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.6rem',
+  color: 'text',
+  fontSize: '0.85rem',
+  lineHeight: 1.6,
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'accent',
+  borderRadius: 'md',
+  p: '0.7rem 0.9rem',
+  m: 0,
+});
+const disclaimerIcon = css({ color: 'accent', flexShrink: 0, mt: '0.15rem' });
+
+// ── Parsed components ───────────────────────────────────────────────────
+const resultGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: 'repeat(3, 1fr)' }, gap: '0.6rem' });
+const resultCard = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.3rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.7rem 0.85rem',
+});
+const resultHead = css({ display: 'flex', alignItems: 'center', gap: '0.4rem' });
+const resultKind = css({ fontFamily: 'sans', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted' });
+const resultName = css({ fontFamily: 'sans', fontSize: '1.05rem', fontWeight: 700, color: 'text', lineHeight: 1.3, wordBreak: 'break-word' });
+const resultVersion = css({ fontFamily: 'mono', fontSize: '0.8rem', color: 'primary', wordBreak: 'break-word' });
+const resultHint = css({ fontSize: '0.76rem', color: 'textMuted', lineHeight: 1.5, m: 0 });
+
+const chipRow = css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', mt: '0.6rem' });
+const chipLabel = css({ fontFamily: 'sans', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'textMuted' });
+const chipHint = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5 });
+
+// ── Caveats & flags ─────────────────────────────────────────────────────
+const noteList = css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', maxH: '20rem', overflowY: 'auto', overflowX: 'hidden' });
+const noteRow = css({
+  display: 'flex',
+  gap: '0.6rem',
+  alignItems: 'flex-start',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.6rem 0.8rem',
+});
+const noteIcon = css({ color: 'accent', flexShrink: 0, mt: '0.15rem' });
+const noteText = css({ fontSize: '0.82rem', color: 'text', lineHeight: 1.6, m: 0 });
+---
+
+<WorkspaceShell hook="data-ua-parser" noJsMessage="The User-Agent parser needs JavaScript enabled." gap="1.25rem">
+    {/* Paste box */}
+    <div>
+      <label class={fieldLabel} for="uap-input">
+        Paste a User-Agent string — one header value, e.g. from a web server / proxy / WAF access log
+      </label>
+      <textarea id="uap-input" class={textarea} spellcheck="false" autocomplete="off" data-uap-input data-session-field="input">{EXAMPLE_UA}</textarea>
+      <p class={exampleNote}>
+        The string above is <strong class={css({ color: 'text' })}>MDN's own documented example</strong> of a Chrome-on-Windows
+        User-Agent — replace it with one from your own logs. Nothing you paste here is ever transmitted anywhere; the parse
+        happens in this tab.
+      </p>
+      <div class={actionRow}>
+        <button type="button" class={actionBtn} data-uap-clear data-sound="tick" title="Empty the input box">
+          <Icon name="x" size={14} /> Clear
+        </button>
+        <button type="button" class={actionBtn} data-uap-reset data-sound="tick" title="Restore the MDN example string">
+          <Icon name="rotate-cw" size={14} /> Reload example
+        </button>
+        <button type="button" class={actionBtn} data-uap-self data-sound="tick" title="Fill the box with this browser's own User-Agent string">
+          <Icon name="monitor" size={14} /> Use this browser's UA
+        </button>
+      </div>
+    </div>
+
+    {/* Always-on spoofability warning */}
+    <p class={disclaimer}>
+      <Icon name="alert-triangle" size={16} class={disclaimerIcon} />
+      <span>
+        <strong class={css({ color: 'text' })}>A User-Agent is a self-reported claim, not evidence.</strong> Any HTTP client
+        can send any string it likes in this header — a script, a scanner, a browser extension, an implant beacon. This tool
+        reports what a string <em>says about itself</em>, never what actually sent the request. Treat a strange result as a
+        lead worth pulling on, not as device identification.
+      </span>
+    </p>
+
+    {/* Parsed components */}
+    <div>
+      <p class={paneLabel}>Parsed components</p>
+      <div class={resultGrid} role="status" aria-live="polite">
+        <div class={resultCard} data-uap-card="browser">
+          <div class={resultHead}><span class={resultKind}>Browser</span></div>
+          <span class={resultName} data-uap-name>—</span>
+          <span class={resultVersion} data-uap-version></span>
+          <p class={resultHint} data-uap-hint></p>
+        </div>
+        <div class={resultCard} data-uap-card="engine">
+          <div class={resultHead}><span class={resultKind}>Rendering engine</span></div>
+          <span class={resultName} data-uap-name>—</span>
+          <span class={resultVersion} data-uap-version></span>
+          <p class={resultHint} data-uap-hint></p>
+        </div>
+        <div class={resultCard} data-uap-card="os">
+          <div class={resultHead}><span class={resultKind}>OS / platform</span></div>
+          <span class={resultName} data-uap-name>—</span>
+          <span class={resultVersion} data-uap-version></span>
+          <p class={resultHint} data-uap-hint></p>
+        </div>
+      </div>
+      <div class={chipRow}>
+        <span class={chipLabel}>Form factor</span>
+        <span class={tag({ tone: 'muted', mono: true })} data-uap-mobile data-state="unknown">no input</span>
+        <span class={chipHint}>
+          MDN's browser-detection guidance treats a literal{' '}
+          <code class={inlineCode}>Mobi</code> substring anywhere in the string as the least-unreliable
+          "probably a phone-sized touch device" signal — it still can't tell a tablet from a desktop.
+        </span>
+      </div>
+    </div>
+
+    {/* Caveats & flags */}
+    <div>
+      <p class={paneLabel}>Caveats &amp; flags for this string</p>
+      <p class={caption} data-uap-notes-empty role="status" aria-live="polite">Paste a string above to see what the parser can and can't tell you about it.</p>
+      <ul class={noteList} data-uap-note-list></ul>
+      <template data-uap-note-template>
+        <li class={noteRow}>
+          <Icon name="alert-triangle" size={15} class={noteIcon} />
+          <p class={noteText} data-note-text></p>
+        </li>
+      </template>
+    </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { parseUserAgent } from '../utils/userAgent';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    function init() {
+      var roots = document.querySelectorAll('[data-ua-parser]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var input = root.querySelector('[data-uap-input]');
+        if (!input) return;
+        var initialValue = input.value;
+
+        var clearBtn = root.querySelector('[data-uap-clear]');
+        var resetBtn = root.querySelector('[data-uap-reset]');
+        var selfBtn = root.querySelector('[data-uap-self]');
+
+        var cards = {};
+        ['browser', 'engine', 'os'].forEach(function (kind) {
+          var el = root.querySelector('[data-uap-card="' + kind + '"]');
+          cards[kind] = {
+            card: el,
+            nameEl: el ? el.querySelector('[data-uap-name]') : null,
+            versionEl: el ? el.querySelector('[data-uap-version]') : null,
+            hintEl: el ? el.querySelector('[data-uap-hint]') : null,
+          };
+        });
+
+        var mobileEl = root.querySelector('[data-uap-mobile]');
+        var notesEmptyEl = root.querySelector('[data-uap-notes-empty]');
+        var noteListEl = root.querySelector('[data-uap-note-list]');
+        var noteTemplate = root.querySelector('[data-uap-note-template]');
+
+        // What "unrecognized" means differs per component — the parser
+        // deliberately declines to name a browser it can't identify with a
+        // specific token rather than guessing (see utils/userAgent.ts's
+        // "Explicitly NOT supported"), so each card explains its own miss.
+        var UNKNOWN_HINTS = {
+          browser:
+            'No supported browser token matched — could be a non-browser HTTP client, a Chromium fork this parser deliberately does not name (Opera, Samsung Internet, Brave, Vivaldi), or a hand-crafted string.',
+          engine: 'No AppleWebKit / Chrome / Gecko engine token was present to read.',
+          os: 'No supported Windows / macOS / iOS / Android / Linux platform token matched.',
+        };
+        var EMPTY_HINT = 'Paste a User-Agent string above.';
+
+        function setCard(kind, component, hasInput) {
+          var refs = cards[kind];
+          if (!refs || !refs.card) return;
+          if (!component) {
+            refs.card.setAttribute('data-state', hasInput ? 'unknown' : 'empty');
+            refs.nameEl.textContent = hasInput ? 'Unrecognized' : '—';
+            refs.versionEl.textContent = '';
+            refs.hintEl.textContent = hasInput ? UNKNOWN_HINTS[kind] : EMPTY_HINT;
+            return;
+          }
+          refs.card.setAttribute('data-state', 'known');
+          refs.nameEl.textContent = component.name;
+          refs.versionEl.textContent = component.version ? 'v' + component.version : '';
+          refs.hintEl.textContent = component.version
+            ? ''
+            : 'This parser captures no version number for this match.';
+        }
+
+        function setMobile(isMobileToken, hasInput) {
+          if (!mobileEl) return;
+          if (!hasInput) {
+            mobileEl.setAttribute('data-state', 'unknown');
+            mobileEl.textContent = 'no input';
+            return;
+          }
+          mobileEl.setAttribute('data-state', isMobileToken ? 'present' : 'absent');
+          mobileEl.textContent = isMobileToken ? 'Mobi present' : 'Mobi absent';
+        }
+
+        function renderNotes(notes, hasInput) {
+          if (!noteListEl || !noteTemplate || !notesEmptyEl) return;
+          noteListEl.innerHTML = '';
+          if (!notes.length) {
+            notesEmptyEl.hidden = false;
+            notesEmptyEl.textContent = hasInput
+              ? 'Nothing unusual flagged for this string — which is not the same as "this string is genuine."'
+              : "Paste a string above to see what the parser can and can't tell you about it.";
+            return;
+          }
+          notesEmptyEl.hidden = true;
+          notes.forEach(function (note) {
+            var li = noteTemplate.content.firstElementChild.cloneNode(true);
+            li.querySelector('[data-note-text]').textContent = note;
+            noteListEl.appendChild(li);
+          });
+        }
+
+        function run() {
+          var hasInput = input.value.trim() !== '';
+          var result = parseUserAgent(input.value);
+          setCard('browser', result.browser, hasInput);
+          setCard('engine', result.engine, hasInput);
+          setCard('os', result.os, hasInput);
+          setMobile(result.isMobileToken, hasInput);
+          renderNotes(result.notes, hasInput);
+        }
+
+        input.addEventListener('input', run);
+
+        if (clearBtn) {
+          clearBtn.addEventListener('click', function () {
+            input.value = '';
+            run();
+            input.focus();
+          });
+        }
+        if (resetBtn) {
+          resetBtn.addEventListener('click', function () {
+            input.value = initialValue;
+            run();
+            input.focus();
+          });
+        }
+        if (selfBtn) {
+          selfBtn.addEventListener('click', function () {
+            // navigator.userAgent is the same string this browser already
+            // sends to every site it visits — reading it here keeps it in
+            // this tab; it is not transmitted anywhere.
+            input.value = navigator.userAgent || '';
+            run();
+            input.focus();
+          });
+        }
+
+        // Session persistence: auto-saves the pasted string and restores it
+        // on the next visit. "Reload example" restores the true
+        // server-rendered default, so it doubles as this tool's reset button
+        // and also flushes the saved session.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-uap-reset]',
+        });
+
+        run();
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<style>
+  /* An unrecognized component is a real, meaningful result here (see the
+     component header) — muted, not an error state. */
+  [data-uap-card][data-state='unknown'] [data-uap-name],
+  [data-uap-card][data-state='empty'] [data-uap-name] {
+    color: var(--colors-text-muted);
+  }
+
+  [data-uap-mobile][data-state='present'] {
+    color: var(--colors-primary);
+    background: color-mix(in srgb, var(--colors-primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--colors-primary) 30%, transparent);
+  }
+  [data-uap-mobile][data-state='absent'] {
+    color: var(--colors-text-muted);
+    background: var(--colors-bg-subtle);
+  }
+  [data-uap-mobile][data-state='unknown'] {
+    color: var(--colors-text-muted);
+  }
+</style>

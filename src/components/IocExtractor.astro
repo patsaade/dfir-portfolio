@@ -13,7 +13,7 @@
 // copy action in this tool (per-item, per-category, and copy-all). A
 // category card animates in (motion.css's result-card drop-in) the moment
 // it gets its first match, rather than snapping into view. Same "Scratch-
-// inspired workspace" visual language as the Timestamp Decoder / OSINT
+// inspired workspace" visual language as the Timestamp Converter / OSINT
 // Crock Pot (corner brackets, dot-grid texture). Genuinely requires JS
 // (extraction has no meaningful static fallback), so the workspace stays
 // hidden until the script confirms it's running — same JS-armed, no-JS-safe
@@ -166,11 +166,12 @@ const categoryItemBtn = css({
         placeholder="Paste raw text here — indicators are extracted live as you type."
         spellcheck="false"
         data-ioc-input
+        data-session-field="input"
       ></textarea>
     </div>
 
     <div class={controlsRow}>
-      <div class={fangRow} role="radiogroup" aria-label="Indicator display">
+      <div class={fangRow} role="radiogroup" aria-label="Indicator display" data-session-field="fang">
         <button type="button" role="radio" aria-checked="true" data-active data-ioc-fang="normal" data-sound="tick" class={fangBtn}>As found</button>
         <button type="button" role="radio" aria-checked="false" data-ioc-fang="defang" data-sound="tick" class={fangBtn}>Defang</button>
         <button type="button" role="radio" aria-checked="false" data-ioc-fang="refang" data-sound="tick" class={fangBtn}>Refang</button>
@@ -216,6 +217,7 @@ const categoryItemBtn = css({
   // @ts-nocheck — vanilla DOM client script
   import { IOC_CATEGORIES, extractIocs, defangValue, refangValue, containsDefanged } from '../utils/iocs';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     function init() {
@@ -346,6 +348,19 @@ const categoryItemBtn = css({
             input.focus();
           });
         }
+
+        // Session persistence: remembers the pasted text + display-mode
+        // selection across visits and restores them on return; the existing
+        // Clear button doubles as the reset control (its own selector is
+        // reused as resetButton below, rather than adding a second button) —
+        // clicking it now also wipes the stored session and snaps the fang
+        // switch back to its true server-rendered default ("As found"), not
+        // just the input text. Must run after every field's own listeners
+        // above are wired, since restoring a value re-dispatches through them.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-ioc-clear]',
+        });
 
         run();
         root.setAttribute('data-ready', '');

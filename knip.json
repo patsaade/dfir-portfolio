@@ -3,7 +3,7 @@
   "ignore": [
     "public/sw.js",
     "scripts/gen-attack-map.mjs",
-    "scripts/gen-d3fend-map.mjs"
-  ],
-  "ignoreBinaries": ["gh"]
+    "scripts/gen-d3fend-map.mjs",
+    "scripts/gen-threat-actors.mjs"
+  ]
 }

@@ -343,6 +343,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
         placeholder="e.g. 132587904000000000, 2024-03-05T13:22:07+02:00, Sun, 06 Nov 1994 08:49:37 GMT…"
         autocomplete="off"
         data-ts-detect
+        data-session-field="detect"
       />
       <div class={detectResults} data-ts-detect-results role="status" aria-live="polite"></div>
       {/* Cloned per detected match — keeps the client script free of Panda class-name strings. */}
@@ -467,6 +468,9 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
           <button type="button" class={actionBtn} data-ts-copy-all data-copy-pop data-sound="copy">
             <Icon name="copy" size={15} /> Copy all as JSON
           </button>
+          <button type="button" class={actionBtn} data-ts-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+            <Icon name="rotate-cw" size={15} /> Reset
+          </button>
         </div>
       </div>
     </div>
@@ -476,6 +480,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
   // @ts-nocheck — vanilla DOM client script
   import { formatById, detectFormat, offsetMinutesForZone, DEFAULT_CONTEXT } from '../utils/timestamps';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     function init() {
@@ -512,6 +517,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
         var ctx = { refOffsetMinutes: 0, refYear: DEFAULT_CONTEXT.refYear };
         var current = null; // canonical ns (bigint) | null
         var pickedZone = null; // null | an IANA zone name (e.g. 'America/New_York')
+        var session = null; // assigned once persistToolSession() runs, below
 
         function browserZoneName() {
           try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
@@ -641,6 +647,15 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
           zoneControl.setAttribute('data-active', '');
           closeZoneList();
           render(null);
+          // Picking a zone isn't a data-session-field, so nothing else
+          // schedules a save for it (see toolSession.ts's own docs) — ask
+          // explicitly. A discrete click, not continuous typing, so an
+          // immediate save (not a locally-debounced one, unlike
+          // DeobfuscatorBuilder's manual XOR key input) is fine. `session`
+          // is still null the one time this runs during persistToolSession's
+          // own initial restore pass, below — nothing to do there since
+          // that's just re-saving what was already just read back.
+          if (session) session.save();
         }
         if (zonePicker && zoneInput && zoneList) {
           zoneInput.addEventListener('focus', openZoneList);
@@ -748,6 +763,15 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
           if (zoneList && !zoneList.hidden) refreshZoneOffsets();
         }
 
+        // Shared by the initial page-load seed below and by the Reset
+        // button's onReset (persistToolSession) — both mean "show the true,
+        // freshly-loaded state: every format field populated from right
+        // now", not a blank slate.
+        function seedNow() {
+          current = BigInt(Date.now()) * 1000000n;
+          render(null);
+        }
+
         function setFromField(id) {
           var f = fields.filter(function (x) { return x.id === id; })[0];
           if (!f) return;
@@ -844,9 +868,36 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
           });
         }
 
+        // Session persistence: the detect box is a plain data-session-field
+        // (auto-bound/restored by toolSession.ts itself); the picked
+        // timezone is tracked separately since the real state to persist is
+        // the internal `pickedZone` IANA name, not the zone search box's own
+        // display text. restore() re-runs chooseZone() — this tool's own
+        // existing "apply a picked zone" function — so every side effect
+        // (input display text, data-active, re-render) happens exactly as
+        // if the visitor had picked it themselves.
+        session = persistToolSession({
+          root: root,
+          resetButton: '[data-ts-reset]',
+          serialize: function () { return { pickedZone: pickedZone }; },
+          restore: function (data) {
+            if (data && typeof data.pickedZone === 'string') chooseZone(data.pickedZone);
+          },
+          onReset: function () {
+            // The 19 format fields + the current instant aren't
+            // data-session-fields either (they're pure derived state, never
+            // independently persisted) — a full reset means restoring the
+            // tool to its true freshly-loaded state, i.e. re-seeding with
+            // right now, same as seedNow() already does on initial load.
+            pickedZone = null;
+            zoneInput.value = '';
+            zoneControl.removeAttribute('data-active');
+            seedNow();
+          },
+        });
+
         // Seed with the current time on load.
-        current = BigInt(Date.now()) * 1000000n;
-        render(null);
+        seedNow();
 
         root.setAttribute('data-ready', '');
       });

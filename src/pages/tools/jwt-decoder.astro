@@ -1,0 +1,267 @@
+---
+// JWT Decoder — paste a JWT's compact serialization and get its header,
+// payload, and every RFC 7519 §4.1 registered claim it carries, decoded
+// entirely client-side (src/utils/jwt.ts): split on '.', base64url-decode
+// the header/payload segments into JSON, read the declared "alg"/"typ" out
+// of the header, and compute a live "is this token currently expired"
+// verdict from its "exp"/"nbf" claims. Same page shape as the other
+// Extractors (intro aside -> interactive tool -> reference notes). Static
+// page — prerender to HTML served from the CDN.
+//
+// THIS TOOL DOES NOT AND CANNOT VERIFY THE SIGNATURE — see the prominent
+// disclaimer below and the matching one inside JwtDecoder.astro itself.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import JwtDecoder from '../../components/JwtDecoder.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { resolveAttackLink } from '../../data/references';
+import { REGISTERED_CLAIM_DEFS, KNOWN_JWS_ALGORITHMS } from '../../utils/jwt';
+
+// T1606 "Forge Web Credentials" — a JWT whose signature is never checked (or
+// checked against the wrong key/algorithm) is exactly this: a forged web
+// credential an attacker can freely edit. Resolved from the on-site ATT&CK
+// map, same pattern as email-header-analyzer.astro's T1566 chip.
+const attackTechnique = resolveAttackLink('T1606');
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+// Kept as a plain object (not a pre-atomized css() call) so refTdCode below
+// can css(refTdBase, ...) — a deep object merge that deterministically
+// overrides refTdBase's own color, unlike concatenating two independently-
+// atomized class strings (see STYLE_GUIDE.md "Buttons" for the failure mode this avoids).
+const refTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' } as const;
+const refTd = css(refTdBase);
+const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' });
+const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary' });
+
+const attackChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  px: '0.6rem',
+  py: '0.3rem',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'color-mix(in srgb, token(colors.primary) 10%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.primary) 30%, transparent)',
+  borderRadius: 'full',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="JWT Decoder"
+  description="Paste a JSON Web Token and see its header, payload, and claims decoded — entirely in your browser. Decodes contents only; it cannot verify the signature."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'JWT Decoder' }]}
+    eyebrow="Extractors"
+    title="JWT Decoder"
+    description="Paste a JSON Web Token and see exactly what it's carrying — the declared algorithm, the type, and every RFC 7519 registered claim in its payload, including a live expired/not-yet-valid verdict — decoded entirely in your browser."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      A <Term slug="json-web-token">JWT</Term> shows up constantly during DFIR and app-security work — a captured{' '}
+      <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>Authorization: Bearer …</code>{' '}
+      header in an HTTP proxy log, a token pulled from a browser's local/session storage during an incident, an API
+      credential sitting in a config file. This decodes it locally and instantly —{' '}
+      <strong class={css({ color: 'text' })}>nothing you paste here is ever transmitted anywhere</strong> — but{' '}
+      <strong class={css({ color: 'text' })}>this decodes the token's contents; it does not and cannot verify the
+      signature</strong> without the signing secret or the issuer's key, neither of which this tool is ever given.
+      A JWT that decodes cleanly is not the same as a JWT that's genuine — see the disclaimer inside the tool below
+      for exactly what that means for anything you're investigating.
+    </p>
+  </aside>
+
+  <h2 id="decoder" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="key" size={20} class={css({ color: 'primary' })} /> Decoder
+  </h2>
+  <JwtDecoder />
+
+  <h2 id="structure" class={sectionH2}>
+    <Icon name="layers" size={20} class={css({ color: 'primary' })} /> JWT structure reference
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    A JWT's "compact serialization" (RFC 7515 §3.1, the format almost every JWT in the wild uses) is exactly three
+    base64url-encoded segments joined by <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>.</code> characters — <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>header.payload.signature</code>.
+    Base64url (RFC 4648 §5) is the same alphabet as ordinary base64, except <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>-</code>/<code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>_</code> replace
+    <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>+</code>/<code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>/</code> and trailing
+    <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>=</code> padding is always omitted — which is what makes the whole token safe to drop straight into a URL, a cookie, or an
+    HTTP header without escaping.
+  </p>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Segment</th>
+          <th class={refTh}>Contains</th>
+          <th class={refTh}>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class={refTdCode}>Header</td>
+          <td class={refTd}>A small JSON object declaring <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>alg</code> (the signing algorithm, RFC 7515 §4.1.1) and, conventionally, <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>typ</code> (RFC 7519 §5.1, usually "JWT").</td>
+          <td class={refTdMuted}>The receiver is expected to already know or independently verify which algorithm/key to use — trusting this field blindly is a well-documented class of JWT implementation flaw (see the algorithm table below).</td>
+        </tr>
+        <tr>
+          <td class={refTdCode}>Payload</td>
+          <td class={refTd}>The "JWT Claims Set" (RFC 7519 §3) — a JSON object of claims. Some are <em>registered</em> (standardized names, see below); the rest are private/public claims specific to the issuer.</td>
+          <td class={refTdMuted}>Anyone can read this without any key — it's encoded, not encrypted. Never put a secret inside a JWT payload.</td>
+        </tr>
+        <tr>
+          <td class={refTdCode}>Signature</td>
+          <td class={refTd}>A MAC or digital signature over the header and payload segments, computed per the algorithm the header itself declares.</td>
+          <td class={refTdMuted}>Only checkable with the signing secret (HMAC) or the issuer's public key (RSA/ECDSA/EdDSA) — this tool never has either, so it only shows this segment as opaque, undecoded text.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.7 })}>
+    A token with a <em>different</em> number of dot-separated segments — five, most commonly — is a JWE (JSON Web
+    Encryption) rather than a JWS: its payload is genuinely encrypted ciphertext, not just encoded JSON, so there's
+    nothing for a decoder like this to read without the decryption key. This tool only handles the signed (JWS)
+    form, which is what the overwhelming majority of JWTs in the wild actually are.
+  </p>
+
+  <h2 id="claims" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Registered claims reference (RFC 7519 §4.1)
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    RFC 7519 registers seven claim names with standardized meanings — every one is optional, and a token can carry
+    any subset of them (plus any number of its own private claims). The decoder above surfaces whichever of these
+    are actually present in a pasted token's payload, from this exact reference table.
+  </p>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Claim</th>
+          <th class={refTh}>Name</th>
+          <th class={refTh}>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          REGISTERED_CLAIM_DEFS.map((c) => (
+            <tr>
+              <td class={refTdCode}>{c.claim}</td>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>{c.label}</strong>
+              </td>
+              <td class={refTdMuted}>{c.description}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.7 })}>
+    <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>exp</code>, <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>nbf</code>, and <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>iat</code> use RFC 7519 §2's "NumericDate" format —
+    seconds (not milliseconds) since the Unix epoch — which the decoder above converts to a readable UTC timestamp
+    automatically, and uses to compute the live Expired / Not yet valid verdicts next to each claim.
+  </p>
+
+  <h2 id="algorithms" class={sectionH2}>
+    <Icon name="key" size={20} class={css({ color: 'primary' })} /> "alg" reference (RFC 7518 §3.1)
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    The header's <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>alg</code> value names the algorithm the token claims to be signed with. This tool never uses it to do anything —
+    it's shown purely as read-back information — but it's worth knowing what's on the list, because a client that{' '}
+    <em>does</em> use this field to decide how to verify a token is trusting attacker-controlled input to pick its
+    own verification method. <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>none</code> is the most consequential entry here for exactly that reason: RFC 7518 §3.6
+    defines it as a legitimate "Unsecured JWS" with no signature at all, and implementations that don't explicitly
+    reject it when a signature was expected have historically been tricked into accepting a completely unsigned,
+    freely-editable token as if it were trusted.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>alg</th>
+          <th class={refTh}>Algorithm</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          KNOWN_JWS_ALGORITHMS.map((a) => (
+            <tr>
+              <td class={refTdCode}>{a.code}</td>
+              <td class={refTdMuted}>{a.description}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '1.5rem', lineHeight: 1.7, display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' })}>
+    <span class={css({ fontSize: '0.75rem', fontFamily: 'sans', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted' })}>
+      MITRE ATT&amp;CK
+    </span>
+    <a href={attackTechnique.href} class={attackChip} title={`${attackTechnique.id} ${attackTechnique.name} — technique detail`}>
+      <Icon name="crosshair" size={13} />
+      <span class={css({ fontFamily: 'mono', fontWeight: 700 })}>{attackTechnique.id}</span>
+      {attackTechnique.name}
+    </a>
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/hash-calculator/" class={toolChip}>
+        <Icon name="hash" size={15} /> Hash Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Compute or verify a hash of a token string itself, or of a value derived from one, entirely locally.</p>
+    </div>
+    <div>
+      <a href="/tools/email-header-analyzer/" class={toolChip}>
+        <Icon name="mail" size={15} /> Email Header Analyzer <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Another "paste raw text, get a structured, honestly-scoped breakdown" extractor — reads SPF/DKIM/DMARC verdicts a mail server already wrote, the same way this tool reads claims a token already carries.</p>
+    </div>
+    <div>
+      <a href="/tools/ioc-extractor/" class={toolChip}>
+        <Icon name="alert-triangle" size={15} /> IOC Extractor <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Pull structured indicators — domains, IPs, hashes — out of a log or report that might contain a captured token alongside them.</p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['jwt-decoder']} />
+</BaseLayout>

@@ -1,0 +1,391 @@
+---
+// Text Diff Tool — paste two blocks of text (a baseline config vs. what's
+// currently running, two exported log windows, a script before and after an
+// obfuscation layer was stripped) and get a line-by-line diff, entirely
+// client-side (src/utils/textDiff.ts — a from-scratch LCS diff, no
+// dependency). Nothing pasted here is ever transmitted anywhere. A "Swap"
+// button flips Baseline/Current for a quick "what would this look like the
+// other way around" check; live "+N added / -N removed" counts update on a
+// short debounce as you type, and an explicit Compare button forces an
+// immediate recompute (useful right after a paste or a swap). Diff rows
+// carry their own original/changed line numbers in a two-column gutter, the
+// same convention a unified diff view uses. Same "Scratch-inspired
+// workspace" visual language as the site's other builder tools. Genuinely
+// requires JS (there's no meaningful static fallback for a live diff), so
+// the workspace stays hidden until the script confirms it's running.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted' });
+
+const inputsGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: '1fr auto 1fr' }, gap: '0.75rem', alignItems: 'center' });
+const fieldCol = css({ display: 'flex', flexDirection: 'column', gap: '0.35rem', minW: 0 });
+const textarea = css({
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  lineHeight: 1.5,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.7rem 0.85rem',
+  minH: '9rem',
+  resize: 'vertical',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+const swapBtn = css({
+  justifySelf: 'center',
+  alignSelf: { base: 'flex-end', md: 'center' },
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '2.3rem',
+  h: '2.3rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary', transform: 'rotate(180deg)' },
+});
+
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end' });
+const resetBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const compareRow = css({ display: 'flex', justifyContent: 'flex-end', mt: '0.75rem' });
+// Kept as plain objects (not pre-atomized css() calls) so the primary
+// variant can css(actionBtnBase, primaryBtnBase) — a deep object merge that
+// deterministically overrides actionBtnBase's own _hover.color, unlike
+// concatenating two independently-atomized class strings (see
+// STYLE_GUIDE.md "Buttons" for why that pattern silently broke a hover
+// state elsewhere on this site).
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.85rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.85rem',
+  py: '0.5rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
+const compareBtn = css(actionBtnBase, primaryBtnBase);
+
+const statsLine = css({ color: 'textMuted', fontSize: '0.85rem', m: 0, mb: '0.5rem', minH: '1.3em' });
+
+const diffBox = css({
+  m: 0,
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  bg: 'bgCard',
+  maxH: '28rem',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  lineHeight: 1.6,
+});
+const diffEmpty = css({ color: 'textMuted', fontSize: '0.85rem', p: '0.9rem 1rem', m: 0 });
+const diffRow = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.5rem',
+  px: '0.65rem',
+  py: '0.05rem',
+  borderBottom: '1px solid token(colors.border)',
+  '&:last-child': { borderBottom: 'none' },
+});
+const diffGutter = css({ flexShrink: 0, w: '2.5rem', textAlign: 'right', color: 'textMuted', opacity: 0.7, userSelect: 'none' });
+const diffMarker = css({ flexShrink: 0, w: '1rem', textAlign: 'center', fontWeight: 700, color: 'textMuted', userSelect: 'none' });
+const diffText = css({ flex: 1, minW: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'text' });
+---
+
+<WorkspaceShell hook="data-text-diff" noJsMessage="The text diff tool needs JavaScript enabled." gap="1.25rem">
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-diff-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  {/* Inputs */}
+  <div>
+    <p class={paneLabel}>Compare — paste a baseline and what you're comparing it against</p>
+    <div class={inputsGrid}>
+      <div class={fieldCol}>
+        <label class={fieldLabel} for="text-diff-original">Baseline</label>
+        <textarea
+          id="text-diff-original"
+          class={textarea}
+          data-diff-original
+          data-session-field="original"
+          placeholder="Paste the known-good / earlier version here…"
+          autocomplete="off"
+          spellcheck="false"
+        ></textarea>
+      </div>
+
+      <button type="button" class={swapBtn} data-diff-swap data-sound="tick" title="Swap Baseline and Current" aria-label="Swap Baseline and Current">
+        <Icon name="arrow-left-right" size={16} />
+      </button>
+
+      <div class={fieldCol}>
+        <label class={fieldLabel} for="text-diff-changed">Current</label>
+        <textarea
+          id="text-diff-changed"
+          class={textarea}
+          data-diff-changed
+          data-session-field="changed"
+          placeholder="Paste the version you're checking against it…"
+          autocomplete="off"
+          spellcheck="false"
+        ></textarea>
+      </div>
+    </div>
+
+    <div class={compareRow}>
+      <button type="button" class={compareBtn} data-diff-compare data-sound="tick">
+        <Icon name="columns" size={14} /> Compare
+      </button>
+    </div>
+  </div>
+
+  {/* Output */}
+  <div>
+    <p class={paneLabel}>Diff</p>
+    <p class={statsLine} data-diff-stats role="status" aria-live="polite">Paste text on both sides above, then click Compare.</p>
+    <div class={diffBox} data-diff-output>
+      <p class={diffEmpty} data-diff-empty>Nothing to compare yet.</p>
+    </div>
+  </div>
+
+  <template data-diff-row-template>
+    <div class={diffRow} data-diff-row>
+      <span class={diffGutter} data-diff-gutter-original aria-hidden="true"></span>
+      <span class={diffGutter} data-diff-gutter-changed aria-hidden="true"></span>
+      <span class={diffMarker} data-diff-marker aria-hidden="true"></span>
+      <span class={diffText} data-diff-text></span>
+    </div>
+  </template>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { diffLines, MAX_DIFF_LINES } from '../utils/textDiff';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    function init() {
+      var roots = document.querySelectorAll('[data-text-diff]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var originalInput = root.querySelector('[data-diff-original]');
+        var changedInput = root.querySelector('[data-diff-changed]');
+        var swapBtnEl = root.querySelector('[data-diff-swap]');
+        var compareBtnEl = root.querySelector('[data-diff-compare]');
+        var statsEl = root.querySelector('[data-diff-stats]');
+        var outputEl = root.querySelector('[data-diff-output]');
+        var emptyEl = root.querySelector('[data-diff-empty]');
+        var rowTemplate = root.querySelector('[data-diff-row-template]');
+        if (!originalInput || !changedInput || !outputEl || !rowTemplate) return;
+
+        var session = null; // assigned below, once fields are wired — see the swap handler's use of it
+
+        function renderRows(result) {
+          // Clear everything except the (single, static) empty-state <p>,
+          // which is toggled via hidden rather than removed/recreated.
+          Array.prototype.forEach.call(outputEl.querySelectorAll('[data-diff-row]'), function (row) {
+            row.remove();
+          });
+          if (!result.lines.length) {
+            if (emptyEl) {
+              emptyEl.hidden = false;
+              emptyEl.textContent = 'No lines to compare — paste text on both sides above.';
+            }
+            return;
+          }
+          if (emptyEl) emptyEl.hidden = true;
+          var frag = document.createDocumentFragment();
+          result.lines.forEach(function (line) {
+            var rowFrag = rowTemplate.content.cloneNode(true);
+            var row = rowFrag.querySelector('[data-diff-row]');
+            row.setAttribute('data-diff-type', line.type);
+            row.querySelector('[data-diff-gutter-original]').textContent = line.originalLine != null ? String(line.originalLine) : '';
+            row.querySelector('[data-diff-gutter-changed]').textContent = line.changedLine != null ? String(line.changedLine) : '';
+            row.querySelector('[data-diff-marker]').textContent = line.type === 'added' ? '+' : line.type === 'removed' ? '−' : '';
+            var textEl = row.querySelector('[data-diff-text]');
+            if (line.wordDiff && line.wordDiff.length) {
+              // Modified line (paired with its counterpart in the adjacent
+              // removed/added run -- see attachWordDiffs in textDiff.ts):
+              // render word-level runs instead of plain text, so only the
+              // words that actually changed get the stronger highlight.
+              line.wordDiff.forEach(function (seg) {
+                if (seg.type === 'same') {
+                  textEl.appendChild(document.createTextNode(seg.text));
+                } else {
+                  var mark = document.createElement('mark');
+                  mark.setAttribute('data-diff-word-type', seg.type);
+                  mark.textContent = seg.text;
+                  textEl.appendChild(mark);
+                }
+              });
+            } else {
+              // A genuinely empty line would otherwise collapse to zero height,
+              // give it a non-breaking space so the row still renders (same
+              // convention as HashCalculator's empty-result placeholder).
+              textEl.textContent = line.text.length ? line.text : ' ';
+            }
+            frag.appendChild(rowFrag);
+          });
+          outputEl.appendChild(frag);
+        }
+
+        function render() {
+          var originalText = originalInput.value;
+          var changedText = changedInput.value;
+
+          if (!originalText && !changedText) {
+            renderRows({ lines: [] });
+            statsEl.textContent = 'Paste text on both sides above, then click Compare.';
+            statsEl.removeAttribute('data-state');
+            return;
+          }
+
+          var result = diffLines(originalText, changedText);
+          renderRows(result);
+
+          var parts = [];
+          if (result.stats.added) parts.push('+' + result.stats.added + ' added');
+          if (result.stats.removed) parts.push('−' + result.stats.removed + ' removed');
+          var summary = parts.length ? parts.join(' / ') : 'No differences';
+          summary += ' · ' + result.stats.unchanged + ' unchanged';
+          if (result.truncated) {
+            summary += ' — input capped at ' + MAX_DIFF_LINES + ' lines per side for this comparison';
+          }
+          statsEl.textContent = summary;
+          statsEl.setAttribute('data-state', parts.length ? 'diff' : 'match');
+        }
+
+        var debounceTimer = null;
+        function scheduleRender() {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(render, 250);
+        }
+        originalInput.addEventListener('input', scheduleRender);
+        changedInput.addEventListener('input', scheduleRender);
+
+        if (compareBtnEl) {
+          compareBtnEl.addEventListener('click', function () {
+            clearTimeout(debounceTimer);
+            render();
+          });
+        }
+
+        if (swapBtnEl) {
+          swapBtnEl.addEventListener('click', function () {
+            var tmp = originalInput.value;
+            originalInput.value = changedInput.value;
+            changedInput.value = tmp;
+            // Programmatic .value assignment fires no input/change event, so
+            // toolSession's auto-save (wired to those events) wouldn't
+            // otherwise notice the swap — flush it explicitly.
+            render();
+            if (session) session.save();
+          });
+        }
+
+        // Session persistence: restores Baseline/Current text across visits,
+        // and wires the Reset button to clear stored state and restore both
+        // fields to their server-rendered (empty) default. onReset re-runs
+        // render() so the diff view clears immediately rather than waiting
+        // on the debounce the fields' own reset-dispatched input events would
+        // otherwise schedule.
+        session = persistToolSession({ root: root, resetButton: '[data-diff-reset]', onReset: render });
+
+        render();
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<style>
+  [data-diff-row][data-diff-type='added'] {
+    background: color-mix(in srgb, var(--colors-accent) 13%, transparent);
+  }
+  [data-diff-row][data-diff-type='added'] [data-diff-marker] {
+    color: var(--colors-accent);
+  }
+  [data-diff-row][data-diff-type='removed'] {
+    background: color-mix(in srgb, red 13%, transparent);
+  }
+  [data-diff-row][data-diff-type='removed'] [data-diff-marker] {
+    color: color-mix(in srgb, red 65%, var(--colors-text));
+  }
+  [data-diff-stats][data-state='match'] {
+    color: var(--colors-accent);
+    font-weight: 600;
+  }
+  /* Word-level highlight within a modified line (see attachWordDiffs in
+     textDiff.ts) — a stronger tint than the whole-row background above, so
+     the specific words that changed stand out from the rest of the line.
+     :global() is required here: these <mark> elements are created via
+     document.createElement in the client script below, not part of this
+     component's own rendered template, so they never receive Astro's
+     scoped-style attribute — a plain (scoped) selector would silently never
+     match them, leaving the browser's default yellow <mark> UA style to win
+     instead. (The [data-diff-row]/[data-diff-marker] rules above don't need
+     this: those elements come from cloning the static <template> block,
+     which already carries the scope attribute baked in at build time.) */
+  :global([data-diff-text] mark[data-diff-word-type='added']) {
+    background: color-mix(in srgb, var(--colors-accent) 45%, transparent);
+    color: var(--colors-text);
+    border-radius: 3px;
+  }
+  :global([data-diff-text] mark[data-diff-word-type='removed']) {
+    background: color-mix(in srgb, red 40%, transparent);
+    color: var(--colors-text);
+    border-radius: 3px;
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, red 70%, var(--colors-text));
+  }
+</style>

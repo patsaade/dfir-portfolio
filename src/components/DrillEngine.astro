@@ -1,0 +1,358 @@
+---
+// Generic interactive-quiz shell shared by the /drills/* modules (regex,
+// IP & CIDR math, hashing, MITRE ATT&CK, Windows Event IDs, command line).
+// This component renders ONLY the static markup — no embedded <script>. Each
+// drill page owns its own question generator + grading and wires it up by
+// importing `initDrill` from `../../scripts/drillEngine` directly in its own
+// inline module script (see that file's header comment for why this is
+// deliberately NOT a global BaseLayout mount like AnimatedDetails.astro —
+// invariant 5's "minimal JS, mount only where needed" applies here since
+// this is a 6-page feature, not site-wide).
+//
+// No-JS contract: a visitor without JS must still see real content, not an
+// empty shell — the interactive grading genuinely requires JS (there's no
+// server to check an answer against), but the FIRST question's prompt and
+// answer control render for real server-side from the `firstQuestion` prop.
+// The calling page computes this the same way the client script will: call
+// its own `nextQuestion(0)` once in frontmatter (build time) and pass the
+// result in. If a drill's generator is randomized rather than deterministic,
+// note that JS will immediately re-render from its own `nextQuestion(0)`
+// call on mount (see drillEngine.ts's own comment), which can briefly swap
+// the visible question a moment after hydration — keeping `nextQuestion(0)`
+// itself deterministic (even if later indices randomize) avoids that.
+//
+// Every dynamically-created element (subsequent questions' input/choice
+// buttons) is cloned from the two <template>s below rather than built with
+// `document.createElement` + a hardcoded class-name string — same
+// "keeps the client script free of Panda class-name strings" convention as
+// IocExtractor.astro's `data-ioc-item-template`. All interactive state
+// (correct/incorrect, disabled, hidden) is expressed via plain HTML
+// attributes (`data-state`, `data-correct`, `data-incorrect`, `disabled`,
+// `hidden`) that css() below already styles by attribute selector — so
+// drillEngine.ts never needs to know a single Panda-generated class name.
+import { css } from 'styled-system/css';
+
+interface DrillEngineFirstQuestion {
+  prompt: string;
+  answerType: 'text' | 'choice' | 'construct';
+  choices?: string[];
+  /** 'construct' only — rendered server-side as a real, labeled test-case list (no-JS contract). */
+  testCases?: { text: string; shouldMatch: boolean }[];
+  /** Optional, any answerType — rendered behind a "Show hint" toggle when set. */
+  hint?: string;
+}
+
+interface Props {
+  /** data-drill value — the client script's `config.root` selector target, e.g. "regex". */
+  drill: string;
+  /** Widget heading, e.g. "RegEx Range Drill". */
+  heading: string;
+  /** Optional one/two-sentence blurb under the heading. */
+  intro?: string;
+  /** Total question count, for the "Question 1 of N" progress readout. */
+  totalQuestions: number;
+  /** The calling page's own `nextQuestion(0)`, rendered server-side so a no-JS visitor sees real content. */
+  firstQuestion: DrillEngineFirstQuestion;
+}
+
+const { drill, heading, intro, totalQuestions, firstQuestion } = Astro.props;
+const isChoice = firstQuestion.answerType === 'choice';
+const isConstruct = firstQuestion.answerType === 'construct';
+
+const rootCss = css({ display: 'flex', flexDirection: 'column' });
+const headCss = css({ mb: '1.25rem' });
+const headingCss = css({ fontSize: '1.4rem', fontWeight: 700, color: 'text', m: 0 });
+const introCss = css({ color: 'textMuted', fontSize: '0.95rem', mt: '0.4rem', mb: 0, maxW: '560px' });
+const progressCss = css({ fontFamily: 'sans', fontSize: '0.85rem', color: 'textMuted', mb: '1rem' });
+const cardCss = css({ bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'lg', p: { base: '1rem', sm: '1.35rem' } });
+const promptCss = css({ fontSize: '1.05rem', fontWeight: 600, color: 'text', lineHeight: 1.5, m: 0 });
+const answerCss = css({ mt: '0.9rem' });
+const choicesCss = css({ display: 'flex', flexDirection: 'column', gap: '0.4rem' });
+
+const choiceBtnCss = css({
+  display: 'block',
+  width: '100%',
+  textAlign: 'left',
+  fontFamily: 'sans',
+  fontSize: '0.9rem',
+  fontWeight: 500,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.85rem',
+  py: '0.6rem',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+  _disabled: { cursor: 'not-allowed' },
+  '&:disabled:not([data-correct]):not([data-incorrect])': { opacity: 0.5 },
+  '&[data-correct]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 12%, transparent)' },
+  // Raw `red` (not a semantic token — this palette has no dedicated
+  // error/danger color) mixed the same way MftUsnAnalyzer.astro's own
+  // $SI/$FN mismatch indicator does; see that file's scoped <style> block.
+  '&[data-incorrect]': { borderColor: 'red', bg: 'color-mix(in srgb, red 10%, transparent)' },
+});
+
+const textInputCss = css({
+  width: '100%',
+  fontFamily: 'mono',
+  fontSize: '0.95rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.75rem',
+  py: '0.55rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  _disabled: { cursor: 'not-allowed', opacity: 0.7 },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+
+// 'construct' (golf-style) test-case list — each row shows the sample
+// string, whether it should or shouldn't match, and (once Checked) a
+// pass/fail state. `data-state` starts "pending" (neutral — not checked
+// yet) server-side and JS re-sets it to "pass"/"fail" per row on every
+// Check click; never "correct"/"incorrect" like feedbackCss above, kept as
+// a distinct vocabulary since a row's pass/fail is per-test-case, not the
+// whole question's outcome.
+const testCaseListCss = css({ display: 'flex', flexDirection: 'column', gap: '0.35rem', mt: '0.75rem', listStyle: 'none', p: 0, m: 0 });
+const testCaseRowCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.55rem',
+  fontSize: '0.85rem',
+  px: '0.6rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgSubtle',
+  '&[data-state="pass"]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 10%, transparent)' },
+  '&[data-state="fail"]': { borderColor: 'red', bg: 'color-mix(in srgb, red 8%, transparent)' },
+});
+const testCaseIconCss = css({
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '16px',
+  h: '16px',
+  borderRadius: 'full',
+  fontSize: '0.7rem',
+  lineHeight: 1,
+  color: 'textMuted',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  // Empty by default (pending) — JS sets textContent to a check/x glyph
+  // once a row has a real pass/fail state; CSS alone can't express "show a
+  // ✓ glyph" without embedding it as content here too, so the row's own
+  // data-state additionally recolors this ring for a belt-and-suspenders
+  // signal that doesn't rely on the glyph alone (color-blind friendly).
+  '[data-state="pass"] &': { borderColor: 'accent', color: 'accent' },
+  '[data-state="fail"] &': { borderColor: 'red', color: 'red' },
+});
+const testCaseTextCss = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'text', wordBreak: 'break-all' });
+const testCaseLabelCss = css({ fontFamily: 'sans', fontSize: '0.75rem', color: 'textMuted', ml: 'auto', flexShrink: 0, whiteSpace: 'nowrap' });
+
+const hintRowCss = css({ mt: '0.6rem' });
+const hintBtnCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'transparent',
+  border: 'none',
+  p: 0,
+  cursor: 'pointer',
+  _hover: { color: 'primary' },
+  '&[hidden]': { display: 'none' },
+});
+const hintTextCss = css({ fontSize: '0.85rem', color: 'textMuted', lineHeight: 1.5, mt: '0.35rem', m: 0, '&[hidden]': { display: 'none' } });
+
+// Shared base for Check/Next/Try again — same css(base, primary) deep-merge
+// pattern IocExtractor.astro's actionBtn/primaryActionBtn use (composing two
+// atomized class STRINGS instead would silently drop the base's own _hover,
+// per docs/STYLE_GUIDE.md's "Buttons" section).
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.85rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.85rem',
+  py: '0.5rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+  _disabled: { cursor: 'not-allowed', opacity: 0.5, _hover: { borderColor: 'border', color: 'text' } },
+  // The [hidden] cascade gotcha (CLAUDE.md invariant 12 territory): this
+  // class sets `display` unconditionally, so the native `hidden` attribute
+  // toggled by drillEngine.ts needs an explicit override or it's a no-op.
+  '&[hidden]': { display: 'none' },
+} as const;
+const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
+const checkBtnCss = css(actionBtnBase, primaryBtnBase);
+const nextBtnCss = css(actionBtnBase, primaryBtnBase);
+const restartBtnCss = css(actionBtnBase);
+
+const checkRowCss = css({ display: 'flex', mt: '0.9rem' });
+const nextRowCss = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', mt: '0.9rem' });
+
+const feedbackCss = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.35rem',
+  p: '0.75rem 0.9rem',
+  mt: '0.9rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgSubtle',
+  '&[hidden]': { display: 'none' },
+  '&[data-state="correct"]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 10%, transparent)' },
+  '&[data-state="incorrect"]': { borderColor: 'red', bg: 'color-mix(in srgb, red 8%, transparent)' },
+});
+const feedbackStateCss = css({ fontFamily: 'sans', fontSize: '0.85rem', fontWeight: 700, color: 'text', m: 0 });
+const explanationCss = css({ fontSize: '0.88rem', color: 'textMuted', lineHeight: 1.55, m: 0 });
+const refLinkCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  color: 'primary',
+  mt: '0.15rem',
+  _hover: { textDecoration: 'underline' },
+  '&[hidden]': { display: 'none' },
+});
+const summaryCss = css({
+  fontFamily: 'sans',
+  fontSize: '0.95rem',
+  fontWeight: 600,
+  color: 'primary',
+  m: 0,
+  '&[hidden]': { display: 'none' },
+});
+---
+
+<section data-drill={drill} class={rootCss}>
+  <div class={headCss}>
+    <h2 class={`declassify ${headingCss}`}>{heading}</h2>
+    {intro && <p class={introCss}>{intro}</p>}
+  </div>
+
+  <p data-drill-progress role="status" aria-live="polite" class={progressCss}>
+    {`Question 1 of ${totalQuestions} — 0 correct`}
+  </p>
+
+  <div class={cardCss}>
+    <p data-drill-prompt tabindex="-1" class={promptCss}>{firstQuestion.prompt}</p>
+
+    <div class={hintRowCss}>
+      <button type="button" data-drill-hint-btn hidden={!firstQuestion.hint} aria-expanded="false" class={hintBtnCss}>
+        Show hint
+      </button>
+      <p data-drill-hint-text hidden={!firstQuestion.hint} class={hintTextCss}>{firstQuestion.hint}</p>
+    </div>
+
+    <div data-drill-answer class={answerCss}>
+      {
+        isChoice ? (
+          <div data-drill-choices role="group" aria-label="Answer choices" class={choicesCss}>
+            {(firstQuestion.choices ?? []).map((choice) => (
+              <button type="button" class={choiceBtnCss} data-drill-choice-btn>
+                {choice}
+              </button>
+            ))}
+          </div>
+        ) : isConstruct ? (
+          <>
+            <input
+              type="text"
+              data-drill-text-input
+              class={textInputCss}
+              placeholder="Type your pattern"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Your pattern"
+            />
+            <ul data-drill-testcases aria-label="Test cases" class={testCaseListCss}>
+              {(firstQuestion.testCases ?? []).map((tc) => (
+                <li data-state="pending" class={testCaseRowCss}>
+                  <span data-drill-testcase-icon aria-hidden="true" class={testCaseIconCss}></span>
+                  <code data-drill-testcase-text class={testCaseTextCss}>{tc.text}</code>
+                  <span data-drill-testcase-label class={testCaseLabelCss}>{tc.shouldMatch ? 'should match' : 'should NOT match'}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <input
+            type="text"
+            data-drill-text-input
+            class={textInputCss}
+            placeholder="Type your answer"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Your answer"
+          />
+        )
+      }
+    </div>
+
+    <div class={checkRowCss}>
+      <button type="button" data-drill-check hidden={isChoice} class={checkBtnCss}>
+        Check answer
+      </button>
+    </div>
+
+    <div data-drill-feedback hidden class={feedbackCss}>
+      <p data-drill-feedback-state class={feedbackStateCss}></p>
+      <p data-drill-feedback-explanation class={explanationCss}></p>
+      <a data-drill-feedback-link hidden class={refLinkCss} target="_blank" rel="noopener"></a>
+    </div>
+
+    <div class={nextRowCss}>
+      <button type="button" data-drill-next hidden class={nextBtnCss}>
+        Next question →
+      </button>
+      <p data-drill-summary hidden role="status" aria-live="polite" class={summaryCss}></p>
+      <button type="button" data-drill-restart hidden class={restartBtnCss}>
+        Try again
+      </button>
+    </div>
+  </div>
+
+  {/* Cloned by drillEngine.ts for every question (including a re-render of
+      the first one, so there's a single rendering code path) — see this
+      file's header comment. */}
+  <template data-drill-text-input-template>
+    <input
+      type="text"
+      class={textInputCss}
+      data-drill-text-input
+      placeholder="Type your answer"
+      autocomplete="off"
+      spellcheck="false"
+      aria-label="Your answer"
+    />
+  </template>
+  <template data-drill-choice-template>
+    <button type="button" class={choiceBtnCss} data-drill-choice-btn></button>
+  </template>
+  <template data-drill-testcase-template>
+    <li data-state="pending" class={testCaseRowCss}>
+      <span data-drill-testcase-icon aria-hidden="true" class={testCaseIconCss}></span>
+      <code data-drill-testcase-text class={testCaseTextCss}></code>
+      <span data-drill-testcase-label class={testCaseLabelCss}></span>
+    </li>
+  </template>
+</section>

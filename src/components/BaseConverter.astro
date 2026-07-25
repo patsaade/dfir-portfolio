@@ -1,0 +1,261 @@
+---
+// Number Base Converter — four synced fields (binary/octal/decimal/hex): type
+// into any one and the other three, plus an ASCII decode of the underlying
+// bytes, update live (src/utils/baseConvert.ts). Everything routes through
+// bigint internally, so a value beyond Number.MAX_SAFE_INTEGER never silently
+// loses precision. Same "Scratch-inspired workspace" visual language as the
+// site's other builder tools (CidrCalculator, HashCalculator) — plain
+// arithmetic + a fixed ASCII-range check, nothing here needs fact-checking.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { NUMBER_BASES, convert } from '../utils/baseConvert';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const helperText = css({ color: 'textMuted', fontSize: '0.85rem', m: 0, mb: '0.9rem', lineHeight: 1.6 });
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', mb: '0.3rem', display: 'block' });
+const input = css({
+  fontFamily: 'mono',
+  fontSize: '0.92rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.6rem 0.85rem',
+  w: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const fieldsWrap = css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' });
+const fieldRow = css({ display: 'block' });
+const inputWithBtn = css({ display: 'flex', alignItems: 'stretch', gap: '0.5rem' });
+const copyBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '2.4rem',
+  color: 'textMuted',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'primary', borderColor: 'primary' },
+});
+const errorBox = css({ color: 'textMuted', fontSize: '0.88rem', p: '0.75rem 1rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md', mt: '0.75rem' });
+
+const asciiCell = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.75rem',
+  p: '0.75rem 1rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const asciiValuePrintable = css({ fontFamily: 'mono', fontSize: '0.95rem', color: 'primary', wordBreak: 'break-all' });
+const asciiValueMuted = css({ fontFamily: 'sans', fontSize: '0.88rem', color: 'textMuted' });
+const asciiHint = css({ color: 'textMuted', fontSize: '0.78rem', m: 0, mt: '0.5rem', lineHeight: 1.5 });
+
+// Top action row — matches every other tool's own reset-button pattern.
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end' });
+const resetBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+// Default: 18537 decimal / 0x4869 — its two bytes are 'H' and 'i', so the
+// ASCII readout shows something immediately on first load instead of a bare
+// number. Computed once here (not hand-derived in markup) so the four
+// server-rendered defaults below are guaranteed mutually consistent.
+const DEFAULT_VALUE = 18537n;
+const defaults = convert(DEFAULT_VALUE);
+---
+
+<WorkspaceShell hook="data-base-convert" noJsMessage="This converter requires JavaScript to convert between number bases live as you type." gap="1.25rem">
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-base-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <div>
+    <p class={paneLabel}>Number base converter</p>
+    <p class={helperText}>
+      Type a value into any field below — binary, octal, decimal, or hexadecimal — and the other three update
+      automatically, along with an ASCII decode of the value's underlying bytes.
+    </p>
+
+    <div class={fieldsWrap}>
+      {
+        NUMBER_BASES.map((b) => (
+          <div class={fieldRow}>
+            <label class={fieldLabel} for={`base-${b.id}`}>{b.label}{b.prefix && ` (optional ${b.prefix} prefix)`}</label>
+            <div class={inputWithBtn}>
+              <input
+                type="text"
+                id={`base-${b.id}`}
+                class={input}
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                aria-label={`${b.label} value`}
+                value={defaults[b.id]}
+                data-base-field={b.id}
+                data-session-field={b.id}
+              />
+              <button type="button" class={copyBtn} data-base-copy={b.id} data-sound="copy" title={`Copy ${b.label.toLowerCase()} value`} aria-label={`Copy ${b.label.toLowerCase()} value`}>
+                <Icon name="copy" size={13} />
+              </button>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+
+    <p id="base-error" hidden class={errorBox} data-base-error></p>
+  </div>
+
+  <div>
+    <p class={paneLabel}>ASCII / text decode</p>
+    <div class={asciiCell} data-base-ascii>
+      <span data-ascii-value data-printable-class={asciiValuePrintable} data-muted-class={asciiValueMuted}></span>
+      <button type="button" class={copyBtn} data-ascii-copy data-sound="copy" title="Copy decoded text" aria-label="Copy decoded text" hidden>
+        <Icon name="copy" size={13} />
+      </button>
+    </div>
+    <p class={asciiHint} data-ascii-hint></p>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { parseInBase, convert } from '../utils/baseConvert';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var root = document.querySelector('[data-base-convert]:not([data-ready])');
+    if (!root) return;
+
+    var BASE_IDS = ['binary', 'octal', 'decimal', 'hex'];
+    var LABELS = { binary: 'binary', octal: 'octal', decimal: 'decimal', hex: 'hexadecimal' };
+    var inputs = {};
+    BASE_IDS.forEach(function (b) {
+      inputs[b] = root.querySelector('[data-base-field="' + b + '"]');
+    });
+    var errorEl = root.querySelector('[data-base-error]');
+    var asciiValueEl = root.querySelector('[data-ascii-value]');
+    var asciiHintEl = root.querySelector('[data-ascii-hint]');
+    var asciiCopyBtn = root.querySelector('[data-ascii-copy]');
+    var asciiPrintableClass = asciiValueEl.getAttribute('data-printable-class');
+    var asciiMutedClass = asciiValueEl.getAttribute('data-muted-class');
+
+    var lastAsciiText = '';
+
+    if (!inputs.binary || !inputs.octal || !inputs.decimal || !inputs.hex) return;
+
+    function renderAscii(ascii) {
+      if (ascii.printable) {
+        asciiValueEl.textContent = '"' + ascii.text + '"';
+        asciiValueEl.className = asciiPrintableClass;
+        var byteCount = ascii.text.length;
+        asciiHintEl.textContent = byteCount + ' byte' + (byteCount === 1 ? '' : 's') + ' decoded as printable ASCII.';
+        asciiCopyBtn.hidden = false;
+        lastAsciiText = ascii.text;
+      } else {
+        asciiValueEl.textContent = 'Not printable ASCII';
+        asciiValueEl.className = asciiMutedClass;
+        asciiHintEl.textContent = ascii.reason || '';
+        asciiCopyBtn.hidden = true;
+        lastAsciiText = '';
+      }
+    }
+
+    function updateFrom(base) {
+      var raw = inputs[base].value;
+      var value = parseInBase(raw, base);
+      if (value === null) {
+        errorEl.hidden = raw.trim() === '';
+        if (!errorEl.hidden) errorEl.textContent = 'That’s not a valid ' + LABELS[base] + ' value.';
+        return;
+      }
+      errorEl.hidden = true;
+      var result = convert(value);
+      BASE_IDS.forEach(function (b) {
+        if (b === base) return; // don't clobber the field the user is actively typing in
+        inputs[b].value = result[b];
+      });
+      renderAscii(result.ascii);
+    }
+
+    BASE_IDS.forEach(function (b) {
+      inputs[b].addEventListener('input', function () {
+        updateFrom(b);
+      });
+    });
+
+    Array.prototype.slice.call(root.querySelectorAll('[data-base-copy]')).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var b = btn.getAttribute('data-base-copy');
+        var el = inputs[b];
+        if (!el) return;
+        navigator.clipboard
+          .writeText(el.value)
+          .then(function () {
+            pop(btn);
+          })
+          .catch(function () {});
+      });
+    });
+
+    if (asciiCopyBtn) {
+      asciiCopyBtn.addEventListener('click', function () {
+        if (!lastAsciiText) return;
+        navigator.clipboard
+          .writeText(lastAsciiText)
+          .then(function () {
+            pop(asciiCopyBtn);
+          })
+          .catch(function () {});
+      });
+    }
+
+    // Renders the server-rendered defaults' derived state (ASCII box, error
+    // clearing) on load, and again re-syncs everything after a session
+    // restore or reset (each of those fires an 'input' event on whichever
+    // field it applies, which itself calls updateFrom — this call only
+    // covers the very first render, before any restore/reset has run).
+    updateFrom('decimal');
+
+    persistToolSession({
+      root: root,
+      resetButton: '[data-base-reset]',
+    });
+
+    root.setAttribute('data-ready', '');
+  })();
+</script>

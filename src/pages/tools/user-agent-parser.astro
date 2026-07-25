@@ -1,0 +1,495 @@
+---
+// User-Agent String Parser — paste a raw User-Agent header value and get a
+// structured, honestly-scoped breakdown (browser family + version, rendering
+// engine, OS/platform, the "Mobi" token, plus per-string caveats), computed
+// entirely client-side by src/utils/userAgent.ts. Same page shape as the
+// other Extractors (intro aside -> interactive tool -> reference notes).
+// Static page — prerender to HTML served from the CDN.
+//
+// EVERY worked example below is rendered from a real `parseUserAgent()` call
+// at build time — never a hand-typed "expected" result — so the table can't
+// claim an output the parser doesn't actually produce, and every one of these
+// exact strings is additionally asserted in test/userAgent.test.ts. The input
+// strings come from MDN / Microsoft Learn / the Chromium project / curl's own
+// docs, and each row states on the page whether its source publishes that
+// exact string or just the token format it follows (see `provenance` below).
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import UserAgentParser from '../../components/UserAgentParser.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { resolveAttackLink } from '../../data/references';
+import { parseUserAgent, UA_BROWSER_TOKENS, UA_OS_TOKENS } from '../../utils/userAgent';
+
+// T1071 "Application Layer Protocol" — HTTP/S command-and-control traffic
+// deliberately shaped to blend into ordinary web browsing. A hardcoded,
+// stale, or subtly-wrong User-Agent on that traffic is one of the cheapest
+// places that blending falls apart in a log, which is the entire DFIR case
+// for this tool. Resolved from the on-site ATT&CK map, same pattern as
+// email-header-analyzer.astro's T1566 chip.
+const attackTechnique = resolveAttackLink('T1071');
+
+// Every string here comes from an authoritative source and is the same
+// fixture test/userAgent.test.ts asserts against. `provenance` records
+// HONESTLY which kind it is — 'verbatim' means the source publishes this
+// exact string; 'format' means the source publishes the token convention and
+// this string is assembled from it (the same distinction the test file's own
+// header draws). Nothing here is invented, and the parsed columns are
+// computed below by the real parseUserAgent(), never hand-written.
+const EXAMPLE_STRINGS: { source: string; provenance: 'verbatim' | 'format'; ua: string }[] = [
+  {
+    source: 'MDN — Chrome on Windows',
+    provenance: 'verbatim',
+    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+  },
+  {
+    source: 'MDN — Chrome on Android (reduced UA)',
+    provenance: 'verbatim',
+    ua: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36',
+  },
+  {
+    source: 'MDN — Mobile Safari on iPhone',
+    provenance: 'verbatim',
+    ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1',
+  },
+  {
+    source: 'MDN Firefox UA reference — Linux',
+    provenance: 'format',
+    ua: 'Mozilla/5.0 (X11; Linux x86_64; rv:139.0) Gecko/20100101 Firefox/139.0',
+  },
+  {
+    source: 'Microsoft Learn — Edge on Windows',
+    provenance: 'verbatim',
+    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+  },
+  {
+    source: 'Chromium project — Chrome on iOS',
+    provenance: 'verbatim',
+    ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 10_3 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) CriOS/56.0.2924.75 Mobile/14E5239e Safari/602.1',
+  },
+  {
+    source: 'MDN token table — Opera (OPR/)',
+    provenance: 'format',
+    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0',
+  },
+  {
+    source: "curl's documented default",
+    provenance: 'format',
+    ua: 'curl/8.4.0',
+  },
+];
+
+const EXAMPLE_ROWS = EXAMPLE_STRINGS.map((e) => {
+  const parsed = parseUserAgent(e.ua);
+  const fmt = (c: { name: string; version: string | null } | null) =>
+    c ? (c.version ? `${c.name} ${c.version}` : c.name) : 'Unrecognized';
+  // WINDOWS_NT_NAMES already folds the NT version into the marketing name
+  // ("10.0" -> "Windows 10"), so appending the raw version again would print
+  // "Windows 10 10.0". Browser/engine names never do this — their own
+  // version is never restated inside the name — so this special case is
+  // scoped to the OS column only, not folded into the shared fmt() above.
+  const fmtOs = (c: { name: string; version: string | null } | null) =>
+    c ? (c.name.startsWith('Windows') ? c.name : c.version ? `${c.name} ${c.version}` : c.name) : 'Unrecognized';
+  return {
+    source: e.source,
+    provenance: e.provenance === 'verbatim' ? 'published verbatim' : 'built from the documented format',
+    ua: e.ua,
+    browser: fmt(parsed.browser),
+    engine: fmt(parsed.engine),
+    os: fmtOs(parsed.os),
+    mobile: parsed.isMobileToken ? 'Mobi' : '—',
+  };
+});
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const para = css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' });
+const smallPara = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.7, mt: '1rem' });
+const code = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' });
+const strong = css({ color: 'text' });
+
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+// Kept as a plain object (not a pre-atomized css() call) so refTdCode below
+// can css(refTdBase, ...) — a deep object merge that deterministically
+// overrides refTdBase's own color, unlike concatenating two independently-
+// atomized class strings (see STYLE_GUIDE.md "Buttons" for the failure mode this avoids).
+const refTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' } as const;
+const refTd = css(refTdBase);
+const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' });
+const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary' });
+
+// Second line under each worked example's source label — records whether the
+// cited source publishes that exact string or just the format it follows.
+const provenanceNote = css({ display: 'block', fontSize: '0.7rem', color: 'textMuted', opacity: 0.8, mt: '0.15rem', fontStyle: 'italic' });
+
+// The worked-example table's own UA column: a long single-token string that
+// must wrap rather than force the whole table sideways (the site's
+// scroll-not-grow rule keeps horizontal scrolling on the wrapper, but a
+// 140-character unbroken string would still make every row unreadable).
+const uaCell = css({
+  ...refTdBase,
+  fontFamily: 'mono',
+  fontSize: '0.72rem',
+  color: 'textMuted',
+  lineHeight: 1.5,
+  minW: '18rem',
+  maxW: '26rem',
+  wordBreak: 'break-word',
+  overflowWrap: 'break-word',
+});
+
+const attackChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  px: '0.6rem',
+  py: '0.3rem',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'color-mix(in srgb, token(colors.primary) 10%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.primary) 30%, transparent)',
+  borderRadius: 'full',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const bulletList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem', listStyle: 'none', m: 0, p: 0 });
+const bulletItem = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '0.8rem 1rem',
+});
+const bulletTitle = css({ fontFamily: 'sans', fontSize: '0.95rem', fontWeight: 700, color: 'text', m: 0 });
+const bulletBody = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.7, mt: '0.35rem', m: 0 });
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="User-Agent String Parser"
+  description="Paste a raw User-Agent header and see the browser, rendering engine, and OS it claims — parsed entirely in your browser, with every caveat spelled out."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'User-Agent Parser' }]}
+    eyebrow="Extractors"
+    title="User-Agent String Parser"
+    description="Paste a raw User-Agent header value and see the browser, rendering engine, and operating system it claims — plus every reason that claim might be wrong. Parsed entirely in your browser."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'accent',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      <strong class={strong}>Read this before you use the result for anything.</strong> A User-Agent string is
+      trivially spoofable — it's a plain text header the client chooses for itself, and every HTTP library on earth
+      lets you set it to any value in one line of code. This parse is a <strong class={strong}>heuristic
+      reading of a self-reported claim, not a reliable security control</strong> and not device identification. Its
+      real DFIR value is the opposite direction: surfacing a <strong class={strong}>rare, malformed, or internally
+      inconsistent</strong> User-Agent in a pile of log lines as a{' '}
+      <Term slug="triage">triage</Term> lead worth pulling on. It runs entirely in this tab —{' '}
+      <strong class={strong}>nothing you paste here is sent anywhere</strong>.
+    </p>
+  </aside>
+
+  <h2 id="parser" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="monitor" size={20} class={css({ color: 'primary' })} /> Parser
+  </h2>
+  <UserAgentParser />
+
+  <h2 id="why" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> Why a User-Agent is a lead, not an answer
+  </h2>
+  <p class={para}>
+    RFC 9110 §10.1.5 defines <code class={code}>User-Agent</code> as a field where the client describes itself, and
+    both MDN and Microsoft's own Edge documentation now actively discourage building logic on top of parsing it. For
+    a defender the honest framing is simpler: the header is attacker-controlled input. What it's still good for is
+    everything below.
+  </p>
+  <ul class={bulletList}>
+    <li class={bulletItem}>
+      <p class={bulletTitle}>Rarity, not identity</p>
+      <p class={bulletBody}>
+        Stack-count User-Agent values across a web server, proxy, or{' '}
+        <Term slug="web-application-firewall">WAF</Term> log and sort ascending. Real browser traffic collapses into
+        a handful of extremely common strings; the long tail of one-off values is where scanners, scripted clients,
+        and <Term slug="command-and-control">C2</Term> beacons tend to sit. The parser above just makes that tail
+        readable — the frequency analysis is what actually does the work.
+      </p>
+    </li>
+    <li class={bulletItem}>
+      <p class={bulletTitle}>Internal inconsistency</p>
+      <p class={bulletBody}>
+        A string that claims a browser/engine/OS combination that doesn't exist in the real world is a much stronger
+        signal than a string that merely looks unusual. Every genuine desktop or Android Chrome UA carries both a{' '}
+        <code class={code}>Chrome/</code> and a <code class={code}>Safari/</code> token (Chrome on iOS is the
+        exception — it swaps both for a <code class={code}>CriOS/</code> token instead, since it's WebKit
+        under the hood); every genuine desktop Firefox UA carries <code class={code}>Gecko/20100101</code> as
+        a fixed placeholder trail; every genuine iOS browser — including Chrome and Edge — carries an{' '}
+        <code class={code}>AppleWebKit/</code> token, because Apple requires third-party iOS browsers to use
+        WebKit. A hand-written string usually gets at least one of those conventions wrong.
+      </p>
+    </li>
+    <li class={bulletItem}>
+      <p class={bulletTitle}>Frozen and reduced values</p>
+      <p class={bulletBody}>
+        Several of these tokens no longer carry the information they look like they carry.{' '}
+        <code class={code}>Windows NT 10.0</code> covers both Windows 10 and Windows 11; modern macOS reports itself
+        as 10.15.7 forever; Chromium's User-Agent reduction pins Android to <code class={code}>10</code> and the
+        device model to <code class={code}>K</code>. Reading a precise OS version out of a modern UA string is
+        usually reading a constant. The parser flags each of these when it hits one.
+      </p>
+    </li>
+    <li class={bulletItem}>
+      <p class={bulletTitle}>Absence proves nothing either</p>
+      <p class={bulletBody}>
+        An unrecognized result is not "this is malicious." It is far more often a Chromium fork this parser
+        deliberately declines to name (Opera, Samsung Internet, Brave, Vivaldi), a legitimate crawler, an
+        auto-updater, or a monitoring agent. Treat it as one weak signal to be corroborated, and expect a healthy{' '}
+        <Term slug="false-positive">false positive</Term> rate if you alert on it alone.
+      </p>
+    </li>
+  </ul>
+
+  <h2 id="examples" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Worked examples
+  </h2>
+  <p class={para}>
+    Every string below comes from MDN, Microsoft Learn, the Chromium project's docs, or curl's own documentation —
+    each row says whether that source publishes the string <em>verbatim</em> or publishes the token format the
+    string is built from. Every parsed value in this table is produced by calling the exact same function the tool
+    above calls, at build time, so nothing here is a hand-written "expected" result. The last two rows are the
+    interesting ones: a real, unmodified Opera browser and a command-line HTTP client both come back with an{' '}
+    <strong class={strong}>unrecognized browser</strong>, for completely different reasons.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Source</th>
+          <th class={refTh}>User-Agent string</th>
+          <th class={refTh}>Browser</th>
+          <th class={refTh}>Engine</th>
+          <th class={refTh}>OS</th>
+          <th class={refTh}>Mobi</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          EXAMPLE_ROWS.map((r) => (
+            <tr>
+              <td class={refTdMuted}>
+                {r.source}
+                <span class={provenanceNote}>{r.provenance}</span>
+              </td>
+              <td class={uaCell}>{r.ua}</td>
+              <td class={refTd}>
+                <strong class={strong}>{r.browser}</strong>
+              </td>
+              <td class={refTdMuted}>{r.engine}</td>
+              <td class={refTdMuted}>{r.os}</td>
+              <td class={refTdCode}>{r.mobile}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={smallPara}>
+    Opera is unrecognized <em>on purpose</em>. Its UA string carries a <code class={code}>Chrome/</code> token for
+    site-compatibility reasons, so a naive parser reports it as Chrome; this one excludes any string carrying{' '}
+    <code class={code}>OPR/</code> or <code class={code}>SamsungBrowser/</code> and reports nothing rather than
+    something wrong — note that its <em>engine</em> and <em>OS</em> still resolve, because those tokens are
+    genuinely unambiguous. <code class={code}>curl/8.4.0</code> follows curl's documented default{' '}
+    <code class={code}>curl/&lt;version&gt;</code> shape and matches no browser or platform pattern at all, and it's
+    missing the historical <code class={code}>Mozilla/</code> prefix nearly every real browser still carries —
+    exactly the shape of result worth a second look in a log.
+  </p>
+
+  <h2 id="recognized" class={sectionH2}>
+    <Icon name="layers" size={20} class={css({ color: 'primary' })} /> What this parser recognizes
+  </h2>
+  <p class={para}>
+    This is an explicitly-scoped subset of real-world User-Agent conventions, not parity with a maintained UA
+    database. Browser tokens are checked most-specific-first, because a Chromium-based browser's string contains
+    several <em>other</em> browsers' tokens too — checking in the wrong order silently mislabels one browser as
+    another instead of reporting nothing.
+  </p>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Browser</th>
+          <th class={refTh}>Tokens</th>
+          <th class={refTh}>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          UA_BROWSER_TOKENS.map((b) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={strong}>{b.name}</strong>
+              </td>
+              <td class={refTdCode}>{b.tokens}</td>
+              <td class={refTdMuted}>{b.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>OS / platform</th>
+          <th class={refTh}>Tokens</th>
+          <th class={refTh}>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          UA_OS_TOKENS.map((o) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={strong}>{o.name}</strong>
+              </td>
+              <td class={refTdCode}>{o.tokens}</td>
+              <td class={refTdMuted}>{o.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={smallPara}>
+    <strong class={strong}>Deliberately out of scope</strong>, so a miss is a documented cut rather than a silent
+    gap: Opera, Samsung Internet, Brave, Vivaldi and other Chromium forks (never given a name of their own);
+    end-of-life browsers — legacy pre-Chromium Edge, whose bare <code class={code}>Edge/</code> token is a different
+    token from modern Edge's <code class={code}>Edg/</code>, and Internet Explorer's{' '}
+    <code class={code}>MSIE</code>/<code class={code}>Trident/</code>; bot and tooling strings (they simply match
+    nothing, which is the useful signal); ChromeOS and every embedded/IoT/smart-TV platform; and tablet-vs-phone
+    form factor beyond the <code class={code}>Mobi</code> token. MDN also documents one case a real browser cannot
+    be distinguished in at all: <em>Firefox for iOS on iPad</em> carries no <code class={code}>FxiOS</code> token
+    and is indistinguishable from Safari, the same way an iPad in default desktop-class Safari mode sends the same
+    string as a real Mac.
+  </p>
+
+  <h2 id="better-signals" class={sectionH2}>
+    <Icon name="shield" size={20} class={css({ color: 'primary' })} /> Signals that hold up better
+  </h2>
+  <p class={para}>
+    If the question you actually need answered is "what client really made this request," the User-Agent header is
+    the weakest available input. Some stronger ones, roughly in order of how hard they are to fake:
+  </p>
+  <ul class={bulletList}>
+    <li class={bulletItem}>
+      <p class={bulletTitle}>TLS fingerprinting (JA3 / JA4)</p>
+      <p class={bulletBody}>
+        <Term slug="ja3-fingerprinting">JA3</Term> and its successor{' '}
+        <Term slug="ja4-fingerprinting">JA4</Term> hash the parameters of the TLS Client Hello — the cipher suites,
+        extensions, and ordering a client offers. That happens below HTTP, so setting a browser-shaped User-Agent
+        header does nothing to change it. A request claiming Chrome on Windows while presenting the TLS fingerprint
+        of a Python HTTP library is a far more interesting finding than either fact alone.
+      </p>
+    </li>
+    <li class={bulletItem}>
+      <p class={bulletTitle}>User-Agent Client Hints</p>
+      <p class={bulletBody}>
+        The <code class={code}>Sec-CH-UA-*</code> request headers (and{' '}
+        <code class={code}>navigator.userAgentData</code> client-side) are the structured replacement MDN,
+        Microsoft, and Chrome's own docs all now recommend over parsing the classic string. They're better-typed and
+        privacy-scoped by default — but be clear-eyed: they are still values a client sends about itself, so they
+        are no more <em>authoritative</em> than the old header, just cleaner. This tool never sees them; they can't
+        be recovered from a pasted string.
+      </p>
+    </li>
+    <li class={bulletItem}>
+      <p class={bulletTitle}>Endpoint and network telemetry</p>
+      <p class={bulletBody}>
+        A process-creation or network-connection event from an <Term slug="edr">EDR</Term> agent ties traffic to an
+        actual binary on an actual host — something no HTTP header can do. Pair it with timing analysis:
+        request intervals and jitter give away{' '}
+        <Term slug="beaconing">beaconing</Term> regardless of how convincing the beacon's headers are, and a
+        consistent UA across an otherwise machine-regular request pattern is itself the finding.
+      </p>
+    </li>
+  </ul>
+  <p class={smallPara}>
+    Once a suspicious string does turn into something concrete — a hostname, an IP, a hash — that's the point to
+    move it into your normal <Term slug="indicator-of-compromise">indicator</Term> workflow rather than reading more
+    into the header. A rare User-Agent is a good place to start a{' '}
+    <Term slug="threat-hunting">hunt</Term>, and a poor place to end one.
+  </p>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' })}>
+    <span class={css({ fontSize: '0.75rem', fontFamily: 'sans', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted' })}>
+      MITRE ATT&amp;CK
+    </span>
+    <a href={attackTechnique.href} class={attackChip} title={`${attackTechnique.id} ${attackTechnique.name} — technique detail`}>
+      <Icon name="crosshair" size={13} />
+      <span class={css({ fontFamily: 'mono', fontWeight: 700 })}>{attackTechnique.id}</span>
+      {attackTechnique.name}
+    </a>
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/ioc-extractor/" class={toolChip}>
+        <Icon name="alert-triangle" size={15} /> IOC Extractor <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Pull the domains, IPs, and hashes out of the same log lines the User-Agent came from, so a rare string turns into indicators you can actually pivot on.</p>
+    </div>
+    <div>
+      <a href="/tools/regex-tester/" class={toolChip}>
+        <Icon name="search" size={15} /> Regex Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Build and test the pattern you'll use to pull User-Agent values out of a raw access log in bulk before stack-counting them.</p>
+    </div>
+    <div>
+      <a href="/tools/jwt-decoder/" class={toolChip}>
+        <Icon name="key" size={15} /> JWT Decoder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>The other "paste a self-reported claim and read it honestly" extractor — decodes a token's contents while being equally explicit about what it can't prove.</p>
+    </div>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="crosshair" size={15} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Turn a User-Agent observation into a portable detection rule and test it against sample events before it goes anywhere near production.</p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['user-agent-parser']} />
+</BaseLayout>

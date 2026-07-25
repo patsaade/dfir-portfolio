@@ -1,10 +1,17 @@
 ---
-// "Other resources" section shared by the 11 interactive tool pages — real,
-// WebFetch-verified external websites/tools that complement or extend what
-// this site's own local, client-side tool does (CyberChef, VirusTotal,
-// regex101, Eric Zimmerman's EZ Tools, etc.). Distinct from RelatedTools.astro's
-// toolChip, which links to OTHER PAGES ON THIS SITE — every link here is
-// off-site, so every anchor carries target="_blank" rel="noopener".
+// "Other resources" section shared by the 11 interactive tool pages and the
+// 7 drills — real, WebFetch-verified external websites/tools that complement
+// what this site's own local, client-side tool or drill covers (CyberChef,
+// VirusTotal, regex101, Eric Zimmerman's EZ Tools, practice/wargame sites,
+// etc.). Distinct from RelatedTools.astro's toolChip, which links to OTHER
+// PAGES ON THIS SITE — every link here is off-site, so every anchor carries
+// target="_blank" rel="noopener".
+//
+// Split into two labeled subsections by each entry's own `kind` (see
+// externalResources.ts's own doc comment for the exact reference/
+// recommendation dividing line) — only a kind that actually has entries
+// renders its own heading, so a tool page with only recommendations (or only
+// references) still renders a single clean section rather than an empty one.
 import { css } from 'styled-system/css';
 import Icon from './Icon.astro';
 import type { ExternalResource } from '../data/externalResources';
@@ -13,8 +20,11 @@ interface Props {
   resources: ExternalResource[];
 }
 const { resources } = Astro.props;
+const references = resources.filter((r) => r.kind === 'reference');
+const recommendations = resources.filter((r) => r.kind === 'recommendation');
 
 const sectionH2 = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.2rem', fontWeight: 700, mt: '2.5rem', mb: '0.75rem' });
+const subheading = css({ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.95rem', fontWeight: 700, color: 'text', mt: '1.25rem', mb: '0.5rem' });
 const card = css({
   display: 'flex',
   flexDirection: 'column',
@@ -26,26 +36,53 @@ const card = css({
   transition: 'border-color 200ms ease, transform 200ms ease',
   _hover: { borderColor: 'primary', transform: 'translateY(-2px)' },
 });
+const list = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem' });
 ---
 
 {
   resources.length > 0 && (
     <>
       <h2 class={sectionH2}><Icon name="external-link" size={18} class={css({ color: 'primary' })} /> Other resources</h2>
-      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.5rem', lineHeight: 1.7 })}>
         Real, well-known external tools and sites that complement this one — none of these are affiliated with
         this site, and nothing you enter here is shared with them:
       </p>
-      <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.6rem' })}>
-        {resources.map((r) => (
-          <a href={r.url} target="_blank" rel="noopener" class={card}>
-            <span class={css({ fontWeight: 700, color: 'text', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
-              {r.name} <Icon name="external-link" size={13} class={css({ color: 'primary' })} />
-            </span>
-            <span class={css({ fontSize: '0.9rem', color: 'textMuted', lineHeight: 1.5 })}>{r.blurb}</span>
-          </a>
-        ))}
-      </div>
+      {references.length > 0 && (
+        <>
+          <p class={subheading}><Icon name="book-open" size={14} class={css({ color: 'primary' })} /> References</p>
+          <p class={css({ color: 'textMuted', fontSize: '0.85rem', mb: '0.6rem', lineHeight: 1.6 })}>
+            Authoritative specs and standards-body sources this page's own implementation draws from.
+          </p>
+          <div class={list}>
+            {references.map((r) => (
+              <a href={r.url} target="_blank" rel="noopener" class={card}>
+                <span class={css({ fontWeight: 700, color: 'text', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+                  {r.name} <Icon name="external-link" size={13} class={css({ color: 'primary' })} />
+                </span>
+                <span class={css({ fontSize: '0.9rem', color: 'textMuted', lineHeight: 1.5 })}>{r.blurb}</span>
+              </a>
+            ))}
+          </div>
+        </>
+      )}
+      {recommendations.length > 0 && (
+        <>
+          <p class={subheading}><Icon name="heart" size={14} class={css({ color: 'primary' })} /> Recommendations</p>
+          <p class={css({ color: 'textMuted', fontSize: '0.85rem', mb: '0.6rem', lineHeight: 1.6 })}>
+            Community-, individual-, or company-built tools worth using — and supporting.
+          </p>
+          <div class={list}>
+            {recommendations.map((r) => (
+              <a href={r.url} target="_blank" rel="noopener" class={card}>
+                <span class={css({ fontWeight: 700, color: 'text', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+                  {r.name} <Icon name="external-link" size={13} class={css({ color: 'primary' })} />
+                </span>
+                <span class={css({ fontSize: '0.9rem', color: 'textMuted', lineHeight: 1.5 })}>{r.blurb}</span>
+              </a>
+            ))}
+          </div>
+        </>
+      )}
     </>
   )
 }

@@ -1,4 +1,4 @@
-// Deobfuscation Recipe Builder — a chainable pipeline of reversible transforms
+// Codec Builder — a chainable pipeline of reversible transforms
 // (Base64/hex/URL encode+decode, ROT13/ROT47, single-byte XOR, and Gzip/
 // Deflate inflate) applied in order, each step's output feeding the next
 // step's input. Every transform runs entirely client-side and operates on
@@ -24,7 +24,8 @@ export type StepKind =
   | 'rot47'
   | 'xor'
   | 'gzip-inflate'
-  | 'deflate-inflate';
+  | 'deflate-inflate'
+  | 'utf16le-decode';
 
 export interface StepDefinition {
   id: StepKind;
@@ -47,6 +48,7 @@ export const DEOBFUSCATE_STEPS: StepDefinition[] = [
   { id: 'xor', label: 'XOR (single byte)', shortLabel: 'XOR' },
   { id: 'gzip-inflate', label: 'Gzip inflate', shortLabel: 'Gzip inflate', needsDecompressionStream: true },
   { id: 'deflate-inflate', label: 'Deflate inflate (zlib)', shortLabel: 'Deflate inflate', needsDecompressionStream: true },
+  { id: 'utf16le-decode', label: 'UTF-16LE decode (e.g. PowerShell -EncodedCommand)', shortLabel: 'UTF-16LE decode' },
 ];
 
 export function stepDefinition(kind: StepKind): StepDefinition {
@@ -202,6 +204,27 @@ export function urlDecodeBytes(input: Uint8Array): ByteResult {
     }
   }
   return { ok: true, bytes: Uint8Array.from(out) };
+}
+
+// ---------------------------------------------------------------------------
+// UTF-16LE decode — PowerShell's `-EncodedCommand` convention is Base64 of a
+// UTF-16LE string (not UTF-8), so a straight Base64 decode alone leaves a
+// null byte between every character when displayed. This step re-decodes the
+// pipeline's byte stream as UTF-16LE and re-encodes it as UTF-8 bytes, so it
+// slots back into this file's own byte-stream convention (bytesToDisplayText
+// always decodes as UTF-8 for display — see this file's header comment).
+// ---------------------------------------------------------------------------
+
+export function utf16leDecodeBytes(input: Uint8Array): ByteResult {
+  if (input.length % 2 !== 0) {
+    return { ok: false, error: 'Not valid UTF-16LE at this step — odd number of bytes (each UTF-16 code unit is 2 bytes).' };
+  }
+  try {
+    const text = new TextDecoder('utf-16le', { fatal: true }).decode(input);
+    return { ok: true, bytes: new TextEncoder().encode(text) };
+  } catch {
+    return { ok: false, error: 'Not valid UTF-16LE at this step — contains an invalid UTF-16 code unit sequence.' };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +416,8 @@ export async function applyStep(kind: StepKind, input: Uint8Array, options: { xo
       return gzipInflate(input);
     case 'deflate-inflate':
       return deflateInflate(input);
+    case 'utf16le-decode':
+      return utf16leDecodeBytes(input);
     default:
       return { ok: false, error: 'Unknown step.' };
   }

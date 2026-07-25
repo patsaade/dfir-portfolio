@@ -1,0 +1,433 @@
+---
+// CVSS v3.1 Base Score Calculator — eight metric dropdowns (grouped
+// Exploitability / Scope / Impact, matching the spec's own Section 2
+// grouping), a live-computed score/severity/vector string driven entirely by
+// src/utils/cvss.ts (unit-tested against FIRST.org's own published worked
+// examples — see test/cvss.test.ts), plus a "load a vector string" field
+// that parses a pasted CVSS:3.1 Base vector back into the dropdowns. Same
+// compact Scratch-inspired workspace + session-persistence + reset pattern
+// as this codebase's other calculators (CidrCalculator, HashCalculator).
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { CVSS_METRICS, DEFAULT_CVSS_METRICS, buildCvssV31VectorString, computeCvssV31BaseScore } from '../utils/cvss';
+
+// Presentation-only grouping of the 8 metrics into the spec's own Section 2
+// subsections (2.1 Exploitability Metrics, 2.2 Scope, 2.3 Impact Metrics) —
+// purely how the dropdowns are laid out; the formula in cvss.ts doesn't care
+// about this grouping at all.
+const METRIC_GROUPS: { title: string; ids: string[] }[] = [
+  { title: 'Exploitability metrics', ids: ['AV', 'AC', 'PR', 'UI'] },
+  { title: 'Scope', ids: ['S'] },
+  { title: 'Impact metrics', ids: ['C', 'I', 'A'] },
+];
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const groupLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'accent',
+  mb: '0.5rem',
+});
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', display: 'block', mb: '0.3rem' });
+const selectInput = css({
+  fontFamily: 'sans',
+  fontSize: '0.88rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.5rem',
+  w: '100%',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const metricGroupWrap = css({ mb: '1.1rem', '&:last-child': { mb: 0 } });
+const metricsRow = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: '1fr 1fr' }, gap: '0.75rem' });
+
+const workspaceGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', lg: 'minmax(0, 1fr) 300px' }, gap: '1.5rem', alignItems: 'start' });
+
+const stage = css({
+  lg: { position: 'sticky', top: '90px' },
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1rem',
+});
+const scoreCard = css({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '0.35rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'lg',
+  p: '1.1rem',
+  textAlign: 'center',
+});
+const scoreNumber = css({ fontFamily: 'mono', fontSize: '2.6rem', fontWeight: 700, lineHeight: 1, color: 'text' });
+const severityBadge = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.78rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  px: '0.6rem',
+  py: '0.25rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+});
+const breakdownList = css({ display: 'flex', flexDirection: 'column', gap: '0.3rem', width: '100%', mt: '0.4rem' });
+const breakdownRow = css({ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'textMuted' });
+const breakdownVal = css({ fontFamily: 'mono', color: 'text' });
+
+const vectorBox = css({
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  color: 'primary',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.65rem 0.75rem',
+  overflowX: 'auto',
+  whiteSpace: 'pre',
+  m: 0,
+});
+const vectorRow = css({ display: 'flex', flexDirection: 'column', gap: '0.4rem' });
+const rowCopyBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  alignSelf: 'flex-end',
+  gap: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.78rem',
+  fontWeight: 600,
+  px: '0.6rem',
+  py: '0.35rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const loadRow = css({ display: 'flex', flexDirection: 'column', gap: '0.4rem' });
+const inlineInput = css({
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.65rem',
+  py: '0.5rem',
+  w: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+const loadBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.45rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgSubtle',
+  color: 'text',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+const loadError = css({ color: 'textMuted', fontSize: '0.78rem', m: 0 });
+
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end' });
+const resetBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+// Server-rendered starting point, computed once at build time so a no-JS
+// visitor still sees a real, correct score/severity/vector for the default
+// metrics rather than a blank/placeholder state.
+const defaultResult = computeCvssV31BaseScore(DEFAULT_CVSS_METRICS);
+const defaultVector = buildCvssV31VectorString(DEFAULT_CVSS_METRICS);
+---
+
+<WorkspaceShell hook="data-cvss-calc" noJsMessage="This calculator needs JavaScript to compute the score live as you change a metric." gap="1.25rem">
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-cvss-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <div class={workspaceGrid}>
+    <div>
+      {
+        METRIC_GROUPS.map((group) => (
+          <div class={metricGroupWrap}>
+            <p class={groupLabel}>{group.title}</p>
+            <div class={metricsRow}>
+              {group.ids.map((id) => {
+                const metric = CVSS_METRICS.find((m) => m.id === id)!;
+                return (
+                  <div>
+                    <label class={fieldLabel} for={`cvss-${metric.id}`} title={metric.hint}>
+                      {metric.name} ({metric.id})
+                    </label>
+                    <select
+                      id={`cvss-${metric.id}`}
+                      class={selectInput}
+                      data-cvss-metric={metric.id}
+                      data-session-field={metric.id}
+                      aria-label={metric.name}
+                    >
+                      {metric.options.map((opt) => (
+                        <option value={opt.value} title={opt.hint} selected={(DEFAULT_CVSS_METRICS as unknown as Record<string, string>)[metric.id] === opt.value}>
+                          {opt.label} ({opt.value})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+
+    <div class={stage}>
+      <div class={scoreCard}>
+        <p class={paneLabel} style="margin-bottom:0">Base score</p>
+        <span class={scoreNumber} data-cvss-score>{defaultResult.baseScore.toFixed(1)}</span>
+        <span class={severityBadge} data-cvss-severity={defaultResult.severity.toLowerCase()} data-cvss-severity-label>
+          {defaultResult.severity}
+        </span>
+        <div class={breakdownList}>
+          <div class={breakdownRow}>
+            <span>Impact</span>
+            <span class={breakdownVal} data-cvss-impact>{defaultResult.impact.toFixed(3)}</span>
+          </div>
+          <div class={breakdownRow}>
+            <span>Exploitability</span>
+            <span class={breakdownVal} data-cvss-exploitability>{defaultResult.exploitability.toFixed(3)}</span>
+          </div>
+          <div class={breakdownRow}>
+            <span>Impact Sub Score (ISS)</span>
+            <span class={breakdownVal} data-cvss-iss>{defaultResult.impactSubScore.toFixed(3)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class={fieldLabel}>Vector string</p>
+        <div class={vectorRow}>
+          <pre class={vectorBox} data-cvss-vector>{defaultVector}</pre>
+          <button type="button" class={rowCopyBtn} data-cvss-copy-vector data-copy-pop data-sound="copy">
+            <Icon name="copy" size={13} /> Copy
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label class={fieldLabel} for="cvss-load-vector">Load from a vector string</label>
+        <div class={loadRow}>
+          <input
+            id="cvss-load-vector"
+            type="text"
+            class={inlineInput}
+            placeholder="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+            autocomplete="off"
+            spellcheck="false"
+            data-cvss-load-input
+          />
+          <button type="button" class={loadBtn} data-cvss-load-btn data-sound="tick">
+            <Icon name="download" size={13} /> Load
+          </button>
+          <p class={loadError} hidden data-cvss-load-error></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { CVSS_METRICS, computeCvssV31BaseScore, buildCvssV31VectorString, parseCvssV31VectorString } from '../utils/cvss';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    function init() {
+      var roots = document.querySelectorAll('[data-cvss-calc]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var selects = {};
+        CVSS_METRICS.forEach(function (m) {
+          selects[m.id] = root.querySelector('[data-cvss-metric="' + m.id + '"]');
+        });
+        var scoreEl = root.querySelector('[data-cvss-score]');
+        var severityEl = root.querySelector('[data-cvss-severity-label]');
+        var impactEl = root.querySelector('[data-cvss-impact]');
+        var exploitEl = root.querySelector('[data-cvss-exploitability]');
+        var issEl = root.querySelector('[data-cvss-iss]');
+        var vectorEl = root.querySelector('[data-cvss-vector]');
+        var copyBtn = root.querySelector('[data-cvss-copy-vector]');
+        var loadInput = root.querySelector('[data-cvss-load-input]');
+        var loadBtn = root.querySelector('[data-cvss-load-btn]');
+        var loadError = root.querySelector('[data-cvss-load-error]');
+
+        function currentMetrics() {
+          var m = {};
+          CVSS_METRICS.forEach(function (def) {
+            m[def.id] = selects[def.id].value;
+          });
+          return m;
+        }
+
+        function render() {
+          var metrics = currentMetrics();
+          var result = computeCvssV31BaseScore(metrics);
+          scoreEl.textContent = result.baseScore.toFixed(1);
+          severityEl.textContent = result.severity;
+          severityEl.setAttribute('data-cvss-severity', result.severity.toLowerCase());
+          impactEl.textContent = result.impact.toFixed(3);
+          exploitEl.textContent = result.exploitability.toFixed(3);
+          issEl.textContent = result.impactSubScore.toFixed(3);
+          vectorEl.textContent = buildCvssV31VectorString(metrics);
+        }
+
+        CVSS_METRICS.forEach(function (def) {
+          var el = selects[def.id];
+          if (el) el.addEventListener('change', render);
+        });
+
+        if (copyBtn) {
+          copyBtn.addEventListener('click', function () {
+            navigator.clipboard.writeText(vectorEl.textContent || '').then(function () { pop(copyBtn); }).catch(function () {});
+          });
+        }
+
+        if (loadBtn && loadInput && loadError) {
+          function doLoad() {
+            var raw = loadInput.value.trim();
+            if (!raw) {
+              loadError.hidden = true;
+              return;
+            }
+            var parsed = parseCvssV31VectorString(raw);
+            if (!parsed.ok) {
+              loadError.hidden = false;
+              loadError.textContent = parsed.error;
+              return;
+            }
+            loadError.hidden = true;
+            CVSS_METRICS.forEach(function (def) {
+              selects[def.id].value = parsed.metrics[def.id];
+            });
+            render();
+          }
+          loadBtn.addEventListener('click', doLoad);
+          loadInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              doLoad();
+            }
+          });
+        }
+
+        render();
+
+        persistToolSession({
+          root: root,
+          resetButton: '[data-cvss-reset]',
+          onReset: function () {
+            // Every metric <select> already carries data-session-field and
+            // restores/resets itself (its defaultSelected option matches
+            // DEFAULT_CVSS_METRICS) — this only has to clear the one field
+            // that's deliberately NOT persisted, the one-shot "load a vector
+            // string" input, and its error message.
+            if (loadInput) loadInput.value = '';
+            if (loadError) loadError.hidden = true;
+            render();
+          },
+        });
+
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<style>
+  [data-cvss-severity='none'] {
+    color: var(--colors-text-muted);
+    background: var(--colors-bg-subtle);
+  }
+  [data-cvss-severity='low'] {
+    color: var(--colors-primary);
+    background: color-mix(in srgb, var(--colors-primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--colors-primary) 30%, transparent);
+  }
+  [data-cvss-severity='medium'] {
+    color: var(--colors-accent);
+    background: color-mix(in srgb, var(--colors-accent) 12%, transparent);
+    border-color: color-mix(in srgb, var(--colors-accent) 35%, transparent);
+  }
+  /* High/Critical escalate via INTENSITY, not hue — this codebase's token
+     set has no separate "danger" color (see STYLE_GUIDE.md's closed list:
+     bg/bgSubtle/bgCard/border/text/textMuted/primary/primaryHover/accent/
+     codeBg), and "never hard-code a color" rules out a literal `red` mix.
+     `accent` is already Medium's color, so High/Critical stay on the same
+     hue but at higher opacity/weight to still read as more severe. */
+  [data-cvss-severity='high'] {
+    color: var(--colors-accent);
+    background: color-mix(in srgb, var(--colors-accent) 20%, transparent);
+    border-color: color-mix(in srgb, var(--colors-accent) 50%, transparent);
+    font-weight: 600;
+  }
+  [data-cvss-severity='critical'] {
+    color: var(--colors-accent);
+    background: color-mix(in srgb, var(--colors-accent) 28%, transparent);
+    border-color: color-mix(in srgb, var(--colors-accent) 65%, transparent);
+    font-weight: 700;
+  }
+</style>

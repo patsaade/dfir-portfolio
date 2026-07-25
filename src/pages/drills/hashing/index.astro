@@ -1,0 +1,175 @@
+---
+// Hash Identification Drill — knowledge-check quiz built entirely from
+// src/utils/hashes.ts, the same module that backs the live Hash Calculator
+// & Verifier: its HASH_ALGORITHMS reference table, its identifyHash()
+// confidence-scored guesses, and digests computed with its own
+// digestHex()/md5Hex() (see src/data/drills/hashingDrill.ts for exactly how
+// and why). Same page shape as the tool pages (intro aside -> interactive
+// widget -> reference notes -> related tools). Static page — prerender to
+// HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import Icon from '../../../components/Icon.astro';
+import DrillEngine from '../../../components/DrillEngine.astro';
+import Term from '../../../components/Term.astro';
+import { toolChip } from '../../../components/RelatedTools.astro';
+import ExternalResources from '../../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
+import { HASH_ALGORITHMS } from '../../../utils/hashes';
+import { getHashingDrillQuestion, HASHING_DRILL_TOTAL } from '../../../data/drills/hashingDrill';
+
+// Computed once, at build time, the same way the client script will on
+// hydration — a no-JS visitor still sees question 1's real prompt
+// server-rendered (see DrillEngine.astro's own no-JS contract).
+const q0 = getHashingDrillQuestion(0);
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const refTd = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="Hash Identification Drill"
+  description="A knowledge-check drill for recognizing hash algorithms by digest length and prefixed format — MD5/SHA-1/SHA-256/SHA-384/SHA-512, bcrypt, and Unix shadow crypt formats — built from the same identification logic as the live Hash Calculator."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'Hash Identification' }]}
+    eyebrow="Practice"
+    title="Hash Identification Drill"
+    description="Recognize a hash algorithm from its digest length or a prefixed format string, and know when the format genuinely can't tell two algorithms apart."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This is a knowledge-check drill, not a certification exam — every question below is generated from the real
+      algorithm table and identification logic behind the <a href="/tools/hash-calculator/" class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>Hash Calculator &amp; Verifier</a>,
+      not hand-written trivia. It runs entirely in your browser; nothing you answer here is recorded or sent anywhere.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    A <Term slug="cryptographic-hash-function">cryptographic hash function</Term> always produces a fixed-length
+    output regardless of input size, which means length alone is often the fastest first clue to a bare hash's
+    origin — a 64-hex-character string is almost certainly SHA-256, no other reasoning required. But that shortcut
+    breaks down at a few common lengths: a 32-hex-character digest is exactly as consistent with a Windows NTLM
+    password hash as with <Term slug="md5">MD5</Term>. And a handful of algorithms announce themselves with a
+    prefix instead of a bare digest at all — bcrypt, or a Linux/BSD shadow file's modular crypt format — which is
+    faster and more reliable to recognize than reasoning about hex length. This drill mixes all three: computed
+    digests to identify by length, genuinely ambiguous lengths to reason about, and prefixed formats to recognize
+    on sight.
+  </p>
+
+  <h2 id="drill" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="hash" size={20} class={css({ color: 'primary' })} /> Drill
+  </h2>
+  <DrillEngine
+    drill="hashing"
+    heading="Hash Identification Drill"
+    intro="Identify the algorithm from a computed digest, reason about a genuinely ambiguous length, or recognize a prefixed password-hash format."
+    totalQuestions={HASHING_DRILL_TOTAL}
+    firstQuestion={q0}
+  />
+
+  <h2 id="reference" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Algorithm reference
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Algorithm</th>
+          <th class={refTh}>Digest length</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          HASH_ALGORITHMS.map((a) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>{a.label}</strong>
+              </td>
+              <td class={refTd}>
+                {a.bits}-bit ({a.hexLength} hex chars)
+              </td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', mt: '1.5rem', lineHeight: 1.7 })}>
+    Fixed output length is what makes length-based identification possible at all, but it's also exactly why a
+    length can be shared: a <Term slug="hash-collision">hash collision</Term> between two different algorithms'
+    outputs isn't happening here — MD5 and NTLM are simply the same 128-bit format used for two different purposes,
+    so nothing about the bytes themselves says which one produced a given string. <Term slug="sha-256">SHA-256</Term>{' '}
+    doesn't have that problem in practice; at 64 hex characters, it's overwhelmingly the only common source.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/hash-calculator/" class={toolChip}>
+        <Icon name="lock" size={13} /> Hash Calculator &amp; Verifier <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Compute a real digest, verify one against an expected value, or run the same confidence-scored Identify
+        panel this drill's questions are drawn from.
+      </p>
+    </div>
+    <div>
+      <a href="/drills/" class={toolChip}>
+        <Icon name="target" size={13} /> All drills <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Back to the full set of six knowledge-check drills.</p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['hashing']} />
+</BaseLayout>
+
+<script>
+  import { initDrill } from '../../../scripts/drillEngine';
+  import { getHashingDrillQuestion, HASHING_DRILL_TOTAL } from '../../../data/drills/hashingDrill';
+
+  const root = document.querySelector('[data-drill="hashing"]');
+  if (root) initDrill({ root, totalQuestions: HASHING_DRILL_TOTAL, nextQuestion: getHashingDrillQuestion });
+</script>

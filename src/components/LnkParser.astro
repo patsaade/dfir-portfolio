@@ -374,6 +374,7 @@ const RAW_FIELDS = [
   // @ts-nocheck — vanilla DOM client script
   import { parseLnk } from '../utils/lnk';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     function init() {
@@ -567,6 +568,14 @@ const RAW_FIELDS = [
             clearResults();
           });
         }
+
+        // This tool has no persistable state — its only input is a file
+        // picker (data-lnk-file), and file handles can't round-trip through
+        // localStorage, so it's deliberately left untagged (see
+        // toolSession.ts's own file-input skip). Wired anyway, for
+        // consistency with every other tool page: the existing Clear button
+        // also clears this tool's (empty) toolsession storage key.
+        persistToolSession({ root: root, resetButton: '[data-lnk-clear]' });
 
         root.setAttribute('data-ready', '');
       });

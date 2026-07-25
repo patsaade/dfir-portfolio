@@ -406,7 +406,7 @@ export const TOOL_PLATFORMS: ToolPlatform[] = [
       {
         name: 'KAPE', slug: 'kape', use: 'Targeted artifact collection & module processing', fn: 'Triage', cost: 'Free', core: true,
         tags: ['windows', 'triage', 'artifact-collection', 'modules'],
-        url: 'https://www.kroll.com/kape',
+        url: 'https://www.kroll.com/en/services/cyber-risk/investigate-and-respond/kroll-artifact-parser-extractor-kape',
         install: 'Download from kroll.com/kape (free registration)',
         commands: [
           { desc: "Collect a SANS Triage target set from the C: drive", cmd: "kape.exe --tsource C: --tdest D:\\Triage --target !SANS_Triage" },
@@ -763,7 +763,7 @@ export const TOOL_PLATFORMS: ToolPlatform[] = [
       {
         name: 'VirusTotal', slug: 'virustotal', use: 'Multi-engine file/URL/hash reputation & intel', fn: 'Intel', cost: 'Freemium', core: true,
         tags: ['malware', 'reputation', 'hash', 'url', 'multi-engine', 'threat-intel'],
-        url: 'https://www.virustotal.com/',
+        url: 'https://www.virustotal.com/gui/',
         commands: [
           { desc: "Look up a file's multi-engine scan report by its hash (SHA-256/SHA-1/MD5)", cmd: "curl --request GET --url https://www.virustotal.com/api/v3/files/<hash> --header \"x-apikey: YOUR_API_KEY\"" },
           { desc: "Submit a URL for scanning (returns an analysis ID to poll)", cmd: "curl --request POST --url https://www.virustotal.com/api/v3/urls --header \"x-apikey: YOUR_API_KEY\" --data \"url=https://example.com\"" },
@@ -812,13 +812,13 @@ export const TOOL_PLATFORMS: ToolPlatform[] = [
       {
         name: 'Hybrid Analysis', slug: 'hybrid-analysis', use: 'Free file & URL sandbox plus scanning', fn: 'Sandbox', cost: 'Free',
         tags: ['malware', 'sandbox', 'behavior', 'crowdstrike'],
-        url: 'https://www.hybrid-analysis.com/',
+        url: 'https://hybrid-analysis.com/',
         commands: [
-          { desc: "Search for existing analysis reports by file hash (MD5/SHA1/SHA256/SHA512)", cmd: "curl --request GET \"https://www.hybrid-analysis.com/api/v2/search/hash?hash=<hash>\" --header \"api-key: YOUR_API_KEY\" --header \"User-Agent: Falcon Sandbox\"" },
-          { desc: "Submit a URL to the sandbox for behavioral analysis", cmd: "curl --request POST https://www.hybrid-analysis.com/api/v2/submit/url --header \"api-key: YOUR_API_KEY\" --header \"User-Agent: Falcon Sandbox\" --form \"url=https://example.com\" --form \"environment_id=160\"" },
-          { desc: "Submit a local file to the sandbox for detonation", cmd: "curl --request POST https://www.hybrid-analysis.com/api/v2/submit/file --header \"api-key: YOUR_API_KEY\" --header \"User-Agent: Falcon Sandbox\" --form \"file=@suspicious.exe\" --form \"environment_id=160\"" },
+          { desc: "Search for existing analysis reports by file hash (MD5/SHA1/SHA256/SHA512)", cmd: "curl --request GET \"https://hybrid-analysis.com/api/v2/search/hash?hash=<hash>\" --header \"api-key: YOUR_API_KEY\" --header \"User-Agent: Falcon Sandbox\"" },
+          { desc: "Submit a URL to the sandbox for behavioral analysis", cmd: "curl --request POST https://hybrid-analysis.com/api/v2/submit/url --header \"api-key: YOUR_API_KEY\" --header \"User-Agent: Falcon Sandbox\" --form \"url=https://example.com\" --form \"environment_id=160\"" },
+          { desc: "Submit a local file to the sandbox for detonation", cmd: "curl --request POST https://hybrid-analysis.com/api/v2/submit/file --header \"api-key: YOUR_API_KEY\" --header \"User-Agent: Falcon Sandbox\" --form \"file=@suspicious.exe\" --form \"environment_id=160\"" },
         ],
-        references: [{ name: 'Falcon Sandbox API v2 Documentation', url: 'https://www.hybrid-analysis.com/docs/api/v2' }],
+        references: [{ name: 'Falcon Sandbox API v2 Documentation', url: 'https://hybrid-analysis.com/docs/api/v2' }],
         what: 'A free file and URL sandbox (CrowdStrike Falcon Sandbox) with behavioral reports and scanning.',
         why: 'It provides detailed automated behavior analysis at no cost for community use.',
         example: 'Submitting a sample returns its dropped files, network calls, and ATT&CK mapping.',
@@ -954,7 +954,7 @@ export const TOOL_PLATFORMS: ToolPlatform[] = [
         name: 'theHarvester', slug: 'theharvester', use: 'Passive OSINT recon: emails, subdomains, hosts from a domain', fn: 'OSINT', cost: 'Open source',
         tags: ['osint', 'recon', 'subdomains', 'email-harvesting'],
         url: 'https://github.com/laramies/theHarvester',
-        install: 'curl -LsSf https://astral.sh/uv/install.sh | sh && git clone https://github.com/laramies/theHarvester && cd theHarvester && uv sync',
+        install: 'curl -LsSf https://releases.astral.sh/installers/uv/latest/uv-installer.sh | sh && git clone https://github.com/laramies/theHarvester && cd theHarvester && uv sync',
         commands: [
           { desc: 'Gather emails, subdomains, and hosts for a domain from a single passive source (crt.sh, no API key needed)', cmd: 'theHarvester -d example.com -b crtsh' },
           { desc: 'Query multiple sources at once and limit results per source', cmd: 'theHarvester -d example.com -b crtsh,otx,urlscan -l 200' },

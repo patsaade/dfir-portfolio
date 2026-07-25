@@ -1,0 +1,434 @@
+---
+// Pyramid of Pain Reference — David Bianco's 2013 model for ranking threat
+// indicators by how much it costs an adversary to lose each one. Same
+// "Frameworks" nav category as the MITRE ATT&CK/D3FEND maps and the Threat
+// Actor / APT Reference (see CLAUDE.md's DFIR_GROUPS docs) — single static
+// page, no per-entry detail subpages, no user computation, so this follows
+// the REFERENCE-page shape (PageHeader -> intro -> data-driven content ->
+// related links), not the interactive-TOOL shape.
+//
+// Every level's name, definition, and "why it hurts to lose" reasoning below
+// is paraphrased from Bianco's own original post (detect-respond.blogspot.com,
+// posted 2013-03-01, updated 2014-01-17 to add the Hash Values level — see
+// the External Resources section for the link), re-verified against that
+// primary source directly rather than a secondary summary. Two things worth
+// noting about scope: (1) the post's own "Types of Indicators" list itemizes
+// Network Artifacts and Host Artifacts separately, but the pyramid diagram
+// itself (the "Pyramid Explained" section of the same post) collapses them
+// into one shared tier — this page follows the diagram's 6-level structure,
+// not the list's 7, which is also the version universally cited elsewhere
+// (SANS's own "Pyramid of Pain" resource, etc.). (2) Some secondary
+// write-ups of this model attach a single difficulty word to each level
+// (e.g. "Trivial", "Tough") — those words don't appear anywhere in the
+// fetchable text of Bianco's post itself (they may only exist baked into his
+// original diagram image, which isn't machine-readable), so this page
+// doesn't attribute a specific word-scale to him; the "why it hurts" prose
+// below is grounded in his actual sentences instead.
+//
+// Visual pyramid diagram: same data-driven-grid technique osi-model.astro's
+// "derivation diagram" section documents (each level's width comes from its
+// own `widthPct` field, not hand-tuned per element) and the same swatch rule
+// — `filter: hue-rotate()` only ever lands on an isolated, childless,
+// aria-hidden decorative dot, never on anything holding text, since it
+// recolors that element's whole rendered subtree. The bands THEMSELVES use
+// `background: color-mix(...)` instead (not hue-rotate) to shade from a
+// faint tint at the wide base to a stronger one at the apex — color-mix on
+// `background` never touches the sibling `color` text sits in, so it's safe
+// to use directly on a text-bearing element, unlike a `filter`. widthPct is
+// a purely illustrative "wide base, narrow apex" visual metaphor (Bianco's
+// own diagram isn't built to any numeric proportion either) — not a claim
+// about a quantitative metric.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { card } from 'styled-system/recipes';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHeader from '../components/PageHeader.astro';
+import Icon from '../components/Icon.astro';
+import type { IconName } from '../components/Icon.astro';
+import Term from '../components/Term.astro';
+import ExternalResources from '../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../data/externalResources';
+import { toolChip } from '../components/RelatedTools.astro';
+
+interface PyramidLevel {
+  num: number; // 1 = widest/base (Hash Values) .. 6 = apex (TTPs)
+  name: string;
+  shortLabel: string; // compact label for the diagram band
+  icon: IconName;
+  widthPct: number; // diagram band width — illustrative only, see frontmatter comment
+  bgPct: number; // color-mix intensity (% primary) for the diagram band background
+  gist: string;
+  definition: string;
+  pain: string;
+  example: string;
+}
+
+// Ascending base -> apex, matching Bianco's own teaching order (and the same
+// bottom-up convention osi-model.astro's OSI_LAYERS array uses).
+const PYRAMID_LEVELS: PyramidLevel[] = [
+  {
+    num: 1,
+    name: 'Hash Values',
+    shortLabel: 'Hash Values',
+    icon: 'hash',
+    widthPct: 100,
+    bgPct: 8,
+    gist: 'A SHA-1/MD5/SHA-256 fingerprint of one specific file.',
+    definition:
+      'A cryptographic hash — SHA-1, MD5, or a similar algorithm — that uniquely identifies one specific sample: a piece of malware, a dropped tool, or any other file involved in an intrusion.',
+    pain:
+      "The most precise indicator there is, and the easiest to lose. A hash digests the entire file, so changing even a single bit — padding with one extra byte, flipping an unused flag — produces a completely unrelated hash value. An adversary doesn't even have to try to evade a hash match; it breaks automatically the moment they touch the file, which is why Bianco notes it may not even be worth tracking in isolation.",
+    example: "Blocking a known-malicious SHA-256 — gone the moment the next build recompiles it into a value you've never seen.",
+  },
+  {
+    num: 2,
+    name: 'IP Addresses',
+    shortLabel: 'IP Addresses',
+    icon: 'map-pin',
+    widthPct: 84,
+    bgPct: 13,
+    gist: 'A single address or netblock the adversary connects from or to.',
+    definition:
+      "An IP address, or a netblock, tied to the adversary's infrastructure — command-and-control, a staging server, or the source of an intrusion.",
+    pain:
+      'Bianco calls this "the most fundamental indicator" — almost any attack requires a network connection, and a connection requires an address. But it\'s also trivial to rotate: a capable adversary can change IPs whenever it suits them, and one routing through an anonymizing proxy may switch addresses constantly without even noticing. Deny them one IP and they usually recover without breaking stride.',
+    example: 'Blocklisting a C2 IP the actor abandons for a new VPS an hour later.',
+  },
+  {
+    num: 3,
+    name: 'Domain Names',
+    shortLabel: 'Domain Names',
+    icon: 'globe',
+    widthPct: 68,
+    bgPct: 18,
+    gist: 'A domain — or sub-domain — resolving to adversary infrastructure.',
+    definition: "A domain name, or a sub- or sub-sub-domain of one, that the adversary's infrastructure is reachable through.",
+    pain:
+      "A small step up from IPs: a domain has to be registered, paid for (even with stolen funds), and hosted somewhere before it works, and a newly registered one can take a day or two to become visible everywhere. In practice that's a minor speed bump, not a real cost — plenty of registrars apply little scrutiny to new registrations, so swapping domains stays cheap for anyone willing to burn a few of them.",
+    example: 'Tracking a phishing domain — swapped for a freshly registered lookalike the moment it gets sinkholed.',
+  },
+  {
+    num: 4,
+    name: 'Network & Host Artifacts',
+    shortLabel: 'Network & Host Artifacts',
+    icon: 'activity',
+    widthPct: 52,
+    bgPct: 26,
+    gist: 'Observable side effects of the activity — on the wire or on a host.',
+    definition:
+      "Everything the adversary's activity leaves behind that isn't itself a tool or a tactic. On the network: a distinctive HTTP User-Agent or SMTP Mailer string, a URI pattern, or C2 details embedded in the protocol. On a host: a registry key, a dropped file or directory, or a named service the malware creates — anything that tends to distinguish the malicious activity from legitimate use.",
+    pain:
+      "This is, in Bianco's words, the level where you finally start to have some negative impact on the adversary. Catch a distinctive artifact — his example is an off-by-one-character User-Agent string their recon tool always sends — and block it, and you force them back to their own lab to figure out how you detected it and fix it. The fix itself might be trivial, but they still had to spend real time finding and patching the leak.",
+    example: "Flagging a malware family's own signature registry key rather than any one sample's hash.",
+  },
+  {
+    num: 5,
+    name: 'Tools',
+    shortLabel: 'Tools',
+    icon: 'wrench',
+    widthPct: 36,
+    bgPct: 40,
+    gist: 'The actual software the adversary brings to do the job.',
+    definition:
+      "Software the adversary uses to carry out the intrusion — a document weaponizer for spearphishing, a backdoor used to establish C2, a credential cracker, or another utility they bring with them rather than something already installed on the box.",
+    pain:
+      "Burn a tool broadly enough — not just one sample of it, but its distinguishing traits in general — and you're not asking for a five-minute recompile. Bianco frames it as taking away one of the adversary's arrows entirely: they have to invest in research (find an existing alternative), development (build a replacement, if they even can), and training (learn to use it as effectively as the one you just cost them).",
+    example: 'AV/YARA coverage broad enough to catch a tool across its variants, not just one specific build of it.',
+  },
+  {
+    num: 6,
+    name: 'Tactics, Techniques & Procedures',
+    shortLabel: 'TTPs',
+    icon: 'target',
+    widthPct: 20,
+    bgPct: 55,
+    gist: 'How the adversary operates — behavior, not any one tool.',
+    definition:
+      'How the adversary goes about accomplishing their mission, from reconnaissance through data exfiltration and every step in between. "Spearphishing with a trojaned PDF" is a TTP; so is dumping cached credentials and reusing them in a pass-the-hash attack — independent of whichever specific tool happens to implement it.',
+    pain:
+      "Detect at this level and you're operating directly on adversary behavior, not against a swappable artifact underneath it. In Bianco's own framing, respond to TTPs fast enough and across enough of an adversary's behaviors, and you force them to do the single most time-consuming thing possible: learn new behavior — or, taken to its logical extreme, give up or reinvent their tradecraft from scratch.",
+    example: 'Alerting on the behavior of credential dumping followed by pass-the-hash reuse, regardless of which tool performs it.',
+  },
+];
+
+// Diagram renders apex-first (top of the page) down to the base (bottom of
+// the page) so it reads as an upright pyramid; the detail stack below it
+// keeps the natural base-to-apex teaching order, mirroring how
+// osi-model.astro's own reverse-order note explains keeping the DOM's
+// canonical order for the accessible content while a purely visual layer
+// can present it differently.
+const PYRAMID_DIAGRAM_ORDER = [...PYRAMID_LEVELS].reverse();
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const bodyP = css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1rem' });
+
+const introAside = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+const introP = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 });
+
+const whyGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(3, 1fr)' }, gap: '0.85rem' });
+const whyCell = css({ p: '1rem 1.1rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const whyCellTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.92rem', color: 'text', display: 'block' });
+const whyCellDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.65, mt: '0.4rem' });
+
+// The visual pyramid — an md+ progressive enhancement (like osi-model.astro's
+// diagramWrap), stepped bars centered on the inline axis, widest at the base.
+// The always-rendered detail stack further down is the accessible baseline
+// on every screen size, so nothing here is load-bearing content.
+const pyramidWrap = css({ display: { base: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'center', gap: '0.35rem', mt: '1.5rem', mb: '1rem' });
+const pyramidBand = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.5rem',
+  width: '100%',
+  minH: '3rem',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.75rem',
+  py: '0.5rem',
+  textAlign: 'center',
+});
+const bandLabel = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.85rem', color: 'text', lineHeight: 1.25 });
+
+// Per-layer stack — same "numbered badge on a spine" shape osi-model.astro's
+// own `stack`/`layerRow`/`spineDot` establish, reused here rather than
+// forked. Isolated, childless swatches only (spineDot/numBadge) ever get
+// `hue-rotate()`; the surrounding card and its text never do.
+const stack = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem', mt: '1.25rem', position: 'relative', pl: '1.4rem', borderLeft: '2px solid token(colors.border)' });
+const layerRow = `${card()} ${css({ position: 'relative' })}`;
+const spineDot = css({
+  position: 'absolute',
+  left: 'calc(-1.4rem - 5px)',
+  top: '1.1rem',
+  w: '8px',
+  h: '8px',
+  borderRadius: 'full',
+  bg: 'primary',
+  boxShadow: '0 0 0 3px token(colors.bg)',
+});
+const layerHead = css({ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' });
+const numBadge = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '2.1rem',
+  height: '2.1rem',
+  borderRadius: 'md',
+  bg: 'color-mix(in srgb, token(colors.primary) 15%, transparent)',
+  color: 'primary',
+  fontFamily: 'mono',
+  fontWeight: 700,
+  fontSize: '0.85rem',
+  flexShrink: 0,
+});
+const layerIconTile = css({ color: 'primary', flexShrink: 0 });
+const layerName = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '1.02rem', color: 'text' });
+const gistText = css({ color: 'text', fontSize: '0.88rem', lineHeight: 1.6, mt: '0.5rem', m: 0 });
+const fieldLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: 'primary',
+  mt: '0.7rem',
+  mb: '0.2rem',
+});
+const fieldBody = css({ color: 'textMuted', fontSize: '0.86rem', lineHeight: 1.7, m: 0 });
+const exampleRow = css({ mt: '0.6rem' });
+
+const closingBox = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '1.1rem 1.25rem',
+  mt: '1.25rem',
+});
+const closingQuote = css({
+  color: 'text',
+  fontStyle: 'italic',
+  lineHeight: 1.75,
+  fontSize: '0.98rem',
+  m: 0,
+  borderLeft: '3px solid token(colors.primary)',
+  pl: '1rem',
+});
+const closingAttr = css({ color: 'textMuted', fontSize: '0.8rem', mt: '0.5rem', display: 'block' });
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+
+const trademarkNote = css({ fontSize: '0.78rem', color: 'textMuted', mt: '2.5rem', pt: '1.5rem', borderTop: '1px solid token(colors.border)', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="Pyramid of Pain"
+  description="David Bianco's Pyramid of Pain: the six indicator types from hash values to TTPs, and why each one costs an adversary more to lose than the one below it."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Pyramid of Pain' }]}
+    eyebrow="Frameworks"
+    title="Pyramid of Pain"
+    description="Six indicator types, ranked by how much it costs an adversary to lose each one — from a hash that breaks the instant a file changes, up to the tactics, techniques, and procedures that force them to relearn how they operate."
+  />
+
+  <aside class={introAside}>
+    <p class={introP}>
+      Security researcher David Bianco introduced the{' '}
+      <Term slug="pyramid-of-pain">Pyramid of Pain</Term> in 2013 to make a simple point: not every{' '}
+      <Term slug="indicator-of-compromise">indicator of compromise</Term> is worth the same to a defender. The model
+      stacks six indicator types from most common and easiest to change, at the base, to hardest and most expensive
+      to change, at the apex — and argues that detecting higher up the pyramid does real, lasting damage to an
+      adversary's operation, while detecting low on it barely slows them down.
+    </p>
+  </aside>
+
+  <h2 id="why-it-matters" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Why the pyramid matters
+  </h2>
+  <div class={whyGrid}>
+    <div class={whyCell}>
+      <span class={whyCellTitle}>Indicators aren't interchangeable</span>
+      <p class={whyCellDesc}>
+        A file hash and an adversary's <Term slug="tactics-techniques-and-procedures">TTPs</Term> are both
+        "indicators" in the loose sense, but losing one costs an adversary seconds and losing the other can cost
+        them a rebuild of their tradecraft.
+      </p>
+    </div>
+    <div class={whyCell}>
+      <span class={whyCellTitle}>Detect higher, disrupt longer</span>
+      <p class={whyCellDesc}>
+        A blocked IP gets swapped in minutes. A broken TTP forces the adversary to learn new behavior — the most
+        time-consuming thing you can make them do.
+      </p>
+    </div>
+    <div class={whyCell}>
+      <span class={whyCellTitle}>A triage lens, not a scorecard</span>
+      <p class={whyCellDesc}>
+        Bianco's own advice: run every new piece of intel through the pyramid and ask where it lands, rather than
+        just collecting whatever's easiest to get (see "Applying it" below).
+      </p>
+    </div>
+  </div>
+
+  <h2 id="the-pyramid" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> The pyramid
+  </h2>
+  <p class={bodyP}>
+    Widest at the base, narrowest at the apex — width here is purely illustrative of "common and disposable" vs.
+    "rare and costly," not a measured proportion. Each band's full definition and reasoning is below it.
+  </p>
+
+  <div class={pyramidWrap} aria-hidden="true">
+    {
+      PYRAMID_DIAGRAM_ORDER.map((l) => (
+        <div
+          class={pyramidBand}
+          style={{ width: `${l.widthPct}%`, background: `color-mix(in srgb, var(--colors-primary) ${l.bgPct}%, transparent)` }}
+        >
+          <Icon name={l.icon} size={15} class={css({ color: 'text', flexShrink: 0 })} />
+          <span class={bandLabel}>{l.shortLabel}</span>
+        </div>
+      ))
+    }
+  </div>
+
+  <div class={stack}>
+    {
+      PYRAMID_LEVELS.map((l) => (
+        <div class={layerRow} id={`level-${l.num}`}>
+          <span class={spineDot} aria-hidden="true" style={{ filter: `hue-rotate(${Math.round((360 / PYRAMID_LEVELS.length) * (l.num - 1))}deg)` }} />
+          <div class={layerHead}>
+            <span class={numBadge} style={{ filter: `hue-rotate(${Math.round((360 / PYRAMID_LEVELS.length) * (l.num - 1))}deg)` }}>{`0${l.num}`}</span>
+            <Icon name={l.icon} size={20} class={layerIconTile} />
+            <span class={layerName}>{l.name}</span>
+          </div>
+          <p class={gistText}>{l.gist}</p>
+
+          <p class={fieldLabel}>What it is</p>
+          <p class={fieldBody}>{l.definition}</p>
+
+          <p class={fieldLabel}>Why it {l.num <= 2 ? "barely hurts" : l.num >= 5 ? "really hurts" : "starts to hurt"}</p>
+          <p class={fieldBody}>{l.pain}</p>
+
+          {/* Rendered as a labeled prose field, NOT a tag() chip — tag() is the
+              small *uppercase* chip recipe (see docs/STYLE_GUIDE.md), which is
+              right for a short token like "TCP" but turns a full example
+              sentence into an all-caps paragraph. */}
+          <div class={exampleRow}>
+            <p class={fieldLabel}>In practice</p>
+            <p class={fieldBody}>{l.example}</p>
+          </div>
+        </div>
+      ))
+    }
+  </div>
+
+  <h2 id="applying-it" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Applying it
+  </h2>
+  <p class={bodyP}>
+    Bianco's own guidance was practical: whenever new intelligence comes in on an adversary, weigh it against the
+    pyramid. For every indicator you're handed, ask where it falls — domains and IPs are usually the easiest
+    intelligence to get and still worth collecting, but they aren't where the real disruption lives. A{' '}
+    <Term slug="command-and-control">C2</Term> domain confirms an intrusion; a documented TTP lets you build a
+    detection that survives the adversary swapping infrastructure entirely.
+  </p>
+  <div class={closingBox}>
+    <p class={closingQuote}>
+      "The amount of pain you cause an adversary depends on the types of indicators you are able to make use of."
+    </p>
+    <span class={closingAttr}>— David Bianco, "The Pyramid of Pain," 2013</span>
+  </div>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="link" size={20} class={css({ color: 'primary' })} /> Related frameworks
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The apex of the pyramid, catalogued in detail — every ATT&amp;CK technique is exactly the kind of durable,
+        behavior-based indicator the Pyramid of Pain argues is worth the most effort to detect.
+      </p>
+    </div>
+    <div>
+      <a href="/threat-actors/" class={toolChip}>
+        <Icon name="user" size={13} /> Threat Actor / APT Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Every tracked group's documented techniques and tools are the same indicator types this page ranks —
+        useful for seeing where a specific actor's own footprint sits on the pyramid.
+      </p>
+    </div>
+  </div>
+
+  <p class={trademarkNote}>
+    The Pyramid of Pain is a model created by security researcher David Bianco, first published in 2013. This page
+    is an independent explainer of that model, verified directly against his own original write-up — not an
+    official or affiliated resource.
+  </p>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['pyramid-of-pain']} />
+</BaseLayout>

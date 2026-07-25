@@ -1,46 +1,151 @@
 ---
-// Site-wide DFIR quick-access rail: a compact vertical dock on the left edge
-// so a visitor anywhere on the site can jump straight to any of the 17
-// DFIR_GROUPS links (Reference / Frameworks / Extractors / Converters /
-// Artifact Parsers / Query Builders — consts.ts, the same single source
-// that drives the nav "DFIR" dropdown and the /dfir/ landing page) without
-// detouring through the nav. Desktop/tablet only (`md` and up) — on narrow
+// Site-wide "Quick Access" rail: a compact vertical dock on the left edge so a
+// visitor anywhere on the site can jump straight to any DFIR_GROUPS,
+// IT_GROUPS, or DRILLS_LINKS destination without detouring through the nav.
+//
+// SELF-EXPLANATION (railHeader below): a first-time visitor has no reason to
+// know what this floating panel is or where its links come from — it used to
+// open cold on a bare icon switch with no label at all, which read as an
+// unstyled, out-of-place box rather than a deliberate feature. `railHeader`
+// fixes that directly in the markup (not a dismissible tooltip that can be
+// missed once and never seen again): a badge icon, a static "Quick Access"
+// title, and a one-line, MODE-AWARE description (`MODE_DESCRIPTIONS` below)
+// that names exactly what the current mode surfaces — e.g. "Every DFIR
+// reference, tool, and framework on this site." The description updates
+// alongside the mode switch's own `render()` call (see the script), so it
+// never goes stale after a mode change. A colored top accent border
+// (`rail`'s own `borderTop`) plus `railHeader`'s own tinted background give
+// the panel visible internal structure instead of one flat slab of
+// near-white, which is what made it easy to mistake for a rendering glitch
+// at a glance.
+//
+// A 3-way MODE switch (the first top-toolbar control — a real segmented
+// switch, all 3 options always visible at once, not a single icon-swap
+// button) picks which dataset the rest of the rail shows — DFIR (Reference /
+// Frameworks / Extractors / Converters / Artifact Parsers / Query Builders),
+// IT (Reference / Tools), or Drills (the whole flat DRILLS_LINKS array
+// wrapped as a single implicit category, see DRILLS_GROUPS below) — never
+// more than one at once. All three datasets' category blocks are rendered
+// server-side (so a no-JS visitor still gets real, fully labeled links for
+// whichever mode the current page belongs to — see `defaultMode` below); JS
+// only ever toggles which blocks are hidden, filtered by mode alone (see
+// `applyGroupVisibility()`). Desktop/tablet only (`md` and up) — on narrow
 // viewports the nav's own <details> accordion already covers this, and a
 // fixed-left rail would just overlap body copy.
 //
-// Three view states, cycled by two independent controls:
-//   hidden   → panel slid fully off-screen; only the edge handle remains.
-//   icons    → default. Icon-only rail, `title`/aria-label give the name.
-//   expanded → same rail widened to also show text labels.
-// The hide/show handle toggles hidden ⟷ (icons or expanded, whichever was
-// last active); the separate expand toggle (grid/list icon swap) toggles
-// icons ⟷ expanded and only matters while visible. The handle itself is a
-// small edge tab while hidden, docks flush at whichever edge is currently
-// visible (left: 0/48px/236px) and grows to the rail's full height once
-// shown — all driven, animated, by pure CSS sibling selectors reading
-// `rail`'s own data-view, no JS position math — see `handle`'s comment below.
+// Two view states: hidden (panel slid fully off-screen, only the edge handle
+// remains) and shown (the default — every category of the active mode,
+// always labeled, always all at once). There is deliberately no third
+// "icons-only" or "single category" state and no separate "show all"
+// toggle — every category of whichever mode is active is ALWAYS visible,
+// every link is ALWAYS labeled. This used to be optional (an "icons" default
+// plus a manually-toggled "show all"/"expand" pair), gated behind a JS
+// height check that disabled the all-categories view outright on a short
+// window ("unavailable — window too short") since an unbounded stack of 20
+// links centered via `top: 50%` on a short viewport had no scroll affordance
+// to reach the overflow. That measure-and-disable approach is gone; see the
+// scroll-region comment below for what replaced it and why it needed no
+// disable path at all.
 //
-// Up/down arrows at the rail's bottom cycle which DFIR_GROUPS category is
-// shown — all six categories' link lists are rendered server-side (so a
-// no-JS visitor still gets a real, fully labeled Reference list, the
-// server-computed default) and JS just toggles which one is unhidden.
+// The hide/show handle toggles hidden ⟷ shown — a small edge tab while
+// hidden, docks flush at whichever edge is currently visible (left: 0/236px)
+// and grows to the rail's full height once shown — all driven, animated, by
+// pure CSS sibling selectors reading `rail`'s own data-view, no JS position
+// math — see `handle`'s comment below.
 //
-// State (view + collapsed + category index) persists via localStorage, same
-// "session resuming" pattern as the original tool-only rail this replaces.
+// Because every category of a mode (DFIR has 6, 20 links total) is always
+// on screen at once, the rail's own toolbar row (drag handle + mode switch)
+// stays fixed while everything below it — the actual category/link list —
+// scrolls in its own internal region, capped to whatever vertical room is
+// actually available below the sticky header on THIS viewport (see
+// `scrollRegion`'s own comment for the exact mechanism: a CSS custom
+// property the script keeps in sync, with a generous static CSS fallback for
+// the brief pre-JS window and genuine no-JS visitors). This is what "an
+// effective mechanism to work on all types of clients" means here: a plain
+// `max-height` + `overflow-y: auto` adapts to literally any viewport height
+// — a half-height split window, a short laptop screen, a tall external
+// monitor, a foldable — with no JS-measured "does it fit" branch to get
+// wrong, and unlike the old disable-the-feature fallback, content that
+// doesn't fit scrolls into view instead of simply vanishing behind a grayed-
+// out button.
 //
-// Every toggle/cycle button here is debounced (see `debounceClick` in the
-// script below) — CLAUDE.md invariant 12 makes this a sitewide rule for any
-// button that drives a CSS/JS transition, not just a fix local to this file.
+// Per-category color coding: a distinct hue-rotation degree per group index,
+// evenly spaced around the color wheel — computed separately per dataset
+// since IT_GROUPS' 2 categories need a different spacing than DFIR_GROUPS'
+// 6. Applied via CSS `filter: hue-rotate()` (inline `style`, since the exact
+// degree is a per-item computed value Panda's static token system can't
+// generate a class for) to small, isolated, childless decorative elements
+// only — `catDot`/`catAccentBar` below, never `catBlock` itself, since
+// `filter` recolors an element's entire rendered subtree and would also
+// shift every icon/label color inside it. Rotating a single theme token
+// (`primary`) this way — rather than hardcoding fixed colors — is what keeps
+// this automatically distinct-but-harmonious across all 10 of the site's
+// palettes: each rotation shifts relative to whatever that theme's actual
+// hue already is, instead of clashing with half of them. Every category is
+// always on screen at once now, so this coloring is purely static, computed
+// once server-side per category — no JS ever recolors anything at runtime
+// (there's no more "currently active category" concept to track).
+//
+// State (hidden + mode + vertical drag position) persists via localStorage,
+// same "session resuming" pattern as the original tool-only rail this
+// replaces.
+//
+// Every toggle button here is debounced (see `debounceClick` in the script
+// below) — CLAUDE.md invariant 12 makes this a sitewide rule for any button
+// that drives a CSS/JS transition, not just a fix local to this file.
 import { css } from 'styled-system/css';
 import Icon from './Icon.astro';
-import { DFIR_GROUPS } from '../consts';
+import { DFIR_GROUPS, IT_GROUPS, DRILLS_LINKS } from '../consts';
 
 const currentPath = Astro.url.pathname;
 
-// Smart default: open on whichever category contains the current page, so a
-// first-time visitor lands on a relevant list instead of always Reference.
-const foundIndex = DFIR_GROUPS.findIndex((g) => g.links.some((l) => l.href === currentPath));
-const defaultCategoryIndex = foundIndex === -1 ? 0 : foundIndex;
+// Drills wraps its whole flat link list as a single synthetic category — this
+// file only ever reads a group's `category`/`links`, so a bare {category,
+// links} pair is enough (no id/blurb/intro — those are /dfir//it/ landing-
+// page-only fields, unused here).
+const DRILLS_GROUPS = [{ category: 'Drills', links: DRILLS_LINKS }] as const;
+
+// Smart default: open on whichever MODE contains the current page, so a
+// first-time visitor lands on a relevant list instead of always DFIR. DFIR
+// is the fallback regardless of whether the current page is actually one of
+// its own destinations — matching DFIR's own "first/primary" position in
+// the nav.
+const itHasPage = IT_GROUPS.some((g) => g.links.some((l) => l.href === currentPath));
+const drillsHasPage = DRILLS_LINKS.some((l) => l.href === currentPath);
+const defaultMode = drillsHasPage ? 'drills' : itHasPage ? 'it' : 'dfir';
+
+const DFIR_HUES = DFIR_GROUPS.map((_, i) => Math.round((360 / DFIR_GROUPS.length) * i));
+const IT_HUES = IT_GROUPS.map((_, i) => Math.round((360 / IT_GROUPS.length) * i));
+// A single-entry hue array is just [0] (no rotation) — there's nothing to
+// color-distinguish with only one category.
+const DRILLS_HUES = DRILLS_GROUPS.map((_, i) => Math.round((360 / DRILLS_GROUPS.length) * i));
+const HUES_BY_MODE = { dfir: DFIR_HUES, it: IT_HUES, drills: DRILLS_HUES };
+const GROUPS_BY_MODE = { dfir: DFIR_GROUPS, it: IT_GROUPS, drills: DRILLS_GROUPS };
+
+// Static — just drives the 3 segment buttons' own icon/label markup below;
+// the script keys off each button's own `data-mode-value`, not this array.
+const MODE_OPTIONS = [
+  { value: 'dfir', label: 'DFIR', icon: 'shield' },
+  { value: 'it', label: 'IT', icon: 'wifi' },
+  { value: 'drills', label: 'Drills', icon: 'target' },
+] as const;
+// Server-side mirror of the script's own `modeLabels` (define:vars below) —
+// used to compute the hide/show handle's default-mode-aware SSR label so a
+// no-JS visitor on a Drills page never sees pre-hydration HTML written for
+// the wrong mode (e.g. "Hide DFIR sidebar" on a page actually showing Drills).
+const MODE_LABELS = { dfir: 'DFIR', it: 'IT', drills: 'Drills' } as const;
+
+// The one-line, mode-aware explanation `railHeader` shows below the "Quick
+// Access" title — see this file's own top comment for why this exists as
+// always-visible markup rather than a dismissible onboarding tooltip. Kept
+// here (not derived from DFIR_GROUPS/IT_GROUPS) since those blurbs are
+// per-category, not per-mode, and this needs one short sentence describing
+// the whole dataset a mode surfaces.
+const MODE_DESCRIPTIONS = {
+  dfir: 'Every DFIR reference, tool, and framework on this site.',
+  it: 'General IT & networking reference and tools.',
+  drills: "Practice quizzes built from this site's own real data.",
+} as const;
 
 const outer = css({
   position: 'fixed',
@@ -50,11 +155,16 @@ const outer = css({
   display: { base: 'none', md: 'block' },
 });
 
-// Shared between `rail`'s own width rules and `handle`'s `left` docking
-// offsets below, so the two can never drift out of sync the way a pair of
-// hand-duplicated magic numbers eventually would.
-const RAIL_ICONS_W = '48px';
-const RAIL_EXPANDED_W = '236px';
+// Shared between `rail`'s own width and `handle`'s `left` docking offset
+// below, so the two can never drift out of sync the way a pair of
+// hand-duplicated magic numbers eventually would. Measured, not guessed: the
+// longest label ("MITRE ATT&CK Coverage Map") is ~178px wide in the real
+// Redaction font at itemLabel's 0.78rem (measured via opentype.js against
+// the actual .otf — see git history), plus icon/gap/padding/rail-padding —
+// sized so every label fits on one line with no ellipsis and no wrap,
+// without ballooning the rail's width. There is only ONE non-hidden width
+// now (no icons-only state to size separately).
+const RAIL_W = '236px';
 
 // `position: relative` purely so `handle` (now `position: absolute`, see
 // below) has something to dock against — `rail` itself stays in normal flow.
@@ -65,62 +175,284 @@ const slideRow = css({
 
 // The hide/show slide is a transform on `rail` itself (translateX(-100%),
 // percentage-based — not a hardcoded px value) so it fully hides regardless
-// of which width the rail is currently at. Note `transform` doesn't shrink a
-// box's LAYOUT size, only where it paints — `rail` still occupies its full
-// width in the flex/box model while hidden. That's fine for `rail` itself
-// (nothing else needs its layout space back), but it's exactly why `handle`
-// is no longer a plain flex sibling docked by normal reflow (see `handle`'s
-// comment): that used to leave the handle stranded whatever width rail last
-// had before being hidden, instead of always docking flush at the true
-// visible edge.
+// of the rail's width. Note `transform` doesn't shrink a box's LAYOUT size,
+// only where it paints — `rail` still occupies its full width in the
+// flex/box model while hidden, which is fine (nothing else needs its layout
+// space back) and is exactly why `handle` is docked via explicit sibling
+// selectors keyed off `data-view` rather than plain flex-sibling reflow (see
+// `handle`'s own comment).
+// `borderTop` is a 3px `primary` accent rather than the default 1px border
+// color — a deliberate identity marker (see this file's own top comment on
+// `railHeader`) so the panel reads as a designed widget at a glance instead
+// of a flat, unstyled rectangle.
 const rail = css({
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'stretch',
-  gap: '0.15rem',
-  w: RAIL_ICONS_W,
+  gap: '0.08rem',
+  w: RAIL_W,
   p: '0.35rem',
   bg: 'bgCard',
   border: '1px solid token(colors.border)',
   borderLeft: 'none',
+  borderTop: '3px solid token(colors.primary)',
   borderTopRightRadius: 'lg',
   borderBottomRightRadius: 'lg',
   boxShadow: 'cardHover',
   overflow: 'hidden',
-  transition: 'width 300ms ease, transform 400ms ease',
-  // RAIL_EXPANDED_W is measured, not guessed: the longest label ("MITRE
-  // ATT&CK Coverage Map") is ~178px wide in the real Redaction font at
-  // itemLabel's 0.78rem (measured via opentype.js against the actual .otf —
-  // see git history), plus icon/gap/padding/rail-padding — sized so every
-  // label fits on one line with no ellipsis and no wrap, without ballooning
-  // the expanded width.
-  '&[data-view="expanded"]': { w: RAIL_EXPANDED_W },
+  transition: 'transform 400ms ease',
   '&[data-view="hidden"]': { transform: 'translateX(-100%)' },
 });
 
-const expandBtn = css({
-  display: 'inline-flex',
+// Grab handle — the rail's own first child (in normal flow, not absolutely
+// positioned like `handle` below), so it automatically spans the rail's
+// current width. Dragging it repositions the whole rail vertically (see the
+// script's drag/keyboard/reclamp logic) — `visibility: hidden` (not
+// `display: none`) while `data-view="hidden"` both hides it and removes it
+// from the tab order (per spec, a `visibility: hidden` element is never
+// focusable), matching the rest of the rail translating off-screen in that
+// state. `touchAction: none` stops the browser's own touch-scroll gesture
+// from competing with a touch drag on this element.
+const dragHandle = css({
+  display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  w: '38px',
-  h: '28px',
-  alignSelf: 'flex-start',
-  borderRadius: 'md',
+  w: '100%',
+  h: '14px',
+  mb: '0.3rem',
+  borderRadius: 'sm',
   color: 'textMuted',
-  cursor: 'pointer',
-  mb: '0.15rem',
+  cursor: 'grab',
+  touchAction: 'none',
   transition: 'color 150ms ease, background 150ms ease',
   _hover: { color: 'primary', bg: 'bgSubtle' },
-  '& .tool-sidebar-expand-full': { display: 'none' },
-  '&[aria-pressed="true"] .tool-sidebar-expand-compact': { display: 'none' },
-  '&[aria-pressed="true"] .tool-sidebar-expand-full': { display: 'inline-flex' },
+  '&:active': { cursor: 'grabbing' },
+  '[data-view="hidden"] &': { visibility: 'hidden' },
+});
+
+// The self-explaining header — see this file's own top comment. `bg:
+// 'bgSubtle'` (a different tone than `rail`'s own `bgCard`) is what gives the
+// panel internal visual layering instead of one flat slab of color.
+const railHeader = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.5rem',
+  px: '0.4rem',
+  py: '0.45rem',
+  mb: '0.3rem',
+  borderRadius: 'md',
+  bg: 'bgSubtle',
+});
+
+const railHeaderIcon = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '26px',
+  h: '26px',
+  mt: '0.05rem',
+  borderRadius: 'md',
+  bg: 'primary',
+  color: 'bg',
+  flexShrink: 0,
+});
+
+const railHeaderText = css({ minW: 0 });
+
+const railHeaderTitle = css({
+  fontSize: '0.8rem',
+  fontWeight: 700,
+  color: 'text',
+  lineHeight: 1.2,
+});
+
+// Deliberately allowed to WRAP (unlike `itemLabel` below, which must never
+// wrap) — this is a short descriptive sentence, not a nav destination label.
+const railHeaderDesc = css({
+  fontSize: '0.68rem',
+  color: 'textMuted',
+  lineHeight: 1.35,
+  mt: '0.15rem',
+});
+
+// Top-toolbar dataset switch — a real segmented switch (role="radiogroup" of
+// 3 role="radio" buttons, DFIR / IT / Drills, all three always rendered at
+// once — see this file's own top comment) rather than a single icon-swap
+// button. Wired into the shared, site-wide sliding-thumb system
+// (`src/scripts/animatedSwitch.ts`, mounted once via AnimatedSwitch.astro in
+// BaseLayout — see CLAUDE.md invariant 12's "Retrofitting a new switch needs
+// exactly one change" note): the track just needs `position: 'relative',
+// zIndex: 0` and each button needs `role="radio"` + a `data-active`
+// attribute on whichever one is current — no per-component thumb code here
+// at all, that script auto-wires every `[role="radiogroup"]` on the page.
+//
+// Deliberately kept VERTICAL (a stacked column) rather than a horizontal
+// row: `animatedSwitch.ts` reads a group's `aria-orientation` ONCE, at
+// setup, to decide whether the thumb slides via translateX/width
+// (horizontal) or translateY/height (vertical), and never re-reads it
+// afterward. There's no longer a narrower "icons" width this rail ever
+// shrinks to (the rail has exactly one non-hidden width now), so staying
+// vertical is now simply this control's own fixed layout choice, not a
+// workaround for a width that used to change out from under it.
+const modeSwitchTrack = css({
+  position: 'relative', // containing block + stacking context for the animated switch thumb
+  zIndex: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
+  mb: '0.15rem',
+});
+
+// Each segment — icon + label, both always visible now (there's no icons-
+// only rail width left to gate the label behind). `w: '100%'` matches
+// `item`'s own explicit-percentage convention below. The `&[data-active]`
+// flat-color treatment is the same JS-free fallback pattern `ModeToggle`'s
+// `segBtn` uses — plain server-rendered CSS, fully correct and accessible
+// with zero JS — and gets its own background/border/shadow suppressed
+// automatically by the shared `[data-switch-armed] [role='radio'][data-active]`
+// rule in motion.css once a thumb is actually armed (see animatedSwitch.ts's
+// own header comment); the active-state `color` here is untouched by that
+// rule and keeps working as the JS-free indicator no-JS/reduced-motion
+// visitors rely on.
+const modeSegBtn = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.45rem',
+  w: '100%',
+  h: '28px',
+  px: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'color 150ms ease, background 150ms ease, border-color 150ms ease',
+  _hover: { color: 'primary', bg: 'bgSubtle' },
+  '& svg': { flexShrink: 0 },
+  '&[data-active]': {
+    bg: 'bgCard',
+    color: 'primary',
+    borderColor: 'border',
+    boxShadow: 'card',
+  },
+});
+
+const modeSegLabel = css({
+  fontSize: '0.72rem',
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  minW: 0,
+});
+
+const divider = css({ borderTop: '1px solid token(colors.border)', my: '0.3rem' });
+
+// Fixed-height toolbar strip (drag handle, mode switch, divider) that never
+// scrolls — only the category/link list below it does. `flexShrink: 0`
+// keeps it from ever being compressed by the flex column it sits in
+// alongside `scrollRegion`. Measured directly by the script
+// (`data-tool-sidebar-toolbar`) to compute how much vertical room is left
+// for the scrollable region below, rather than hardcoding a guess that would
+// silently drift the moment a control here is added, removed, or resized.
+const toolbar = css({
+  display: 'flex',
+  flexDirection: 'column',
+  flexShrink: 0,
+});
+
+// The scrollable region holding every category block — see this file's own
+// top comment for the full "why" behind replacing the old JS-measured
+// show-all-or-disable mechanism with this. `maxHeight` reads a CSS custom
+// property (`--sidebar-max-h`) the script keeps in sync with the real space
+// available below the sticky header on THIS viewport (`updateScrollCap()`
+// below), falling back to a generous static value for the brief pre-JS
+// window and for genuine no-JS visitors — the fallback is deliberately
+// generous rather than tight, since a no-JS visitor gets no refinement pass
+// afterward. `overscrollBehavior: 'contain'` stops a scroll that reaches the
+// top/bottom of this list from chaining into a scroll of the page body
+// behind it. `pr` gives the native scrollbar (when one appears) a sliver of
+// breathing room instead of sitting flush against link text.
+const scrollRegion = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.08rem',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  overscrollBehavior: 'contain',
+  maxHeight: 'var(--sidebar-max-h, calc(100dvh - 220px))',
+  pr: '0.15rem',
+});
+
+// Wraps one category's header + link list together so a single `hidden`
+// toggle controls both atomically (see the script's `applyGroupVisibility`)
+// — the alternative, syncing two separately-hidden siblings, is one more
+// place for the header and its links to drift out of sync.
+const catBlock = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.1rem',
+  // Anchors `catAccentBar` below (position:absolute) to this block, not the
+  // whole rail — so each category's colored rail spans just its own header
+  // + links, not the full stack. `pl` makes room for it sitting flush at
+  // this block's own left edge.
+  position: 'relative',
+  pl: '0.5rem',
+  '&[hidden]': { display: 'none' },
+});
+
+// Colored left-rail marking each category's own section — a separate,
+// isolated, childless element rather than a border directly on `catBlock`
+// itself: `filter: hue-rotate()` (applied inline per-category, see
+// HUES_BY_MODE) recolors an element's ENTIRE rendered subtree, so putting it
+// on `catBlock` would also shift every link icon/label inside — putting it
+// on this empty decorative bar instead means only the bar itself gets
+// recolored.
+const catAccentBar = css({
+  display: 'block',
+  position: 'absolute',
+  left: 0,
+  top: '0.1rem',
+  bottom: '0.05rem',
+  w: '2px',
+  borderRadius: 'full',
+  bg: 'primary',
 });
 
 const navGroup = css({
   display: 'flex',
   flexDirection: 'column',
-  gap: '0.2rem',
-  '&[hidden]': { display: 'none' },
+  gap: '0.05rem',
+});
+
+// Always visible now — every category is always on screen, so a category
+// label is never optional the way it used to be behind an "expanded" toggle.
+const catHeader = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  color: 'textMuted',
+  whiteSpace: 'nowrap',
+  m: 0,
+  mt: '0.3rem',
+});
+
+// Small solid color-coded dot — the per-category identity marker next to
+// each `catHeader`'s own label. `boxShadow` here (not a separate glow
+// element) picks up the same `filter: hue-rotate()` applied inline
+// per-instance, since filter recolors an element's whole rendered output
+// including its own shadow — a soft glow in the dot's own color for free, no
+// extra markup.
+const catDot = css({
+  display: 'inline-block',
+  w: '7px',
+  h: '7px',
+  borderRadius: 'full',
+  bg: 'primary',
+  boxShadow: '0 0 4px 0 token(colors.primary)',
+  flexShrink: 0,
 });
 
 const item = css({
@@ -128,7 +460,7 @@ const item = css({
   alignItems: 'center',
   gap: '0.45rem',
   w: '100%',
-  h: '38px',
+  h: '28px',
   px: '0.4rem',
   borderRadius: 'md',
   color: 'textMuted',
@@ -138,93 +470,56 @@ const item = css({
   '& svg': { flexShrink: 0 },
 });
 
-// Label only shows once the rail has widened — kept in the DOM always
-// (rather than JS-inserted) so it's there for the no-JS/expanded-by-CSS case
-// and so a screen reader always has real link text, not just aria-label.
-// No truncation: `rail`'s expanded width is sized (see its comment) so every
-// label — including the longest, "MITRE ATT&CK Coverage Map" — fits on this
-// single nowrap line with no ellipsis. Never add overflow/textOverflow here;
-// widen `rail`'s expanded width instead if a longer label is ever added.
+// Wraps each link's own <Icon>, carrying the same per-category
+// `hue-rotate()` inline style as `catDot`/`catAccentBar` (see HUES_BY_MODE).
+// Deliberately NOT applied to `item` itself — same reasoning as
+// `catAccentBar`'s own comment: `filter` recolors an element's whole
+// rendered subtree, and `item` also contains the label text, which must
+// stay in `item`'s own resting/hover/active color, not get hue-shifted. The
+// effect is quiet by design rather than a second, competing color system:
+// `currentColor` at rest is `item`'s muted `textMuted`, which is
+// low-saturation enough that rotating its hue is barely perceptible — the
+// tint only really reads once `item` reaches its `[aria-current="page"]`
+// state, where `color: primary` is a fully saturated theme color and the
+// same rotation becomes clearly visible.
+const itemIcon = css({ display: 'inline-flex', flexShrink: 0 });
+
+// Always visible now — no icons-only rail width left to gate this behind.
+// Kept in the DOM always (rather than JS-inserted) so a screen reader
+// always has real link text, not just aria-label. No truncation: `RAIL_W`
+// is sized (see its own comment) so every label — including the longest,
+// "MITRE ATT&CK Coverage Map" — fits on this single nowrap line with no
+// ellipsis. Never add overflow/textOverflow here; widen RAIL_W instead if a
+// longer label is ever added.
 const itemLabel = css({
   fontSize: '0.78rem',
   whiteSpace: 'nowrap',
   minW: 0,
-  display: 'none',
-  '[data-view="expanded"] &': { display: 'inline' },
-});
-
-const divider = css({ borderTop: '1px solid token(colors.border)', my: '0.3rem' });
-
-// Column (stacked arrows) at icon width — two 26px buttons don't fit side by
-// side in the ~37px interior the icons state leaves after rail padding. Row
-// only once expanded gives them, plus the label, the room to sit inline.
-const catBar = css({
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: '0.15rem',
-  '[data-view="expanded"] &': {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: '0.2rem',
-  },
-});
-
-const catBtn = css({
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  w: '26px',
-  h: '26px',
-  borderRadius: 'md',
-  color: 'textMuted',
-  cursor: 'pointer',
-  transition: 'color 150ms ease, background 150ms ease',
-  _hover: { color: 'primary', bg: 'bgSubtle' },
-  flexShrink: 0,
-});
-
-// No truncation here either: the longest category name ("Artifact Parsers")
-// measures comfortably under the space available at `rail`'s expanded width,
-// so a plain nowrap line is enough — no overflow/ellipsis needed.
-const catLabel = css({
-  fontSize: '0.72rem',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-  color: 'textMuted',
-  whiteSpace: 'nowrap',
-  minW: 0,
-  flex: 1,
-  textAlign: 'center',
-  display: 'none',
-  '[data-view="expanded"] &': { display: 'block' },
 });
 
 // `position: absolute` (docked against `slideRow`, not flex-adjacent to
-// `rail`) is deliberate: `left` and `height` are driven by three EXPLICIT,
+// `rail`) is deliberate: `left` and `height` are driven by two EXPLICIT,
 // mutually-exclusive rules keyed off `rail`'s own `data-view` attribute (the
-// `[data-tool-sidebar-rail][data-view="…"] ~ &` sibling selectors below), one
-// per real state, rather than inferring position from rail's live flex-box
-// width the way a plain flex sibling would. That's the fix for the handle
-// landing in the wrong spot: `rail`'s hide is a `transform`, which repositions
-// where it PAINTS but doesn't shrink its LAYOUT width (see `rail`'s comment),
-// so a flex-sibling handle used to dock wherever rail's width happened to be
-// *before* it was last hidden — 48px in one case, 236px in another — instead
-// of always sitting flush at the true visible edge. Three explicit states
-// sidesteps that entirely: hidden always means `left: 0`, full stop.
+// `[data-tool-sidebar-rail][data-view="…"] ~ &` sibling selectors below) —
+// one per real state — rather than inferring position from rail's live
+// flex-box width the way a plain flex sibling would. That's the fix for the
+// handle landing in the wrong spot: `rail`'s hide is a `transform`, which
+// repositions where it PAINTS but doesn't shrink its LAYOUT width (see
+// `rail`'s comment), so a flex-sibling handle used to dock wherever rail's
+// width happened to be *before* it was last hidden, instead of always
+// sitting flush at the true visible edge.
 //
 // Small (32px) by default/hidden — just tall enough to be a comfortable tap
-// target — and grows to the rail's full height whenever the rail is actually
-// showing (icons or expanded), animated via the same sibling-selector
-// mechanism. `height: 100%` resolves against `slideRow`'s height, which
-// (now that `handle` is out of normal flow) is dictated purely by `rail`'s
-// own intrinsic content height, so this tracks correctly if the link list
-// ever grows or shrinks.
+// target — and grows to the rail's full height whenever the rail is
+// actually showing, animated via the same sibling-selector mechanism.
+// `height: 100%` resolves against `slideRow`'s height, which (`handle` is
+// out of normal flow) is dictated purely by `rail`'s own intrinsic content
+// height, so this tracks correctly as the link list's own scroll-capped
+// height changes.
 const handle = css({
   position: 'absolute',
   top: 0,
-  left: RAIL_ICONS_W,
+  left: RAIL_W,
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -247,12 +542,9 @@ const handle = css({
   // here would silently behave as `auto` and shrink to the button's own
   // intrinsic content size instead of matching rail. `--rail-h` is a real
   // measured pixel value the script below keeps in sync with `rail`'s live
-  // height via ResizeObserver (rail's height itself isn't static — it
-  // differs a little between the icons and expanded catBar layouts), and
-  // `350ms` is enough for `transition: height` to still animate smoothly
-  // between two concrete px values.
+  // height via ResizeObserver, and `350ms` is enough for `transition: height`
+  // to still animate smoothly between two concrete px values.
   '[data-tool-sidebar-rail]:not([data-view="hidden"]) ~ &': { h: 'var(--rail-h, 100%)' },
-  '[data-tool-sidebar-rail][data-view="expanded"] ~ &': { left: RAIL_EXPANDED_W },
   '[data-tool-sidebar-rail][data-view="hidden"] ~ &': { left: 0, h: '32px' },
   // Explicit rotate(0deg) base (not just the absence of a transform rule) so
   // both endpoints of the toggle are concrete values for the transition to
@@ -264,54 +556,82 @@ const handle = css({
 
 <div class={outer} data-tool-sidebar>
   <div class={slideRow}>
-    <div class={`tool-sidebar-slide ${rail}`} data-tool-sidebar-rail data-view="icons">
-      <button
-        type="button"
-        class={expandBtn}
-        data-tool-sidebar-expand
-        aria-pressed="false"
-        aria-label="Show link titles"
-      >
-        <Icon name="grid" size={15} class="tool-sidebar-expand-compact" />
-        <Icon name="list" size={15} class="tool-sidebar-expand-full" />
-      </button>
+    <div class={`tool-sidebar-slide ${rail}`} data-tool-sidebar-rail data-view="shown">
+      <div class={toolbar} data-tool-sidebar-toolbar>
+        <button
+          type="button"
+          class={dragHandle}
+          data-tool-sidebar-drag
+          aria-label="Drag to move the sidebar up or down. Arrow keys nudge it; Home or a double-click recenters it."
+          title="Drag to reposition · double-click to recenter"
+        >
+          <Icon name="grip-horizontal" size={14} />
+        </button>
 
-      <div class={divider} />
+        <div class={railHeader}>
+          <span class={railHeaderIcon} aria-hidden="true">
+            <Icon name="grid" size={15} />
+          </span>
+          <div class={railHeaderText}>
+            <p class={railHeaderTitle}>Quick Access</p>
+            <p class={railHeaderDesc} data-tool-sidebar-desc>{MODE_DESCRIPTIONS[defaultMode]}</p>
+          </div>
+        </div>
 
-      {
-        DFIR_GROUPS.map((group, i) => (
-          <nav
-            class={navGroup}
-            data-tool-sidebar-cat={i}
-            aria-label={group.category}
-            hidden={i !== defaultCategoryIndex}
-          >
-            {group.links.map((link) => (
-              <a
-                href={link.href}
-                class={item}
-                aria-label={link.label}
-                title={link.label}
-                aria-current={currentPath === link.href ? 'page' : undefined}
+        <div class={modeSwitchTrack} role="radiogroup" aria-label="Sidebar dataset" aria-orientation="vertical" data-tool-sidebar-mode-toggle>
+          {
+            MODE_OPTIONS.map((opt) => (
+              <button
+                type="button"
+                role="radio"
+                class={modeSegBtn}
+                data-tool-sidebar-mode-btn
+                data-mode-value={opt.value}
+                aria-checked={defaultMode === opt.value ? 'true' : 'false'}
+                aria-label={opt.label}
+                title={opt.label}
+                {...(defaultMode === opt.value ? { 'data-active': '' } : {})}
               >
-                <Icon name={link.icon} size={19} />
-                <span class={itemLabel}>{link.label}</span>
-              </a>
-            ))}
-          </nav>
-        ))
-      }
+                <Icon name={opt.icon} size={15} />
+                <span class={modeSegLabel}>{opt.label}</span>
+              </button>
+            ))
+          }
+        </div>
 
-      <div class={divider} />
+        <div class={divider} />
+      </div>
 
-      <div class={catBar}>
-        <button type="button" class={catBtn} data-tool-sidebar-cat-prev aria-label="Previous category">
-          <Icon name="arrow-up" size={13} />
-        </button>
-        <span class={catLabel} data-tool-sidebar-cat-label>{DFIR_GROUPS[defaultCategoryIndex].category}</span>
-        <button type="button" class={catBtn} data-tool-sidebar-cat-next aria-label="Next category">
-          <Icon name="arrow-down" size={13} />
-        </button>
+      <div class={scrollRegion} data-tool-sidebar-scroll>
+        {
+          (['dfir', 'it', 'drills'] as const).map((m) =>
+            GROUPS_BY_MODE[m].map((group, i) => (
+              <div class={catBlock} data-tool-sidebar-mode={m} hidden={m !== defaultMode}>
+                <span class={catAccentBar} aria-hidden="true" style={{ filter: `hue-rotate(${HUES_BY_MODE[m][i]}deg)` }} />
+                <p class={catHeader} role="heading" aria-level="3">
+                  <span class={catDot} aria-hidden="true" style={{ filter: `hue-rotate(${HUES_BY_MODE[m][i]}deg)` }} />
+                  {group.category}
+                </p>
+                <nav class={navGroup} aria-label={group.category}>
+                  {group.links.map((link) => (
+                    <a
+                      href={link.href}
+                      class={item}
+                      aria-label={link.label}
+                      title={link.label}
+                      aria-current={currentPath === link.href ? 'page' : undefined}
+                    >
+                      <span class={itemIcon} style={{ filter: `hue-rotate(${HUES_BY_MODE[m][i]}deg)` }}>
+                        <Icon name={link.icon} size={19} />
+                      </span>
+                      <span class={itemLabel}>{link.label}</span>
+                    </a>
+                  ))}
+                </nav>
+              </div>
+            ))
+          )
+        }
       </div>
     </div>
     <button
@@ -319,73 +639,284 @@ const handle = css({
       class={`tool-sidebar-handle ${handle}`}
       data-tool-sidebar-toggle
       aria-expanded="true"
-      aria-label="Hide DFIR sidebar"
+      aria-label={`Hide ${MODE_LABELS[defaultMode]} sidebar`}
+      title={`Hide ${MODE_LABELS[defaultMode]} sidebar`}
     >
       <Icon name="chevron-right" size={13} class="tool-sidebar-chev" />
     </button>
   </div>
 </div>
 
-<script is:inline define:vars={{ categoryNames: DFIR_GROUPS.map((g) => g.category) }}>
+<script
+  is:inline
+  define:vars={{
+    modeLabels: { dfir: 'DFIR', it: 'IT', drills: 'Drills' },
+    modeDescriptions: MODE_DESCRIPTIONS,
+    defaultMode,
+  }}
+>
   // @ts-nocheck — vanilla DOM client script
   (function () {
     var root = document.querySelector('[data-tool-sidebar]');
     if (!root) return;
     var rail = root.querySelector('[data-tool-sidebar-rail]');
     var hideToggle = root.querySelector('[data-tool-sidebar-toggle]');
-    var expandToggle = root.querySelector('[data-tool-sidebar-expand]');
-    var catLabelEl = root.querySelector('[data-tool-sidebar-cat-label]');
-    var catPrevBtn = root.querySelector('[data-tool-sidebar-cat-prev]');
-    var catNextBtn = root.querySelector('[data-tool-sidebar-cat-next]');
-    var groups = root.querySelectorAll('[data-tool-sidebar-cat]');
-    if (!rail || !hideToggle || !expandToggle) return;
+    var toolbarEl = root.querySelector('[data-tool-sidebar-toolbar]');
+    var scrollRegionEl = root.querySelector('[data-tool-sidebar-scroll]');
+    var descEl = root.querySelector('[data-tool-sidebar-desc]');
+    // The 3 mode segment buttons (DFIR/IT/Drills) — `data-tool-sidebar-mode-toggle`
+    // itself marks the group/track (see markup). animatedSwitch.ts finds it
+    // generically via `[role="radiogroup"]` for the sliding thumb, so this
+    // script never needs it for that; it does need its own reference below
+    // to wire the arrow-key navigation the radiogroup role advertises to
+    // assistive tech (native `role="radio"` buttons carry none of that for
+    // free — see the keydown listener further down).
+    var modeSegBtns = Array.prototype.slice.call(root.querySelectorAll('[data-tool-sidebar-mode-btn]'));
+    var modeSwitchTrackEl = root.querySelector('[data-tool-sidebar-mode-toggle]');
+    var dragHandleEl = root.querySelector('[data-tool-sidebar-drag]');
+    // Every category block, across all 3 modes — each carries its own
+    // data-tool-sidebar-mode, so a single NodeList + a mode check in
+    // applyGroupVisibility() covers filtering by mode in one pass.
+    var groups = root.querySelectorAll('[data-tool-sidebar-mode]');
+    if (!rail || !hideToggle) return;
+
+    // The sticky nav `<header>` (z-index 50) paints above `rail` (z-index 45,
+    // see `outer`'s own comment) — factored into both the drag bounds and the
+    // scroll-region height cap below, so neither lets the rail's own content
+    // end up covered by (or clipped under) the header.
+    var headerEl = document.querySelector('header');
 
     var HIDDEN_KEY = 'tool-sidebar-hidden';
-    var EXPANDED_KEY = 'tool-sidebar-expanded';
-    var CAT_KEY = 'tool-sidebar-category';
+    var MODE_KEY = 'tool-sidebar-mode';
+    var POSITION_KEY = 'tool-sidebar-y';
 
     var hidden = false;
-    var expanded = false;
-    var catIndex = 0;
-    for (var i = 0; i < groups.length; i++) {
-      if (!groups[i].hidden) catIndex = Number(groups[i].getAttribute('data-tool-sidebar-cat'));
+    // Vertical drag position — see the drag-handle block near the bottom of
+    // this script for the full explanation. `positioned` is false until the
+    // user has dragged (or a stored position was restored), meaning the rail
+    // is still on the CSS-only default (`outer`'s `top: 50%` + `slideRow`'s
+    // `translateY(-50%)`, centered with zero JS involvement — the safe no-JS
+    // fallback). `centerY` (viewport px) is only meaningful once positioned.
+    var positioned = false;
+    var centerY = 0;
+    // Mode (dfir/it/drills) picks which dataset is shown.
+    var mode = defaultMode;
+
+    // The rail's true, currently-PAINTED vertical center — reads off
+    // `rail.getBoundingClientRect()` rather than trusting `centerY`/CSS math,
+    // since `getBoundingClientRect()` reflects the real rendered position
+    // (post-transform) regardless of whether the rail is still on the CSS
+    // default (`top: 50%` + `translateY(-50%)`) or already `positioned` via
+    // JS. Used to seed a drag/keyboard move from wherever the rail visually
+    // is right now, so the very first drag never jumps.
+    function currentCenterY() {
+      if (positioned) return centerY;
+      var r = rail.getBoundingClientRect();
+      return r.top + r.height / 2;
+    }
+
+    // Vertical room the rail is allowed to occupy: below the sticky nav
+    // header and above the viewport's own bottom edge, each with a small
+    // breathing-room margin. Measured fresh every call — like every other
+    // layout read in this file, never cached — since both the header's
+    // height (ticker) and the rail's own height (mode-dependent, and now
+    // also scroll-capped) can change between calls.
+    function dragBounds() {
+      var h = rail.getBoundingClientRect().height;
+      var margin = 8;
+      var minCenterY = (headerEl ? headerEl.getBoundingClientRect().bottom : 0) + margin + h / 2;
+      var maxCenterY = window.innerHeight - margin - h / 2;
+      if (minCenterY > maxCenterY) {
+        // The rail is taller than the viewport has room for even flush
+        // against the header — split the difference rather than forcing an
+        // arbitrary edge. In practice this should be rare now that
+        // scrollRegion is height-capped, but stays as a graceful fallback.
+        var mid = (minCenterY + maxCenterY) / 2;
+        return { min: mid, max: mid };
+      }
+      return { min: minCenterY, max: maxCenterY };
+    }
+
+    function clampCenterY(y) {
+      var b = dragBounds();
+      return Math.min(b.max, Math.max(b.min, y));
+    }
+
+    // The only place that writes `outer`'s (== `root`'s) inline `top` — a
+    // no-op until `positioned` is true, so a visitor who never drags the
+    // handle never gets an inline style at all and stays on the pure-CSS
+    // centered default.
+    function applyPosition() {
+      if (!positioned) return;
+      root.style.top = centerY + 'px';
+    }
+
+    // Re-clamps the CURRENT position against the CURRENT viewport/rail size
+    // — called after every render() (a hide/show or mode change can change
+    // the rail's own height) and on window resize, so a position that was
+    // valid a moment ago can never end up pushing the rail off-screen once
+    // its height or the viewport changes. A no-op while un-positioned, same
+    // reasoning as applyPosition().
+    function reclampPosition() {
+      if (!positioned) return;
+      centerY = clampCenterY(centerY);
+      applyPosition();
+    }
+
+    // Sets a new position, always through the same clamp — used by both the
+    // live pointer-drag (persist=false, called on every pointermove — far
+    // too often to hit localStorage each time) and the keyboard nudge/reset
+    // paths (persist=true, called once per discrete keypress).
+    function setCenterY(y, persist) {
+      centerY = clampCenterY(y);
+      positioned = true;
+      applyPosition();
+      if (persist) {
+        try {
+          localStorage.setItem(POSITION_KEY, String(centerY / window.innerHeight));
+        } catch (e) {}
+      }
+    }
+
+    // Clears any custom position and lets the CSS default (centered) take
+    // back over — the drag handle's "undo" (double-click or Home key).
+    function resetPosition() {
+      positioned = false;
+      root.style.top = '';
+      try {
+        localStorage.removeItem(POSITION_KEY);
+      } catch (e) {}
+    }
+
+    // Wraps a discrete, JS-driven position change (keyboard nudge/reset —
+    // NOT the live pointer-drag, which sets position on every pointermove
+    // and would look laggy chasing a transition) in a short `top` transition
+    // so it settles smoothly instead of snapping. Tracked so overlapping
+    // calls (e.g. OS key-repeat firing keydown faster than the 170ms settle
+    // window) cancel the previous cleanup instead of racing it.
+    var topTransitionTimer = null;
+    function withTopTransition(fn) {
+      clearTimeout(topTransitionTimer);
+      root.style.transition = 'top 150ms ease';
+      fn();
+      topTransitionTimer = setTimeout(function () {
+        root.style.transition = '';
+        topTransitionTimer = null;
+      }, 170);
     }
 
     function render() {
-      rail.setAttribute('data-view', hidden ? 'hidden' : expanded ? 'expanded' : 'icons');
+      rail.setAttribute('data-view', hidden ? 'hidden' : 'shown');
+      var modeLabel = modeLabels[mode];
       hideToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
-      hideToggle.setAttribute('aria-label', hidden ? 'Show DFIR sidebar' : 'Hide DFIR sidebar');
-      expandToggle.setAttribute('aria-pressed', String(expanded));
-      expandToggle.setAttribute('aria-label', expanded ? 'Show icons only' : 'Show link titles');
+      hideToggle.setAttribute('aria-label', hidden ? 'Show ' + modeLabel + ' sidebar' : 'Hide ' + modeLabel + ' sidebar');
+      hideToggle.setAttribute('title', hidden ? 'Show ' + modeLabel + ' sidebar' : 'Hide ' + modeLabel + ' sidebar');
+      if (descEl) descEl.textContent = modeDescriptions[mode];
+      // Keeps <main>'s own reserved left margin (BaseLayout.astro, see its
+      // own comment) in sync with whether the rail is actually occupying
+      // that space — a visitor who's hidden the rail gets the full
+      // originally-centered column back, not a permanent empty gutter.
+      // Same "script keeps a CSS custom property in sync" pattern this file
+      // already uses for --sidebar-max-h/--rail-h below.
+      document.documentElement.style.setProperty('--sidebar-reserve', hidden ? '0px' : '236px');
+      // A hide/show or mode change can change the rail's own height —
+      // re-clamp a custom drag position against the new height so it never
+      // ends up pushing the rail off-screen (see reclampPosition's own
+      // comment). A no-op while the rail is still on the CSS-centered
+      // default.
+      reclampPosition();
     }
 
-    function showCategory(idx) {
-      var len = categoryNames.length;
-      catIndex = ((idx % len) + len) % len;
+    // The one place that decides which category blocks are actually
+    // hidden — a block only ever shows in its own mode. Called after
+    // anything that changes `mode`; nothing else should ever set a group's
+    // `.hidden` directly.
+    function applyGroupVisibility() {
       for (var i = 0; i < groups.length; i++) {
-        groups[i].hidden = Number(groups[i].getAttribute('data-tool-sidebar-cat')) !== catIndex;
+        var g = groups[i];
+        g.hidden = g.getAttribute('data-tool-sidebar-mode') !== mode;
       }
-      if (catLabelEl) catLabelEl.textContent = categoryNames[catIndex];
-      try {
-        localStorage.setItem(CAT_KEY, String(catIndex));
-      } catch (e) {}
+    }
+
+    // Keeps `scrollRegion`'s `--sidebar-max-h` custom property in sync with
+    // the real vertical room available below the sticky header on THIS
+    // viewport — see `scrollRegion`'s own CSS comment for why this exists.
+    // Total top+bottom breathing room, not per-edge: `rail` is vertically
+    // centered (`top: 50%`), so reserving enough room to clear a
+    // `headerBottom`-tall obstruction at the top requires *double* that
+    // amount of total margin (the other half goes unused at the bottom,
+    // which is harmless — nothing opaque sits there). `toolbarEl`'s own
+    // height is measured live (not hardcoded) so a future toolbar change
+    // (adding/removing a control) can't silently throw this off. Called on
+    // load and on a debounced resize — never cached, same reasoning as any
+    // other layout read in this file (the self-hosted font's `font-display:
+    // swap` can change layout height between an early read and now).
+    function updateScrollCap() {
+      if (!scrollRegionEl) return;
+      var headerMargin = headerEl ? headerEl.getBoundingClientRect().bottom * 2 : 0;
+      var viewportMargin = Math.max(64, headerMargin);
+      var toolbarH = toolbarEl ? toolbarEl.getBoundingClientRect().height : 0;
+      var buffer = 24; // rail's own padding + a little breathing room — not measured to the pixel, unused whitespace here is harmless
+      var available = window.innerHeight - viewportMargin - toolbarH - buffer;
+      scrollRegionEl.style.setProperty('--sidebar-max-h', Math.max(120, available) + 'px');
     }
 
     try {
       hidden = localStorage.getItem(HIDDEN_KEY) === '1';
-      expanded = localStorage.getItem(EXPANDED_KEY) === '1';
-      var storedCat = localStorage.getItem(CAT_KEY);
-      if (storedCat !== null && !isNaN(Number(storedCat))) showCategory(Number(storedCat));
+      var storedMode = localStorage.getItem(MODE_KEY);
+      if (storedMode === 'dfir' || storedMode === 'it' || storedMode === 'drills') mode = storedMode;
+      // Stored as a FRACTION of viewport height (0–1), not a raw px value —
+      // a raw px position from a previous, differently-sized viewport
+      // (an external monitor vs a laptop screen, say) wouldn't mean the same
+      // thing on this one; a fraction re-scales sensibly and still gets
+      // clamped against the real bounds below regardless. Restoring this
+      // here (before render() runs below) means the very first render()'s
+      // own reclampPosition() call already has the right
+      // `positioned`/`centerY` to work with — no separate apply step needed.
+      var storedFraction = localStorage.getItem(POSITION_KEY);
+      if (storedFraction !== null) {
+        var f = Number(storedFraction);
+        if (!isNaN(f)) {
+          centerY = f * window.innerHeight;
+          positioned = true;
+        }
+      }
     } catch (e) {}
+
+    // Single source of truth for which of the 3 mode segment buttons is
+    // marked active — used both here (restoring from localStorage, which can
+    // disagree with the server-rendered defaultMode) and from each button's
+    // own click handler below. Setting `data-active` is also what
+    // animatedSwitch.ts's MutationObserver picks up to (re)place the sliding
+    // thumb — see modeSwitchTrack's own comment.
+    function syncModeButtons() {
+      modeSegBtns.forEach(function (b) {
+        var active = b.getAttribute('data-mode-value') === mode;
+        if (active) b.setAttribute('data-active', '');
+        else b.removeAttribute('data-active');
+        b.setAttribute('aria-checked', active ? 'true' : 'false');
+      });
+    }
+    syncModeButtons();
+    applyGroupVisibility();
     render();
+    updateScrollCap();
+
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        updateScrollCap();
+        reclampPosition();
+      }, 150);
+    });
 
     // `handle` is `position: absolute` and reads this custom property for its
     // own height (see `handle`'s CSS comment for why a plain `height: 100%`
     // can't work here) — keep it in sync with rail's REAL measured height,
-    // not a guess, since rail's height itself isn't perfectly constant (the
-    // catBar's column-vs-row layout differs a little between icons and
-    // expanded). ResizeObserver re-fires on every layout change (category
-    // switch, font load, viewport resize), not just once on load.
+    // not a guess. ResizeObserver re-fires on every layout change (mode
+    // switch, font load, viewport resize, scroll-cap change), not just once
+    // on load.
     function syncHandleHeight() {
       var h = rail.getBoundingClientRect().height;
       if (h > 0) hideToggle.style.setProperty('--rail-h', h + 'px');
@@ -397,14 +928,11 @@ const handle = css({
       window.addEventListener('resize', syncHandleHeight);
     }
 
-    // Debounce every toggle/cycle control in this rail: while a button's own
-    // cooldown is running, further clicks on it are ignored outright (not
-    // queued) — see CLAUDE.md invariant 12 for why this is a sitewide rule,
-    // not a one-off. `cooldownMs` should be >= the button's own longest CSS
-    // transition, so a second click can never land mid-animation and thrash
-    // the state (which is what made the hide/show handle's chevron look like
-    // it "wasn't moving" — two rapid clicks landing before the first
-    // 500ms rotation finished just reversed it back to where it started).
+    // Debounce every toggle in this rail: while a button's own cooldown is
+    // running, further clicks on it are ignored outright (not queued) — see
+    // CLAUDE.md invariant 12 for why this is a sitewide rule, not a one-off.
+    // `cooldownMs` should be >= the button's own longest CSS transition, so
+    // a second click can never land mid-animation and thrash the state.
     function debounceClick(el, cooldownMs, handler) {
       var busy = false;
       el.addEventListener('click', function () {
@@ -425,15 +953,150 @@ const handle = css({
       } catch (e) {}
     });
 
-    debounceClick(expandToggle, 350, function () {
-      expanded = !expanded;
-      render();
-      try {
-        localStorage.setItem(EXPANDED_KEY, expanded ? '1' : '0');
-      } catch (e) {}
+    // Deliberately NOT run through debounceClick, unlike hideToggle above —
+    // same documented exception animatedSwitch.ts's own MutationObserver
+    // comment makes: that hard rule (CLAUDE.md invariant 12) guards against
+    // a rapid SECOND click re-triggering a toggle that fully REVERSES the
+    // first. A 3-way switch has no such failure mode — clicking DFIR→IT→
+    // Drills in rapid succession is three independent, absolute selections,
+    // not a reversal, and motion/mini's thumb naturally redirects mid-slide
+    // from wherever it currently is (see animatedSwitch.ts's
+    // currentTranslate()). The cheap `value === mode` guard below is about
+    // avoiding redundant work on a re-click of the already-active segment,
+    // not about debouncing.
+    modeSegBtns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var value = btn.getAttribute('data-mode-value');
+        if (value === mode) return;
+        mode = value;
+        syncModeButtons();
+        applyGroupVisibility();
+        try {
+          localStorage.setItem(MODE_KEY, mode);
+        } catch (e) {}
+        render();
+      });
     });
 
-    if (catPrevBtn) debounceClick(catPrevBtn, 250, function () { showCategory(catIndex - 1); });
-    if (catNextBtn) debounceClick(catNextBtn, 250, function () { showCategory(catIndex + 1); });
+    // Arrow-key navigation for the mode radiogroup — plain `role="radio"`
+    // buttons (not real `<input type="radio">`) get zero native arrow-key
+    // handling, a gap this control shares with ModeToggle.astro/
+    // ViewToggle.astro (pre-existing there, out of scope to fix here).
+    // Mirrors ThemePicker.astro's own onKey/moveFocus shape. Orientation is
+    // permanently vertical (see modeSwitchTrack's own comment), so only
+    // ArrowUp/ArrowDown are wired — Home/End jump to the first/last segment.
+    // Per the WAI-ARIA radiogroup pattern ("selection follows focus"), moving
+    // focus also selects: each move calls `.click()` on the newly focused
+    // button rather than duplicating the click handler's own mode-switch
+    // logic, so there's exactly one place that decides what activating a
+    // segment does.
+    if (modeSwitchTrackEl) {
+      modeSwitchTrackEl.addEventListener('keydown', function (e) {
+        var idx = modeSegBtns.indexOf(document.activeElement);
+        if (idx === -1) return;
+        var target = null;
+        if (e.key === 'ArrowDown') target = modeSegBtns[(idx + 1) % modeSegBtns.length];
+        else if (e.key === 'ArrowUp') target = modeSegBtns[(idx - 1 + modeSegBtns.length) % modeSegBtns.length];
+        else if (e.key === 'Home') target = modeSegBtns[0];
+        else if (e.key === 'End') target = modeSegBtns[modeSegBtns.length - 1];
+        if (!target) return;
+        e.preventDefault();
+        target.focus();
+        target.click();
+      });
+    }
+
+    // Vertical drag: pointerdown on the grip handle starts a drag, tracked
+    // via Pointer Events (unifies mouse/touch/pen — no separate touch
+    // handlers needed) and `setPointerCapture` so a fast drag that outruns
+    // the handle's own small hit area doesn't drop the gesture. Deliberately
+    // NOT run through `debounceClick` — that helper guards against a rapid
+    // *second click* re-triggering a whole toggle transition, which doesn't
+    // apply here: a continuous drag is one held gesture, not repeated
+    // discrete clicks, and it needs every pointermove to land, not be
+    // ignored while "busy".
+    if (dragHandleEl) {
+      var dragPointerId = null;
+      var dragStartY = 0;
+      var dragStartCenterY = 0;
+
+      function onDragPointerMove(e) {
+        if (dragPointerId === null || e.pointerId !== dragPointerId) return;
+        setCenterY(dragStartCenterY + (e.clientY - dragStartY), false);
+      }
+
+      function endDrag(e) {
+        if (dragPointerId === null || (e && e.pointerId !== dragPointerId)) return;
+        try {
+          dragHandleEl.releasePointerCapture(dragPointerId);
+        } catch (err) {}
+        dragPointerId = null;
+        document.removeEventListener('pointermove', onDragPointerMove);
+        document.removeEventListener('pointerup', endDrag);
+        document.removeEventListener('pointercancel', endDrag);
+        document.body.style.removeProperty('cursor');
+        document.body.style.removeProperty('user-select');
+        // Persist only once, on release — not on every pointermove, which
+        // can fire dozens of times a second and would otherwise hammer
+        // localStorage for no benefit (nothing reads the in-progress value
+        // until a future page load anyway). Gated on `positioned`, which
+        // setCenterY only flips true on a real pointermove: a plain click
+        // (pointerdown immediately followed by pointerup, no move in
+        // between) must not write centerY's untouched init value of 0 —
+        // that would silently jam the rail under the header on the *next*
+        // page load, with no visible link back to the stray click that
+        // caused it.
+        if (positioned) {
+          try {
+            localStorage.setItem(POSITION_KEY, String(centerY / window.innerHeight));
+          } catch (err) {}
+        }
+      }
+
+      dragHandleEl.addEventListener('pointerdown', function (e) {
+        if (dragPointerId !== null) return; // ignore a second pointer while one drag is already active
+        if (e.button !== undefined && e.button !== 0) return; // primary button/touch/pen only
+        dragPointerId = e.pointerId;
+        dragStartY = e.clientY;
+        dragStartCenterY = currentCenterY();
+        try {
+          dragHandleEl.setPointerCapture(dragPointerId);
+        } catch (err) {}
+        document.addEventListener('pointermove', onDragPointerMove);
+        document.addEventListener('pointerup', endDrag);
+        document.addEventListener('pointercancel', endDrag);
+        // Matches the handle's own `cursor: grabbing` (see dragHandle's CSS)
+        // even if the pointer strays outside the handle mid-drag, and stops
+        // the rest of the page from selecting text while dragging across it.
+        document.body.style.cursor = 'grabbing';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+      });
+
+      // Double-click/double-tap recenters — the drag equivalent of every
+      // other stateful control on this site having a "back to default" path.
+      dragHandleEl.addEventListener('dblclick', function () {
+        withTopTransition(resetPosition);
+      });
+
+      // Keyboard equivalent for the same move: arrow keys nudge (Shift for a
+      // bigger jump), Home recenters. Both animate briefly via
+      // withTopTransition — unlike the live drag above, each keypress is one
+      // discrete change, so a short settle transition reads as intentional
+      // feedback rather than as lag.
+      dragHandleEl.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          var step = e.shiftKey ? 80 : 20;
+          var delta = e.key === 'ArrowUp' ? -step : step;
+          withTopTransition(function () {
+            setCenterY(currentCenterY() + delta, true);
+          });
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          withTopTransition(resetPosition);
+        }
+      });
+    }
   })();
 </script>

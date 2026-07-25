@@ -1,0 +1,125 @@
+---
+// cmd.exe Terminal Drill (/drills/commands/cmd/) — one of the three OS
+// tracks under /drills/commands/ (see that page's own picker). A real
+// simulated Windows Command Prompt, not multiple choice: type actual
+// commands, get realistic output back (see src/data/terminalEnvironments.ts
+// for the fixed fake host and per-shell simulation), and a challenge is
+// marked solved the moment the right command comes through — grading is the
+// exact same regex-based grade() logic previously in the now-deleted
+// src/data/drills/commands.ts, just re-hosted per src/data/drills/terminalChallenges.ts.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../../components/PageHeader.astro';
+import Icon from '../../../../components/Icon.astro';
+import TerminalDrill from '../../../../components/TerminalDrill.astro';
+import ExternalResources from '../../../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../../../data/externalResources';
+import { toolChip } from '../../../../components/RelatedTools.astro';
+import { CMD_CHALLENGES } from '../../../../data/drills/terminalChallenges';
+
+const TOTAL = CMD_CHALLENGES.length;
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const calloutCss = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+const calloutText = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 });
+const inlineChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  fontWeight: 700,
+  color: 'primary',
+  _hover: { textDecoration: 'underline' },
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="cmd.exe Terminal Drill"
+  description={`A real simulated Windows Command Prompt, not multiple choice — ${TOTAL} progressive challenges investigating a compromised host. Type the real command, explore freely with help/?, get graded live.`}
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'Terminal Commands', href: '/drills/commands/' }, { label: 'cmd.exe' }]}
+    eyebrow="Practice"
+    title="cmd.exe Terminal Drill"
+    description={`${TOTAL} progressive challenges in a real simulated Windows Command Prompt — investigate a workstation suspected of hosting a masquerading malicious process, one command at a time.`}
+  />
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    This is a genuine simulated terminal, not a text box to type a remembered answer into. Explore freely at any
+    point — <code class={css({ fontFamily: 'mono', fontSize: '0.9em', color: 'primary' })}>help</code> lists every
+    available command, and <code class={css({ fontFamily: 'mono', fontSize: '0.9em', color: 'primary' })}>&lt;command&gt;
+    /?</code> explains one in detail — cmd.exe's own real convention. A challenge is marked solved the moment you
+    run the right command — running something else first (even a wrong guess) never locks you out.
+  </p>
+
+  <aside class={calloutCss}>
+    <p class={calloutText}>
+      Looking for a specific tool's own command-line syntax instead (Volatility, log2timeline, YARA, etc.)? That's
+      the{' '}
+      <a href="/tools/cheatsheet/" class={inlineChip}>
+        DFIR Command Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>{' '}
+      — a separate, browsable reference. This drill is the cmd.exe shell itself.
+    </p>
+  </aside>
+
+  <TerminalDrill
+    os="cmd"
+    heading="cmd.exe Terminal Drill"
+    intro="A real simulated Windows Command Prompt — nothing you type leaves your browser."
+    challenges={CMD_CHALLENGES}
+  />
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/cheatsheet/" class={toolChip}>
+        <Icon name="terminal" size={13} /> DFIR Command Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        This drill is native shell literacy; the cheat sheet is every tool in the kit's own command-line syntax
+        (Volatility, log2timeline, YARA, and more), grouped by platform.
+      </p>
+    </div>
+    <div>
+      <a href="/drills/commands/powershell/" class={toolChip}>
+        <Icon name="cpu" size={13} /> PowerShell Terminal Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The same fixed scenario, worked through PowerShell's object pipeline instead of cmd.exe's text-only one.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['commands-cmd']} />
+</BaseLayout>
+
+<script>
+  import { initTerminalDrill } from '../../../../scripts/terminalDrill';
+  import { CMD_CHALLENGES } from '../../../../data/drills/terminalChallenges';
+  const root = document.querySelector('[data-terminal-drill="cmd"]');
+  if (root) initTerminalDrill({ root, shell: 'cmd', challenges: CMD_CHALLENGES });
+</script>

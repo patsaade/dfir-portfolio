@@ -1,0 +1,329 @@
+---
+// KQL Query Builder — a guided compose UI for Microsoft Defender XDR advanced
+// hunting and Microsoft Sentinel queries. Same page shape as the other
+// interactive tools (scope aside -> tool -> reference tables -> related ->
+// external resources). Static page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import KqlBuilder from '../../components/KqlBuilder.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { KQL_OPERATORS, KQL_TABLES } from '../../data/kql';
+import { KQL_EXAMPLE_HUNTS, buildKqlQuery } from '../../utils/kql';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const refTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' } as const;
+const refTd = css(refTdBase);
+const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' });
+const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary', whiteSpace: 'nowrap' });
+const bodyText = css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' });
+const mutedNote = css({ color: 'textMuted', fontSize: '0.88rem', mt: '1.5rem', lineHeight: 1.7 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85em', color: 'primary' });
+const linkStyle = css({ color: 'primary' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+
+const exampleCard = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '1rem 1.1rem',
+  mb: '1rem',
+});
+const exampleTitle = css({ fontSize: '1rem', fontWeight: 700, color: 'text', m: 0, mb: '0.35rem' });
+const exampleWhy = css({ color: 'textMuted', fontSize: '0.86rem', lineHeight: 1.65, m: 0, mb: '0.7rem' });
+const exampleCode = css({
+  m: 0,
+  p: '0.7rem 0.85rem',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  lineHeight: 1.7,
+  color: 'text',
+  bg: 'codeBg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  maxH: '18rem',
+  overflowY: 'auto',
+});
+
+// Rendered from the same pure builder the interactive tool uses, so what a
+// reader sees here cannot drift from what the tool would produce — and every
+// one of these strings is asserted character-for-character in test/kql.test.ts.
+const examples = KQL_EXAMPLE_HUNTS.map((e) => ({ ...e, query: buildKqlQuery(e.spec).query }));
+
+const defenderTables = KQL_TABLES.filter((t) => t.product === 'Microsoft Defender XDR');
+const sentinelTables = KQL_TABLES.filter((t) => t.product === 'Microsoft Sentinel');
+const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
+---
+
+<BaseLayout
+  title="KQL Query Builder"
+  description="Assemble a valid Kusto Query Language hunting query for Microsoft Defender XDR advanced hunting or Microsoft Sentinel against real, documented table columns — then copy it and run it in your own tenant."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'KQL Query Builder' }]}
+    eyebrow="Query Builders"
+    title="KQL Query Builder"
+    description="Pick a real Defender XDR or Sentinel table, add filters against its documented columns, and copy out valid KQL — a syntax builder, not a query engine."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This builder assembles <strong class={css({ color: 'text' })}>query text</strong>, nothing more. It has no
+      connection to any tenant, workspace, or API — it cannot run a query, and it never sees a single event. Everything
+      happens in your browser; you copy the result and run it yourself in the Microsoft Defender portal's advanced
+      hunting page or a Microsoft Sentinel Logs blade. It also covers a defined subset of KQL — a single-table
+      pipeline of filters, one summarize, a projection, a sort, and a row limit — not the whole language.
+    </p>
+  </aside>
+
+  <p class={bodyText}>
+    Kusto Query Language is the read-only query language behind Microsoft's security telemetry: the same syntax drives
+    advanced hunting in Microsoft Defender XDR, Log Analytics workspace queries in Microsoft Sentinel, and Azure Data
+    Explorer. A query is a pipeline — you name a table, then pipe it through operators that narrow, group, and shape
+    the rows, one <code class={inlineCode}>|</code> step at a time. That structure is what makes it a good{' '}
+    <Term slug="threat-hunting">threat hunting</Term> language: each step is small enough to reason about, and you can
+    delete the last one to see what you filtered away.
+  </p>
+  <p class={bodyText}>
+    The hard part when you're learning it usually isn't the operators. It's the schema — knowing that a Defender{' '}
+    <Term slug="edr">EDR</Term> table timestamps its rows in <code class={inlineCode}>Timestamp</code> while a{' '}
+    <Term slug="siem">SIEM</Term> workspace table uses <code class={inlineCode}>TimeGenerated</code>, that the parent
+    process lives in <code class={inlineCode}>InitiatingProcessFileName</code> rather than anything called
+    "ParentProcess", or that <code class={inlineCode}>has</code> matches whole indexed terms while{' '}
+    <code class={inlineCode}>contains</code> scans. This tool carries {columnCount} verified columns across{' '}
+    {KQL_TABLES.length} tables so you can build against the real names instead of guessing at them.
+  </p>
+
+  <h2 id="builder" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="search" size={20} class={css({ color: 'primary' })} /> Query builder
+  </h2>
+  <KqlBuilder />
+
+  <h2 id="starters" class={sectionH2}>
+    <Icon name="target" size={20} class={css({ color: 'primary' })} /> Starter hunts
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1.25rem' })}>
+    Each of these is loadable from the <strong class={css({ color: 'text' })}>Starter hunt</strong> dropdown above.
+    They are starting points for an investigation, not finished detections — every one of them will return benign
+    activity in a real environment and needs tuning against your own baseline before it means anything.
+  </p>
+  {
+    examples.map((example) => (
+      <div class={exampleCard}>
+        <h3 class={exampleTitle}>{example.title}</h3>
+        <p class={exampleWhy}>{example.rationale}</p>
+        <pre class={exampleCode}><code>{example.query}</code></pre>
+      </div>
+    ))
+  }
+
+  <h2 id="tables" class={sectionH2}>
+    <Icon name="layers" size={20} class={css({ color: 'primary' })} /> Tables covered
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    Two different product surfaces, and it matters which one you're in: the Defender tables are queried from the
+    Microsoft Defender portal's advanced hunting page, the Sentinel tables from a Log Analytics workspace. Each table
+    name below links to its own Microsoft Learn schema page — that page, not this one, is the authority on the full
+    column list.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Table</th>
+          <th class={refTh}>Time column</th>
+          <th class={refTh}>What it holds</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          KQL_TABLES.map((table) => (
+            <tr>
+              <td class={refTdCode}>
+                <a href={table.docUrl} target="_blank" rel="noopener" class={linkStyle}>{table.name}</a>
+              </td>
+              <td class={refTdCode}>{table.timeColumn}</td>
+              <td class={refTdMuted}>{table.blurb}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={mutedNote}>
+    {defenderTables.length} Defender XDR advanced hunting tables and {sentinelTables.length} Microsoft Sentinel
+    workspace tables. Advanced hunting keeps 30 days of Defender data per Microsoft's own documented quota (longer
+    only where it's streamed onward), each query can return at most 100,000 rows, and everything is stored and queried
+    in UTC — worth remembering before you write a time filter around a local-time incident window.
+  </p>
+
+  <h2 id="operators" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Filter operators
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    Case sensitivity is per-operator in KQL and it is not guessable from the name — <code class={inlineCode}>==</code>{' '}
+    is case-sensitive, <code class={inlineCode}>=~</code> is not, and getting it backwards silently changes what a
+    hunt matches. The <strong class={css({ color: 'text' })}>Case</strong> column below is taken from Microsoft's own
+    string-operator reference.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Operator</th>
+          <th class={refTh}>Case</th>
+          <th class={refTh}>Applies to</th>
+          <th class={refTh}>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          KQL_OPERATORS.map((operator) => (
+            <tr>
+              <td class={refTdCode}>{operator.symbol}</td>
+              <td class={refTd}>
+                {operator.caseSensitive === null ? '—' : operator.caseSensitive ? 'Sensitive' : 'Insensitive'}
+              </td>
+              <td class={refTdMuted}>{operator.kinds.join(', ')}</td>
+              <td class={refTdMuted}>{operator.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="scope" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> What this tool does not do
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.75, fontSize: '0.95rem', mb: '1rem' })}>
+    Deliberate scope cuts, stated plainly rather than left as surprises:
+  </p>
+  <ul class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.8, pl: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+    <li>
+      <strong class={css({ color: 'text' })}>No joins or unions.</strong> One table, one linear pipeline. Correlating
+      an email to a device event, or a Defender table to a Sentinel one, means writing the{' '}
+      <code class={inlineCode}>join</code> by hand.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>No OR grouping.</strong> Consecutive{' '}
+      <code class={inlineCode}>where</code> operators are AND-ed, which is exactly what the builder emits. For "any of
+      these values" use a list operator (<code class={inlineCode}>in~</code>,{' '}
+      <code class={inlineCode}>has_any</code>) rather than several rows; genuinely nested boolean logic needs
+      parentheses you'll have to add yourself.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>No JSON columns.</strong> Columns typed{' '}
+      <code class={inlineCode}>dynamic</code> — SigninLogs' <code class={inlineCode}>DeviceDetail</code> and{' '}
+      <code class={inlineCode}>Status</code>, the Defender tables' <code class={inlineCode}>AdditionalFields</code> —
+      are excluded, because filtering them usefully needs <code class={inlineCode}>tostring()</code> /{' '}
+      <code class={inlineCode}>parse_json()</code> unpacking this builder doesn't generate. Half-correct syntax would
+      be worse than none.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>No <code class={inlineCode}>project</code> after a{' '}
+      <code class={inlineCode}>summarize</code>.</strong> Once you aggregate, the pipeline only carries the group-by
+      keys and the aggregate, so a projection of the original columns would error. The builder drops the projection
+      and tells you it did.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>A curated column subset.</strong> Several of these tables document more
+      than sixty columns. Everything listed is verified against Microsoft's schema pages, but absence here never
+      means absence from the real table — use the in-product schema browser for the complete list.
+    </li>
+  </ul>
+  <p class={mutedNote}>
+    Anything the builder can't render correctly is dropped and reported rather than guessed at — an unparseable value
+    for a numeric column, a sort on a column the projection removed, an aggregate applied to a type that can't take
+    it. That's why the messages panel under the query sometimes tells you a step was skipped: the output is meant to
+    be paste-and-run, so it never emits syntax it knows is wrong.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="shield" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The portable, vendor-neutral counterpart. A Sigma rule describes{' '}
+        <Term slug="detection-rule">detection logic</Term> once and gets converted into a backend's own query
+        language — including KQL. Build the logic there when it needs to outlive one platform.
+      </p>
+    </div>
+    <div>
+      <a href="/event-ids/" class={toolChip}>
+        <Icon name="list" size={13} /> Windows Event ID Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The <code class={inlineCode}>SecurityEvent</code> table is keyed by <code class={inlineCode}>EventID</code>.
+        Look one up there before filtering on it, so you know what the event actually records and which fields it
+        populates.
+      </p>
+    </div>
+    <div>
+      <a href="/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Each technique page lists the telemetry MITRE says detects it — a good way to work backwards from a technique
+        you want to hunt to the table and columns that would actually show it.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/regex-tester/" class={toolChip}>
+        <Icon name="search" size={13} /> Regex Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Draft a pattern before dropping it behind <code class={inlineCode}>matches regex</code>. Note that the tester
+        runs JavaScript's engine, not Kusto's, so treat it as a first pass rather than a guarantee — and prefer
+        Microsoft's parse functions over regex where one exists.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['kql-builder']} />
+</BaseLayout>

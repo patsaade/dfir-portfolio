@@ -170,6 +170,29 @@ const confidenceRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', mt
     </div>
   </div>
 
+  {/* Cross-link to where the ATT&CK-mapped entries above actually lead */}
+  <a
+    href="/attack-map/"
+    class={css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      mt: '1.25rem',
+      p: '0.7rem 1rem',
+      borderRadius: 'md',
+      border: '1px solid token(colors.border)',
+      bg: 'bgCard',
+      fontSize: '0.9rem',
+      color: 'text',
+      transition: 'border-color 200ms ease, color 200ms ease',
+      _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+    })}
+  >
+    <Icon name="crosshair" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>See every technique a port here maps to — <strong class={css({ fontWeight: 700 })}>MITRE ATT&amp;CK Coverage Map</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
   {/* ── Browse by transport (jump-to overview strip) ── */}
   <GroupOverview items={groupTiles} heading="Browse by transport" />
 

@@ -43,7 +43,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Regex Tester' }]}
-    eyebrow="Triage & Correlation"
+    eyebrow="Extractors"
     title="DFIR Regex Tester & Pattern Library"
     description="Test a pattern against sample text with live match highlighting and a capture-group breakdown, or start from a library of common DFIR patterns."
   />
@@ -60,9 +60,8 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     })}
   >
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
-      Everything here runs entirely in your browser — <strong class={css({ color: 'text' })}>no external APIs, no
-      upload, nothing you type or paste ever leaves your machine</strong>. The pattern, flags, and sample text are
-      evaluated locally with JavaScript's own regex engine as you type.
+      The pattern, flags, and sample text are evaluated locally with JavaScript's own regex engine as you type —
+      nothing you type or paste here ever leaves your machine.
     </p>
   </aside>
 
@@ -129,7 +128,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   <div class={relatedList}>
     <div>
       <a href="/tools/deobfuscator/" class={toolChip}>
-        <Icon name="key" size={13} /> Deobfuscation Recipe Builder <Icon name="arrow-right" size={13} />
+        <Icon name="key" size={13} /> Codec Builder <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>Working with an obfuscated blob? Peel it back here before you go pattern-hunting.</p>
     </div>
@@ -149,6 +148,15 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       <p class={relatedReason}>
         Once a pattern is solid, drop it straight into a Sigma rule's |re modifier and test it live against
         sample events.
+      </p>
+    </div>
+    <div>
+      <a href="/drills/regex/" class={toolChip}>
+        <Icon name="search" size={13} /> RegEx Range Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Practice writing patterns from scratch against progressively harder challenges, graded live by this
+        same engine.
       </p>
     </div>
   </div>

@@ -9,6 +9,7 @@ import {
   parseEventLine,
   generateYaml,
   buildConditionString,
+  parseSigmaYaml,
   STARTER_RULE,
   STARTER_EVENTS,
   type SigmaFieldValue,
@@ -298,6 +299,98 @@ describe('generateYaml — read-only rendering of builder state', () => {
       condition: 's',
     };
     expect(generateYaml(rule)).toContain('{}');
+  });
+});
+
+describe('parseSigmaYaml — import side of generateYaml (round-trips its own output shape only)', () => {
+  it('round-trips generateYaml(STARTER_RULE) back into the exact same rule, ignoring the leading comment lines', () => {
+    const yaml = generateYaml(STARTER_RULE);
+    expect(yaml.startsWith('# Generated from')).toBe(true); // sanity: the comment lines really are there to be skipped
+    const { rule, error } = parseSigmaYaml(yaml);
+    expect(error).toBeNull();
+    expect(rule).toEqual(STARTER_RULE);
+  });
+
+  it('parses an empty selection body ("{}") as a selection with zero field rows', () => {
+    const yaml = ['title: t', 'detection:', '  selection_empty:', '    {}', '  condition: selection_empty'].join('\n');
+    const { rule, error } = parseSigmaYaml(yaml);
+    expect(error).toBeNull();
+    expect(rule).toEqual({ title: 't', selections: [{ name: 'selection_empty', fields: [] }], condition: 'selection_empty' });
+  });
+
+  it('parses a field row using the |re modifier', () => {
+    const yaml = ['title: t', 'detection:', '  selection1:', '    CommandLine|re: ^cmd\\.exe', '  condition: selection1'].join('\n');
+    const { rule, error } = parseSigmaYaml(yaml);
+    expect(error).toBeNull();
+    expect(rule?.selections).toEqual([{ name: 'selection1', fields: [{ field: 'CommandLine', modifier: 're', value: '^cmd\\.exe' }] }]);
+  });
+
+  it('rejects an unrecognized modifier with a specific error naming it', () => {
+    const yaml = ['title: t', 'detection:', '  selection1:', '    Field|bogus: x', '  condition: selection1'].join('\n');
+    const { rule, error } = parseSigmaYaml(yaml);
+    expect(rule).toBeNull();
+    expect(error).toMatch(/bogus/);
+    expect(error).toMatch(/equals|contains|startswith|endswith|re/);
+  });
+
+  it('surfaces the same "mixed and/or" error parseCondition already reports, rather than duplicating that logic', () => {
+    const yaml = [
+      'title: t',
+      'detection:',
+      '  selection1:',
+      '    A: 1',
+      '  selection2:',
+      '    B: 2',
+      '  selection3:',
+      '    C: 3',
+      '  condition: selection1 and selection2 or selection3',
+    ].join('\n');
+    const { rule, error } = parseSigmaYaml(yaml);
+    expect(rule).toBeNull();
+    const expectedError = parseCondition('selection1 and selection2 or selection3').error;
+    expect(expectedError).toBeTruthy();
+    expect(error).toBe(expectedError);
+  });
+
+  it('never throws on completely garbage input, and reports a specific missing-title/detection error', () => {
+    expect(() => parseSigmaYaml('this is not yaml at all, just prose')).not.toThrow();
+    const { rule, error } = parseSigmaYaml('this is not yaml at all, just prose');
+    expect(rule).toBeNull();
+    expect(error).toMatch(/title/i);
+  });
+
+  it('reports a specific missing-detection error when title is present but detection is not', () => {
+    const { rule, error } = parseSigmaYaml('title: Just a title\nno detection here');
+    expect(rule).toBeNull();
+    expect(error).toMatch(/detection/i);
+  });
+
+  it('reports a specific error for list-valued fields (OR-list shorthand) rather than crashing', () => {
+    const withNestedList = ['title: t', 'detection:', '  selection1:', '    Field:', '      - a', '      - b', '  condition: selection1'].join('\n');
+    expect(() => parseSigmaYaml(withNestedList)).not.toThrow();
+    expect(parseSigmaYaml(withNestedList).rule).toBeNull();
+    expect(parseSigmaYaml(withNestedList).error).toMatch(/list/i);
+
+    const withBracketList = ['title: t', 'detection:', '  selection1:', '    Field: [a, b]', '  condition: selection1'].join('\n');
+    expect(parseSigmaYaml(withBracketList).rule).toBeNull();
+    expect(parseSigmaYaml(withBracketList).error).toMatch(/list/i);
+  });
+
+  it('reports a specific out-of-scope error for logsource/level/tags rather than silently dropping them', () => {
+    const yaml = ['title: t', 'logsource:', '  category: process_creation', 'detection:', '  selection1:', '    A: 1', '  condition: selection1'].join('\n');
+    const { rule, error } = parseSigmaYaml(yaml);
+    expect(rule).toBeNull();
+    expect(error).toMatch(/logsource/i);
+  });
+
+  it('is not thrown off by a bare field-name (equals) row mixed with a modifier row', () => {
+    const yaml = ['title: t', 'detection:', '  selection1:', '    EventID: 4104', '    Image|endswith: \\powershell.exe', '  condition: selection1'].join('\n');
+    const { rule, error } = parseSigmaYaml(yaml);
+    expect(error).toBeNull();
+    expect(rule?.selections[0].fields).toEqual([
+      { field: 'EventID', modifier: 'equals', value: '4104' },
+      { field: 'Image', modifier: 'endswith', value: '\\powershell.exe' },
+    ]);
   });
 });
 

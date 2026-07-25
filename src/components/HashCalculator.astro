@@ -109,6 +109,25 @@ const fileBtn = css({
 });
 const fileName = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
 
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end' });
+const resetBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
 const resultStack = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
 const resultRow = css({ display: 'flex', alignItems: 'center', gap: '0.6rem' });
 const resultBadge = css({ flexShrink: 0, w: '5.5rem', fontFamily: 'sans', fontSize: '0.78rem', fontWeight: 700, color: 'text' });
@@ -181,11 +200,17 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
 ---
 
 <WorkspaceShell hook="data-hash-calc" noJsMessage="The hash calculator needs JavaScript enabled." gap="1.25rem">
+    <div class={actionRow}>
+      <button type="button" class={resetBtn} data-hash-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+        <Icon name="rotate-cw" size={13} /> Reset
+      </button>
+    </div>
+
     {/* Compute */}
     <div>
       <p class={paneLabel}>Compute — text or a local file (never uploaded)</p>
       <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' })}>
-        <div class={modeRow} role="radiogroup" aria-label="Input source">
+        <div class={modeRow} role="radiogroup" aria-label="Input source" data-session-field="mode">
           <button type="button" role="radio" aria-checked="true" data-active data-hash-mode="text" data-sound="tick" class={modeBtn}>Text</button>
           <button type="button" role="radio" aria-checked="false" data-hash-mode="file" data-sound="tick" class={modeBtn}>File</button>
         </div>
@@ -193,6 +218,7 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
         <textarea
           class={textarea}
           data-hash-text
+          data-session-field="text"
           placeholder="Paste text to hash…"
           autocomplete="off"
           spellcheck="false"
@@ -234,6 +260,7 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
           autocomplete="off"
           spellcheck="false"
           data-hash-verify
+          data-session-field="verify"
         />
         <div class={verifyResult} data-hash-verify-result role="status" aria-live="polite"></div>
       </div>
@@ -251,6 +278,7 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
           autocomplete="off"
           spellcheck="false"
           data-hash-identify
+          data-session-field="identify"
         />
         <div class={candidateList} data-hash-identify-results role="status" aria-live="polite"></div>
         <template data-hash-candidate-template>
@@ -270,6 +298,7 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
   // @ts-nocheck — vanilla DOM client script
   import { computeAllHashes, identifyHash, HASH_ALGORITHMS } from '../utils/hashes';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     function init() {
@@ -416,6 +445,11 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
             navigator.clipboard.writeText(text).then(function () { pop(btn); }).catch(function () {});
           });
         });
+
+        // Session persistence: restores Input source / text / verify / identify
+        // across visits, and wires the Reset button to clear stored state and
+        // restore every bound field to its server-rendered default.
+        persistToolSession({ root: root, resetButton: '[data-hash-reset]' });
 
         root.setAttribute('data-ready', '');
       });

@@ -11,6 +11,15 @@ import type { IconName } from '../components/Icon.astro';
 import { SOCIALS } from '../consts';
 import { FEATURED_CERTS, PURSUING_CERTS } from '../data/certifications';
 import { prosePara } from '../styles/prose';
+import { roleDurationMonths, companyTotalMonths, formatDuration, type MonthYear } from '../utils/experience';
+
+// Computed once, at build time — see src/utils/experience.ts's header
+// comment for why every duration function takes this in rather than
+// calling `new Date()` itself. This is what keeps a "Present" role's month
+// count current: the site's daily 00:10 UTC redeploy (CLAUDE.md invariant
+// 10) re-runs this on every rebuild.
+const now = new Date();
+const buildNow: MonthYear = { year: now.getFullYear(), month: now.getMonth() };
 
 const expertise = [
   'Memory forensics',
@@ -157,14 +166,14 @@ const connectLink = css({
   <PageHeader breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'About' }]} eyebrow="About" title="Patrick Saade" description="Security analyst going deep on DFIR. I investigate what happened, when, and how — then prove it." />
 
   <p class={para}>
-    I'm a Senior Information Security Analyst at
+    I'm a Senior Information Security Analyst at{' '}
     <strong class={css({ color: 'text' })}>First American</strong>, working the Information
     Security Operations Center — monitoring SIEM, cloud, endpoint, and email-security alerts,
     and driving detection-and-response and incident response (including escalations with our
-    MSSP). Before this I was a Threat Response Engineer at
-    <strong class={css({ color: 'text' })}>Red Canary</strong> (now part of
+    MSSP). Before this I was a Threat Response Engineer at{' '}
+    <strong class={css({ color: 'text' })}>Red Canary</strong> (now part of{' '}
     <strong class={css({ color: 'text' })}>Zscaler</strong>), running live response and
-    containment for confirmed endpoint threats, and I came up through the SOC at
+    containment for confirmed endpoint threats, and I came up through the SOC at{' '}
     <strong class={css({ color: 'text' })}>ReliaQuest</strong>, from alert triage to detection
     engineering.
   </p>
@@ -217,6 +226,18 @@ const connectLink = css({
               <div class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' })}>
                 <h3 class={css({ fontWeight: 700, fontSize: '1.1rem' })}>{company.company}</h3>
                 {company.current && <Badge variant="accent">Current</Badge>}
+                {(() => {
+                  // Only surface a "total" badge when it adds information a
+                  // single role's own duration wouldn't already show — a
+                  // one-role company would just repeat the same number twice.
+                  if (company.roles.length < 2) return null;
+                  const total = companyTotalMonths(company.roles.map((r) => r.period), buildNow);
+                  return total !== null ? (
+                    <span class={css({ color: 'textMuted', fontFamily: 'sans', fontSize: '0.78rem', fontWeight: 600 })}>
+                      {formatDuration(total)} total
+                    </span>
+                  ) : null;
+                })()}
               </div>
               <p class={css({ color: 'textMuted', fontFamily: 'sans', fontSize: '0.82rem', mt: '0.2rem' })}>
                 {company.meta}
@@ -258,6 +279,10 @@ const connectLink = css({
                   <span class={css({ fontWeight: 600 })}>{role.title}</span>
                   <span class={css({ color: 'textMuted', fontFamily: 'sans', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' })}>
                     <Icon name="calendar" size={12} /> {role.period}
+                    {(() => {
+                      const months = roleDurationMonths(role.period, buildNow);
+                      return months !== null ? <>&nbsp;· {formatDuration(months)}</> : null;
+                    })()}
                   </span>
                 </div>
                 {role.note && (
@@ -407,7 +432,7 @@ const connectLink = css({
   <p class={para}>
     Most of the content here is forged in a home lab running Velociraptor for endpoint
     collection and SANS SIFT for analysis — plus memory acquisition tooling and a
-    Plaso/Timesketch timeline pipeline. See the
+    Plaso/Timesketch timeline pipeline. See the{' '}
     <a href="/tools/" class={css({ color: 'primary', textDecoration: 'underline' })}>Tools</a> page for the full stack.
   </p>
 

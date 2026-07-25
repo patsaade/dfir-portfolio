@@ -1,0 +1,135 @@
+---
+// Threat Actor / APT Drill — one of the /drills/* knowledge-check modules
+// (see src/pages/drills/index.astro). Most questions are generated from
+// THREAT_ACTORS (src/data/threatActors.ts), the same MITRE-STIX-generated
+// dataset the full /threat-actors/ reference and its per-group detail pages
+// render; the naming-convention questions (mode: 'namingConvention') instead
+// trace to src/data/threatActorNaming.ts's VENDOR_NAMING_SCHEMES — see
+// src/data/drills/threatActorsDrill.ts for the pure, deterministic generator
+// (and its own header comment for the full two-source breakdown). Shares the
+// DrillEngine.astro/drillEngine.ts quiz shell with the other modules;
+// nothing here reimplements grading/progress/state.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import Icon from '../../../components/Icon.astro';
+import Term from '../../../components/Term.astro';
+import DrillEngine from '../../../components/DrillEngine.astro';
+import { toolChip } from '../../../components/RelatedTools.astro';
+import ExternalResources from '../../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
+import { THREAT_ACTORS_TOTAL } from '../../../data/threatActors';
+import { getThreatActorsQuestion, THREAT_ACTORS_DRILL_TOTAL } from '../../../data/drills/threatActorsDrill';
+
+const TOTAL = THREAT_ACTORS_DRILL_TOTAL;
+// Computed at build time so a no-JS visitor sees a real first question —
+// initDrill()'s own client-side nextQuestion(0) call reproduces this exact
+// value (the generator is a deterministic lookup, not Math.random()).
+const q0 = getThreatActorsQuestion(0);
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="Threat Actor / APT Drill"
+  description="A knowledge-check drill on real MITRE ATT&CK threat actor groups and vendor naming conventions — resolve aliases and malware to the group behind them, and apply CrowdStrike/Microsoft/Mandiant/Secureworks's own real naming rules to new fact patterns — generated from this site's own Threat Actor / APT Reference."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'Threat Actor / APT' }]}
+    eyebrow="Practice"
+    title="Threat Actor / APT Drill"
+    description="Resolve aliases and malware/tool names to the group behind them, understand how each vendor's naming scheme actually works, and apply those real rules to new fact patterns — generated from the real MITRE ATT&CK group data and verified vendor-taxonomy facts behind this site's Threat Actor / APT Reference."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This is a knowledge-check drill built from two separately-verified sources, and deliberately skips pure
+      recall (no "type this group's MITRE ID from memory") in favor of questions that mirror real analyst work.
+      Most questions come from real MITRE data — the {THREAT_ACTORS_TOTAL}-group Threat Actor / APT Reference,
+      generated from MITRE's own Enterprise ATT&amp;CK STIX bundle — asking you to resolve a distinguishing fact,
+      an alias, or a malware/tool name to the group behind it, the same correlation work reading multiple threat
+      intel reports actually requires. The rest come from the reference's own{' '}
+      <a href="/threat-actors/#naming-conventions" class={css({ color: 'primary' })}>naming conventions</a>{' '}
+      section — hand-verified facts about how MITRE, Mandiant, CrowdStrike, Microsoft, and Secureworks each derive
+      their own <Term slug="threat-actor">threat-actor</Term> names, plus questions that apply those real rules to
+      a new fact pattern rather than just recalling one memorized example. Nothing here is invented trivia.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    Questions ask you to resolve a real alias or malware/tool name to the group behind it, name the group
+    matching a distinguishing real-world fact, explain how a specific vendor's own naming scheme works (e.g.
+    what CrowdStrike's "Panda" qualifier indicates, or what letter prefix Mandiant uses for a
+    financially-motivated group), or apply a vendor's own real rule to a new scenario (e.g. what code
+    Secureworks would assign a newly attributed North Korea-nexus group) — free-text recall, no multiple choice. Where
+    several answers are valid (an alias, an accepted phrasing of a naming fact), any one of them is graded
+    correct.
+  </p>
+
+  <DrillEngine
+    drill="threat-actors"
+    heading="Threat Actor / APT Drill"
+    intro="Resolve aliases and malware to the group behind them, understand how vendor naming schemes work, and apply those real rules to new fact patterns. A hint is available on every challenge."
+    totalQuestions={TOTAL}
+    firstQuestion={q0}
+  />
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="user" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/threat-actors/" class={toolChip}>
+        <Icon name="user" size={13} /> Threat Actor / APT Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Browse the full {THREAT_ACTORS_TOTAL}-group reference this drill draws from — every group's aliases,
+        documented techniques, and malware/tools, plus a{' '}
+        <a href="/threat-actors/#naming-conventions" class={css({ color: 'primary' })}>naming conventions</a>{' '}
+        section on how MITRE/Mandiant/CrowdStrike/Microsoft/Secureworks each name the same tracked activity.
+      </p>
+    </div>
+    <div>
+      <a href="/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        See the full technique behind this drill's technique-recall questions — detection telemetry,
+        real-world procedure examples, and mitigations for each.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['threat-actors']} />
+</BaseLayout>
+
+<script>
+  import { initDrill } from '../../../scripts/drillEngine';
+  import { getThreatActorsQuestion, THREAT_ACTORS_DRILL_TOTAL } from '../../../data/drills/threatActorsDrill';
+  const root = document.querySelector('[data-drill="threat-actors"]');
+  if (root) initDrill({ root, totalQuestions: THREAT_ACTORS_DRILL_TOTAL, nextQuestion: getThreatActorsQuestion });
+</script>

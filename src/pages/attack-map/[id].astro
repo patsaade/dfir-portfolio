@@ -158,8 +158,8 @@ const refLink = css({ display: 'inline-flex', alignItems: 'center', gap: '0.5rem
       </ul>
       {tech.examplesTotal && tech.examplesTotal > tech.examples.length && (
         <p class={css({ fontSize: '0.8rem', color: 'textMuted', mt: '0.85rem' })}>
-          A sample of {tech.examplesTotal} documented uses — the
-          <a href={tech.url} target="_blank" rel="noopener" class={css({ color: 'primary', mx: '0.25rem', _hover: { textDecoration: 'underline' } })}>MITRE page</a>
+          A sample of {tech.examplesTotal} documented uses — the{' '}
+          <a href={tech.url} target="_blank" rel="noopener" class={css({ color: 'primary', mx: '0.25rem', _hover: { textDecoration: 'underline' } })}>MITRE page</a>{' '}
           has the full list.
         </p>
       )}

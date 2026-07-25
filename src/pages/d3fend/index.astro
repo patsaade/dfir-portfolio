@@ -111,7 +111,7 @@ const anchored = new Set<string>();
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'MITRE D3FEND Map' }]}
-    eyebrow="Countermeasures"
+    eyebrow="Frameworks"
     title="MITRE D3FEND Map"
     description="The defensive counterpart to ATT&CK — defensive techniques grouped by tactic. Each links to its official D3FEND page and detail entry, and many map to the ATT&CK techniques they counter."
   />
@@ -120,7 +120,7 @@ const anchored = new Set<string>();
     class={css({ bg: 'bgSubtle', border: '1px solid token(colors.border)', borderLeftWidth: '3px', borderLeftColor: 'primary', borderRadius: 'md', p: '1rem 1.25rem', mb: '1.5rem' })}
   >
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
-      <strong class={css({ color: 'text' })}>MITRE D3FEND</strong> — a knowledge graph of <em>defensive</em>
+      <strong class={css({ color: 'text' })}>MITRE D3FEND</strong> — a knowledge graph of <em>defensive</em>{' '}
       techniques, the counterpart to ATT&CK's offensive one. <em>Tactics</em> are defensive goals
       (Model, Harden, Detect, Isolate, Deceive, Evict, Restore); <em>techniques</em> are the specific
       countermeasures. D3FEND ties each technique to the ATT&CK techniques it <em>counters</em>, so a

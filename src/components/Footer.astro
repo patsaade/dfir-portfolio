@@ -113,6 +113,11 @@ const dfirFooterLinks = [
     <nav aria-label="Footer — site sections">
       <p class={colHead}>Explore</p>
       {NAV_LINKS.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
+      {/* IT and Drills are nav dropdowns, not NAV_LINKS entries (see
+          Navigation.astro), so each needs its own row here rather than
+          coming along for free. */}
+      <a href="/it/" class={fLink}>IT</a>
+      <a href="/drills/" class={fLink}>Drills</a>
     </nav>
 
     {/* DFIR */}

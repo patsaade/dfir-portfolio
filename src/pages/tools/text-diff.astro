@@ -1,0 +1,131 @@
+---
+// Text Diff Tool — line-based diff between two blocks of text (a baseline
+// config vs. what's currently running, two exported log windows, a script
+// before and after an obfuscation layer was stripped), entirely client-side
+// (src/utils/textDiff.ts — a from-scratch LCS diff, no dependency). Same
+// page shape as the Hash Calculator / IOC Extractor (intro aside ->
+// interactive tool -> reference notes). Static page — prerender to HTML
+// served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import TextDiffTool from '../../components/TextDiffTool.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { MAX_DIFF_LINES } from '../../utils/textDiff';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="Text Diff Tool"
+  description="Compare two blocks of text — logs, configs, scripts — and see exactly which lines were added, removed, or left unchanged. A from-scratch line-based diff, entirely in your browser, nothing uploaded."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Text Diff Tool' }]}
+    eyebrow="Converters"
+    title="Text Diff Tool"
+    description="Paste a baseline and a current version of the same text and see exactly what changed, line by line — entirely local."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      The diff runs on a from-scratch implementation of the same longest-common-subsequence approach behind{' '}
+      <code class={css({ fontFamily: 'mono', fontSize: '0.88em', color: 'primary' })}>diff</code>/
+      <code class={css({ fontFamily: 'mono', fontSize: '0.88em', color: 'primary' })}>git diff</code> — entirely in
+      your browser, so nothing you paste on either side is ever transmitted anywhere. Each side is capped at{' '}
+      {MAX_DIFF_LINES.toLocaleString()} lines to keep that comparison fast and local; a pasted input over that cap
+      is compared using only its first {MAX_DIFF_LINES.toLocaleString()} lines, and the diff view flags it.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    A surprising amount of DFIR work comes down to "what's different between these two things." Two exports of
+    the same log source, taken an hour apart — did anything get appended, or quietly pruned? Two copies of a
+    startup script or scheduled task, one from a known-good host and one from a suspect one — which lines did an
+    attacker actually touch? A "before" and "after" of a config file bracketing an incident window? Reading two
+    blobs of text side by side and spotting every difference by eye doesn't scale past a handful of lines — this
+    tool does that comparison for you and highlights exactly what changed.
+  </p>
+
+  <h2 id="tool" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="columns" size={20} class={css({ color: 'primary' })} /> Compare
+  </h2>
+  <TextDiffTool />
+
+  <h2 id="how-it-works" class={sectionH2}>
+    <Icon name="book-open" size={20} class={css({ color: 'primary' })} /> Reading the diff
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.75, m: 0 })}>
+    Every line is classified against the other side: unchanged lines are shown for context, a line only present in
+    <strong class={css({ color: 'text' })}> Baseline</strong> is marked removed, and a line only present in
+    <strong class={css({ color: 'text' })}> Current</strong> is marked added. A single edited line therefore shows
+    up as a removed/added pair rather than an in-place change — matching that classification happens at the line
+    level, not automatically merging an edit into one row, which keeps it fast and matches how most log and config
+    comparisons actually get read. When a removed line and an added line pair up this way, a second word-level pass
+    highlights exactly which words within that line changed, so a one-word edit reads as one highlighted word, not
+    an entire line marked as different. The gutter on each row carries that line's number in whichever side(s) it
+    appears in, so you can jump straight to the matching spot in the original file.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/hash-calculator/" class={toolChip}>
+        <Icon name="hash" size={13} /> Hash Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Hash both versions first — if the hashes match, there's nothing to diff; if they don't, this tool shows you
+        exactly where they diverge.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/deobfuscator/" class={toolChip}>
+        <Icon name="key" size={13} /> Codec Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Comparing two versions of an obfuscated script? Peel each one back here first, then diff the cleaned-up
+        output instead of the encoded blob.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/ioc-extractor/" class={toolChip}>
+        <Icon name="alert-triangle" size={13} /> IOC Extractor <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Once a diff surfaces the new lines in a log export, run just that added content through the extractor to
+        pull out any indicators it introduced.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['text-diff']} />
+</BaseLayout>

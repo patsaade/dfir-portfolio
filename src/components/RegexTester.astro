@@ -119,6 +119,10 @@ const addRowBtn = css({
   transition: 'all 150ms ease',
   _hover: { color: 'primary', borderColor: 'primary' },
 });
+// Layout wrapper for the row of small buttons under the pattern list — same
+// flex/gap recipe EmailHeaderAnalyzer.astro uses for its own actionRow (a
+// plain layout utility, not a new button visual style).
+const actionRow = css({ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', mt: '0.6rem' });
 const rowStatus = css({ fontFamily: 'mono', fontSize: '0.78rem', color: 'textMuted', minH: '1.2em', wordBreak: 'break-word' });
 
 const libraryGrid = css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' });
@@ -249,12 +253,23 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
         </div>
       </div>
     </div>
-    <button type="button" class={addRowBtn} data-regex-add-row data-sound="tick">+ Add pattern</button>
+    <div class={actionRow}>
+      <button type="button" class={addRowBtn} data-regex-add-row data-sound="tick">+ Add pattern</button>
+      <button type="button" class={addRowBtn} data-regex-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+        <Icon name="rotate-cw" size={14} /> Reset
+      </button>
+    </div>
   </div>
 
   {/* Pattern library */}
   <div>
     <p class={paneLabel}>Pattern library — click to load</p>
+    <p class={css({ fontFamily: 'sans', fontSize: '0.78rem', color: 'textMuted', mt: '-0.4rem', mb: '0.6rem' })}>
+      Need the underlying syntax instead? See the{' '}
+      <a href="/tools/regex-cheatsheet/" class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>
+        full regex syntax reference
+      </a>.
+    </p>
     <div class={libraryGrid}>
       {
         DFIR_REGEX_PATTERNS.map((p) => (
@@ -290,6 +305,7 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
       placeholder="Paste sample text here — matches highlight live as you type a pattern above."
       spellcheck="false"
       data-regex-sample
+      data-session-field="sample"
     ></textarea>
   </div>
 
@@ -357,6 +373,7 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
   // @ts-nocheck — vanilla DOM client script
   import { DFIR_REGEX_PATTERNS, compileRegexSafely, findAllMatches } from '../utils/regexPatterns';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   // Fixed 6-color palette, cycled by row position (not by insertion order —
   // recomputed from current DOM order on every add/remove so colors always
@@ -385,6 +402,24 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
         var markTemplate = root.querySelector('[data-regex-mark-template]');
         var groupRowTemplate = root.querySelector('[data-regex-group-row-template]');
         if (!rowsContainer || !rowTemplate || !sampleInput || !highlightEl || !markTemplate || !groupRowTemplate) return;
+
+        // Session persistence for the pattern-rows array (the sample textarea
+        // is a plain auto-bound field via data-session-field="sample" below;
+        // the dynamic list of pattern rows is "OTHER/wizard" state — it's
+        // serialized/restored through this tool's own addRow(), never through
+        // data-session-field, since rows are added/removed at runtime and
+        // toolSession only auto-binds what exists under `root` at init time).
+        // `session` starts null and is assigned once persistToolSession() is
+        // called near the end of init; scheduleSessionSave() is a no-op until
+        // then, which only matters for a call reachable before that point (it
+        // isn't — see wiring below).
+        var session = null;
+        var sessionSaveTimer = null;
+        function scheduleSessionSave() {
+          if (!session) return;
+          clearTimeout(sessionSaveTimer);
+          sessionSaveTimer = setTimeout(function () { session.save(); }, 200);
+        }
 
         function rows() {
           return Array.prototype.slice.call(rowsContainer.querySelectorAll('[data-regex-pattern-row]'));
@@ -425,11 +460,15 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
           var input = row.querySelector('[data-regex-pattern-input]');
           var flagBtnsForRow = Array.prototype.slice.call(row.querySelectorAll('[data-regex-flag]'));
           var removeBtn = row.querySelector('[data-regex-row-remove]');
-          input.addEventListener('input', scheduleRecompute);
+          input.addEventListener('input', function () {
+            scheduleRecompute();
+            scheduleSessionSave();
+          });
           flagBtnsForRow.forEach(function (b) {
             b.addEventListener('click', function () {
               b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
               scheduleRecompute();
+              scheduleSessionSave();
             });
           });
           if (removeBtn) {
@@ -438,6 +477,7 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
               row.remove();
               updateRowChrome();
               recompute();
+              scheduleSessionSave();
             });
           }
         }
@@ -588,6 +628,7 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
         addRowBtn.addEventListener('click', function () {
           var row = addRow('', 'g');
           recompute();
+          scheduleSessionSave();
           var input = row.querySelector('[data-regex-pattern-input]');
           if (input) input.focus();
         });
@@ -614,6 +655,7 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
             }
             if (libCaption) libCaption.textContent = 'Loaded ' + p.label + ' — ' + p.description;
             recompute();
+            scheduleSessionSave();
           });
         });
 
@@ -628,6 +670,66 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
             if (!p) return;
             navigator.clipboard.writeText(p.pattern).then(function () { pop(b); }).catch(function () {});
           });
+        });
+
+        // Session persistence — serializes/restores the whole pattern-rows
+        // array via this tool's own addRow(), since it's dynamic "OTHER"
+        // state that data-session-field's auto-binding can't cover (rows are
+        // added/removed at runtime, not fixed at init).
+        function serializePatternRows() {
+          return rows().map(function (row) {
+            var input = row.querySelector('[data-regex-pattern-input]');
+            return { pattern: input ? input.value : '', flags: rowFlags(row) };
+          });
+        }
+
+        function restorePatternRows(data) {
+          if (!Array.isArray(data) || !data.length) return;
+          rows().forEach(function (row) { row.remove(); });
+          data.forEach(function (item) {
+            if (!item || typeof item.pattern !== 'string') return;
+            // addRow()'s own `if (flags)` check treats an empty flags string
+            // (all four toggles off — a valid, reachable state) the same as
+            // "not provided", leaving its template default ('g' only) in
+            // place. Re-apply the saved flags explicitly afterward so a
+            // saved zero-flag row restores as zero-flag, not silently 'g'.
+            var row = addRow(item.pattern, 'g');
+            var flagsStr = typeof item.flags === 'string' ? item.flags : 'g';
+            Array.prototype.slice.call(row.querySelectorAll('[data-regex-flag]')).forEach(function (b) {
+              b.setAttribute('aria-pressed', String(flagsStr.indexOf(b.getAttribute('data-regex-flag')) !== -1));
+            });
+          });
+          if (!rows().length) addRow('', 'g'); // always keep at least one row
+          recompute();
+        }
+
+        // Restores the TRUE server-rendered default: exactly one row, empty
+        // pattern, only the `g` flag active (matches the static markup's own
+        // initial row) — not just a blanked-out state.
+        function resetPatternRows() {
+          var list = rows();
+          for (var i = list.length - 1; i > 0; i--) {
+            list[i].remove();
+          }
+          var first = rows()[0];
+          if (first) {
+            var firstInput = first.querySelector('[data-regex-pattern-input]');
+            if (firstInput) firstInput.value = '';
+            Array.prototype.slice.call(first.querySelectorAll('[data-regex-flag]')).forEach(function (b) {
+              b.setAttribute('aria-pressed', b.getAttribute('data-regex-flag') === 'g' ? 'true' : 'false');
+            });
+          }
+          updateRowChrome();
+          if (libCaption) libCaption.textContent = '';
+          recompute();
+        }
+
+        session = persistToolSession({
+          root: root,
+          resetButton: '[data-regex-reset]',
+          serialize: serializePatternRows,
+          restore: restorePatternRows,
+          onReset: resetPatternRows,
         });
 
         recompute();

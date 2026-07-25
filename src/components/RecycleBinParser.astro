@@ -1,0 +1,712 @@
+---
+// Recycle Bin ($I) Parser — decode one $I metadata file from
+// C:\$Recycle.Bin\<SID>\ (src/utils/recycleBin.ts), entirely client-side. A
+// chosen file is read locally via File#arrayBuffer() and never uploaded;
+// pasted hex works the same way. Both documented format versions are handled
+// — version 1 (Vista/7/8/8.1, a fixed 544-byte record) and version 2
+// (Windows 10/11, a length-prefixed variable record) — and the version
+// actually found is shown rather than assumed. Same "Scratch-inspired
+// workspace" visual language and shared input-source switch as the MFT & USN
+// Analyzer. Genuinely requires JS (parsing has no static fallback), so the
+// workspace stays hidden until the script confirms it's running.
+import { css } from 'styled-system/css';
+import { tag } from 'styled-system/recipes';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { SAMPLE_V2_HEX } from '../utils/recycleBin';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+});
+
+// position: relative + zIndex: 0 is the entire retrofit contract for
+// src/scripts/animatedSwitch.ts's site-wide sliding-thumb switch (see
+// CLAUDE.md invariant 12) — matches ModeToggle/MftUsnAnalyzer exactly.
+const switchRow = css({
+  position: 'relative',
+  zIndex: 0,
+  display: 'inline-flex',
+  gap: '0.15rem',
+  p: '0.2rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const switchBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  px: '0.8rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  borderRadius: 'sm',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'text' },
+  '&[data-active]': { bg: 'bgSubtle', color: 'primary', borderColor: 'border', boxShadow: 'card' },
+});
+const switchesRow = css({ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' });
+const switchField = css({ display: 'flex', flexDirection: 'column', gap: '0.3rem' });
+
+const textarea = css({
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.7rem 0.85rem',
+  minH: '7rem',
+  w: '100%',
+  resize: 'vertical',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+const fileRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  flexWrap: 'wrap',
+  bg: 'bgCard',
+  border: '1px dashed token(colors.border)',
+  borderRadius: 'md',
+  p: '0.9rem',
+  // The `hidden` attribute alone can't beat this element's own unconditional
+  // `display: flex` (author-origin CSS always wins over the UA stylesheet's
+  // `[hidden]{display:none}`, regardless of specificity) — needs an explicit
+  // override. See CLAUDE.md's `[hidden]` cascade gotcha.
+  '&[hidden]': { display: 'none' },
+});
+const fileBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  fontWeight: 600,
+  px: '0.8rem',
+  py: '0.45rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgSubtle',
+  color: 'text',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+const fileNameText = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
+
+const statusBox = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, m: 0 });
+
+// The headline result: the recovered original path, deliberately the largest
+// thing on screen — it's the single field an analyst is usually here for.
+const headlineWrap = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+});
+const headlineBox = css({
+  flex: 1,
+  minW: 0,
+  m: 0,
+  fontFamily: 'mono',
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  color: 'primary',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.8rem',
+  py: '0.6rem',
+  maxH: '7rem',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  wordBreak: 'break-word',
+  whiteSpace: 'pre-wrap',
+});
+
+const resultStack = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+const resultRow = css({ display: 'flex', alignItems: 'center', gap: '0.6rem' });
+const resultBadge = css({
+  flexShrink: 0,
+  w: '10.5rem',
+  fontFamily: 'sans',
+  fontSize: '0.78rem',
+  fontWeight: 700,
+  color: 'text',
+});
+const resultBox = css({
+  flex: 1,
+  minW: 0,
+  m: 0,
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.7rem',
+  py: '0.5rem',
+  maxH: '6rem',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  wordBreak: 'break-word',
+  whiteSpace: 'pre-wrap',
+});
+const rowCopyBtn = css({
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '2rem',
+  h: '2rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const notesList = css({
+  m: 0,
+  p: 0,
+  pl: '1.1rem',
+  color: 'textMuted',
+  fontSize: '0.82rem',
+  lineHeight: 1.7,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.25rem',
+});
+
+const errorBox = css({
+  color: 'accent',
+  fontSize: '0.88rem',
+  lineHeight: 1.6,
+  bg: 'color-mix(in srgb, token(colors.accent) 8%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.accent) 30%, transparent)',
+  borderRadius: 'md',
+  px: '0.9rem',
+  py: '0.7rem',
+});
+
+const actionRow = css({ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' });
+// Kept as plain objects (not pre-atomized css() calls) so the primary variant
+// below can css(actionBtnBase, primaryBtnBase) — a deep object merge, not a
+// concatenation of two independently-atomized class strings (see
+// STYLE_GUIDE.md "Buttons").
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.82rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const primaryBtnBase = {
+  bg: 'primary',
+  color: 'onPrimary',
+  borderColor: 'primary',
+  _hover: { opacity: 0.9, color: 'onPrimary' },
+} as const;
+const actionBtn = css(actionBtnBase);
+const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
+
+const versionChip = css({ ml: '0.5rem' });
+
+// Fields rendered as label/value/copy rows under the headline path.
+const DETAIL_FIELDS = [
+  { id: 'deleted', label: 'Deleted (UTC)' },
+  { id: 'size', label: 'Original size' },
+  { id: 'fileName', label: 'Item name' },
+  { id: 'directory', label: 'Original folder' },
+  { id: 'volume', label: 'Volume' },
+  { id: 'companion', label: '$R companion' },
+] as const;
+
+const RAW_FIELDS = [
+  { id: 'version', label: 'Format version' },
+  { id: 'ticks', label: 'Deletion FILETIME' },
+  { id: 'sizeExact', label: 'Size (exact bytes)' },
+  { id: 'pathChars', label: 'Path length field' },
+  { id: 'recordSize', label: 'Record size' },
+] as const;
+---
+
+<WorkspaceShell
+  hook="data-rbin-parser"
+  noJsMessage="The Recycle Bin ($I) parser needs JavaScript enabled."
+  gap="1.25rem"
+  attrs={{ 'data-rbin-sample': SAMPLE_V2_HEX }}
+>
+  <div class={switchesRow}>
+    <div class={switchField}>
+      <span class={fieldLabel} id="rbin-input-mode-label">Input source</span>
+      <div class={switchRow} role="radiogroup" aria-labelledby="rbin-input-mode-label" data-session-field="inputMode">
+        <button type="button" role="radio" aria-checked="true" data-active data-rbin-input-mode="file" data-sound="tick" class={switchBtn}>
+          $I file
+        </button>
+        <button type="button" role="radio" aria-checked="false" data-rbin-input-mode="hex" data-sound="tick" class={switchBtn}>
+          Hex text
+        </button>
+      </div>
+    </div>
+    <div class={actionRow}>
+      <button type="button" class={actionBtn} data-rbin-sample-btn data-sound="tick" title="Load a synthetic version 2 sample record" aria-label="Load a synthetic version 2 sample record">
+        <Icon name="flask" size={14} /> Load sample
+      </button>
+      <button type="button" class={actionBtn} data-rbin-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+        <Icon name="rotate-cw" size={14} /> Reset
+      </button>
+    </div>
+  </div>
+
+  <div>
+    <div class={fileRow} data-rbin-file-row>
+      <label class={fileBtn}>
+        <Icon name="download" size={15} /> Choose $I file
+        <input type="file" data-rbin-file class={css({ display: 'none' })} />
+      </label>
+      <span class={fileNameText} data-rbin-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
+    </div>
+
+    <div data-rbin-hex-row hidden>
+      <label class={fieldLabel} for="rbin-hex-input">Paste the raw bytes of one $I record, as hex</label>
+      <div class={css({ mt: '0.4rem' })}>
+        <textarea
+          id="rbin-hex-input"
+          class={textarea}
+          placeholder="e.g. 02 00 00 00 00 00 00 00 … — spaces, newlines, commas and 0x prefixes are all fine"
+          autocomplete="off"
+          spellcheck="false"
+          data-rbin-hex
+          data-session-field="hex"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <p class={statusBox} data-rbin-status role="status" aria-live="polite">
+    Choose a $I file or paste its bytes as hex to decode it.
+  </p>
+  <p class={errorBox} data-rbin-error hidden role="alert"></p>
+
+  <div
+    data-rbin-results
+    hidden
+    class={css({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1.25rem',
+      // Same `[hidden]` cascade gotcha as `fileRow` above — this element's
+      // own `display: flex` needs an explicit override for the `hidden`
+      // attribute to actually hide it.
+      '&[hidden]': { display: 'none' },
+    })}
+  >
+    <div>
+      <p class={paneLabel}>
+        Original path (before deletion)
+        <span class={`${tag({ tone: 'primary', mono: true })} ${versionChip}`} data-rbin-version-chip></span>
+      </p>
+      <div class={headlineWrap}>
+        <pre class={headlineBox} data-rbin-value="path">&nbsp;</pre>
+        <button type="button" class={rowCopyBtn} data-rbin-copy="path" data-copy-pop data-sound="copy" aria-label="Copy original path" title="Copy">
+          <Icon name="copy" size={13} />
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <p class={paneLabel}>Recorded metadata</p>
+      <div class={resultStack}>
+        {
+          DETAIL_FIELDS.map((f) => (
+            <div class={resultRow}>
+              <span class={resultBadge}>{f.label}</span>
+              <pre class={resultBox} data-rbin-value={f.id}>&nbsp;</pre>
+              <button type="button" class={rowCopyBtn} data-rbin-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label}`} title="Copy">
+                <Icon name="copy" size={13} />
+              </button>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <div data-rbin-notes-block hidden>
+      <p class={paneLabel}>Notes on this record</p>
+      <ul class={notesList} data-rbin-notes></ul>
+    </div>
+
+    <details class={css({ border: '1px solid token(colors.border)', borderRadius: 'md', bg: 'bgCard', overflow: 'hidden' })}>
+      <summary
+        class={css({
+          cursor: 'pointer',
+          fontFamily: 'sans',
+          fontSize: '0.85rem',
+          fontWeight: 700,
+          color: 'text',
+          px: '0.9rem',
+          py: '0.65rem',
+          listStyle: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          userSelect: 'none',
+          '&::-webkit-details-marker': { display: 'none' },
+        })}
+      >
+        <Icon name="list" size={15} /> Advanced — raw header fields
+      </summary>
+      <div class={css({ px: '0.9rem', pb: '0.9rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+        {
+          RAW_FIELDS.map((f) => (
+            <div class={resultRow}>
+              <span class={resultBadge}>{f.label}</span>
+              <pre class={resultBox} data-rbin-value={f.id}>&nbsp;</pre>
+              <button type="button" class={rowCopyBtn} data-rbin-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label}`} title="Copy">
+                <Icon name="copy" size={13} />
+              </button>
+            </div>
+          ))
+        }
+      </div>
+    </details>
+
+    <div class={actionRow}>
+      <button type="button" class={primaryActionBtn} data-rbin-copy-json data-copy-pop data-sound="copy" title="Copy the full parsed record as JSON">
+        <Icon name="copy" size={14} /> Copy full result as JSON
+      </button>
+    </div>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { parseRecycleBinIndex, companionRName, hexToBytes } from '../utils/recycleBin';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var NO_FILE = "No file chosen — nothing is uploaded, it's read locally in your browser.";
+
+    function init() {
+      var roots = document.querySelectorAll('[data-rbin-parser]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var fileInput = root.querySelector('[data-rbin-file]');
+        var fileRowEl = root.querySelector('[data-rbin-file-row]');
+        var fileNameEl = root.querySelector('[data-rbin-file-name]');
+        var hexRowEl = root.querySelector('[data-rbin-hex-row]');
+        var hexInput = root.querySelector('[data-rbin-hex]');
+        var statusEl = root.querySelector('[data-rbin-status]');
+        var errorEl = root.querySelector('[data-rbin-error]');
+        var resultsEl = root.querySelector('[data-rbin-results]');
+        var versionChipEl = root.querySelector('[data-rbin-version-chip]');
+        var notesBlock = root.querySelector('[data-rbin-notes-block]');
+        var notesEl = root.querySelector('[data-rbin-notes]');
+        var sampleBtn = root.querySelector('[data-rbin-sample-btn]');
+        var copyJsonBtn = root.querySelector('[data-rbin-copy-json]');
+        var inputModeBtns = Array.prototype.slice.call(root.querySelectorAll('[data-rbin-input-mode]'));
+        if (!fileInput || !hexInput || !statusEl || !resultsEl) return;
+
+        var valueEls = {};
+        Array.prototype.forEach.call(root.querySelectorAll('[data-rbin-value]'), function (el) {
+          valueEls[el.getAttribute('data-rbin-value')] = el;
+        });
+
+        var copyValues = {};
+        var currentRecord = null;
+        // The chosen file's own name, used only to derive the $R companion
+        // name — never sent anywhere, and null when bytes came from hex.
+        var currentFileName = null;
+        var inputMode = 'file';
+
+        function setField(id, displayText, copyText) {
+          var el = valueEls[id];
+          if (el) el.textContent = displayText || ' ';
+          copyValues[id] = copyText == null ? displayText || '' : copyText;
+        }
+
+        function formatBytes(n) {
+          if (n < 1024) return n + ' B';
+          if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+          return (n / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        function groupDigits(value) {
+          return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        }
+
+        function renderNotes(notes) {
+          notesEl.innerHTML = '';
+          if (!notes || !notes.length) {
+            notesBlock.hidden = true;
+            return;
+          }
+          notesBlock.hidden = false;
+          notes.forEach(function (note) {
+            var li = document.createElement('li');
+            li.textContent = note;
+            notesEl.appendChild(li);
+          });
+        }
+
+        function renderRecord(record) {
+          currentRecord = record;
+          resultsEl.hidden = false;
+          errorEl.hidden = true;
+
+          versionChipEl.textContent = 'v' + record.version;
+
+          var path = record.path.full || '(the recorded path is empty)';
+          setField('path', path, record.path.full);
+
+          setField('deleted', record.deletionTime.display, record.deletionTime.display);
+          setField(
+            'size',
+            record.originalSize.display + ' (' + groupDigits(record.originalSize.bytes) + ' bytes)',
+            String(record.originalSize.bytes),
+          );
+          setField('fileName', record.path.fileName || '(none)', record.path.fileName);
+          setField('directory', record.path.directory || '(none recorded)', record.path.directory);
+
+          var volume = record.path.isUnc
+            ? 'UNC network path (no local drive letter)'
+            : record.path.driveLetter
+              ? record.path.driveLetter + ' drive'
+              : '(no drive letter in the recorded path)';
+          setField('volume', volume, record.path.driveLetter || '');
+
+          var companion = currentFileName ? companionRName(currentFileName) : null;
+          setField(
+            'companion',
+            companion || '(derived from the $I file name — choose a $I file to see it)',
+            companion || '',
+          );
+
+          setField('version', record.versionLabel, String(record.version));
+          setField('ticks', record.deletionTime.isZero ? '0 (not set)' : String(record.deletionTime.ticks), String(record.deletionTime.ticks));
+          setField('sizeExact', groupDigits(record.originalSize.bytes) + ' bytes', String(record.originalSize.bytes));
+          setField(
+            'pathChars',
+            record.declaredPathChars === null
+              ? 'none — version 1 uses a fixed 260-character path field'
+              : record.declaredPathChars + ' UTF-16 characters (includes the terminating null)',
+            record.declaredPathChars === null ? '' : String(record.declaredPathChars),
+          );
+          setField(
+            'recordSize',
+            record.recordSize + ' bytes' + (record.inputSize !== record.recordSize ? ' (' + record.inputSize + ' bytes supplied)' : ''),
+            String(record.recordSize),
+          );
+
+          renderNotes(record.notes);
+
+          statusEl.textContent = 'Parsed a valid $I record — ' + record.versionLabel + '.';
+          statusEl.setAttribute('data-state', 'ok');
+        }
+
+        function showError(message) {
+          resultsEl.hidden = true;
+          errorEl.hidden = false;
+          errorEl.textContent = message;
+          statusEl.textContent = 'Could not decode these bytes as a $I record.';
+          statusEl.setAttribute('data-state', 'error');
+          currentRecord = null;
+        }
+
+        function clearResults() {
+          resultsEl.hidden = true;
+          errorEl.hidden = true;
+          statusEl.textContent = 'Choose a $I file or paste its bytes as hex to decode it.';
+          statusEl.removeAttribute('data-state');
+          currentRecord = null;
+        }
+
+        function setBytes(bytes) {
+          if (!bytes || bytes.length === 0) {
+            clearResults();
+            return;
+          }
+          var result = parseRecycleBinIndex(bytes);
+          if (!result.ok) {
+            showError(result.error);
+            return;
+          }
+          renderRecord(result.record);
+        }
+
+        // --- Input wiring ------------------------------------------------
+
+        var debounceTimer = null;
+        hexInput.addEventListener('input', function () {
+          clearTimeout(debounceTimer);
+          var val = hexInput.value;
+          debounceTimer = setTimeout(function () {
+            currentFileName = null;
+            if (!val.trim()) {
+              clearResults();
+              return;
+            }
+            var bytes = hexToBytes(val);
+            if (!bytes) {
+              showError(
+                'Could not read that as hex — expected an even number of hex digits (0-9, a-f), optionally separated by spaces, newlines, commas, or "0x" prefixes.',
+              );
+              return;
+            }
+            setBytes(bytes);
+          }, 150);
+        });
+
+        var readSeq = 0;
+        fileInput.addEventListener('change', function () {
+          var file = fileInput.files && fileInput.files[0];
+          var seq = ++readSeq;
+          if (!file) {
+            currentFileName = null;
+            fileNameEl.textContent = NO_FILE;
+            clearResults();
+            return;
+          }
+          currentFileName = file.name;
+          fileNameEl.textContent = file.name + ' (' + formatBytes(file.size) + ') — read locally, never uploaded.';
+          file
+            .arrayBuffer()
+            .then(function (buf) {
+              if (seq !== readSeq) return; // a newer file was chosen mid-read
+              setBytes(new Uint8Array(buf));
+            })
+            .catch(function () {
+              if (seq === readSeq) showError('Could not read this file from disk.');
+            });
+        });
+
+        function setInputMode(next) {
+          inputMode = next;
+          inputModeBtns.forEach(function (b) {
+            var active = b.getAttribute('data-rbin-input-mode') === next;
+            if (active) b.setAttribute('data-active', '');
+            else b.removeAttribute('data-active');
+            b.setAttribute('aria-checked', String(active));
+          });
+          fileRowEl.hidden = next !== 'file';
+          hexRowEl.hidden = next !== 'hex';
+        }
+        inputModeBtns.forEach(function (b) {
+          b.addEventListener('click', function () {
+            setInputMode(b.getAttribute('data-rbin-input-mode'));
+          });
+        });
+
+        if (sampleBtn) {
+          sampleBtn.addEventListener('click', function () {
+            var sample = root.getAttribute('data-rbin-sample') || '';
+            if (!sample) return;
+            // Route the sample through the hex path so what's parsed is
+            // exactly what the visitor can see and edit in the textarea.
+            setInputMode('hex');
+            hexInput.value = sample;
+            hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+          });
+        }
+
+        function copyText(btn, text) {
+          if (!text) return;
+          navigator.clipboard
+            .writeText(text)
+            .then(function () {
+              pop(btn);
+            })
+            .catch(function () {});
+        }
+
+        Array.prototype.forEach.call(root.querySelectorAll('[data-rbin-copy]'), function (btn) {
+          btn.addEventListener('click', function () {
+            copyText(btn, copyValues[btn.getAttribute('data-rbin-copy')]);
+          });
+        });
+
+        if (copyJsonBtn) {
+          copyJsonBtn.addEventListener('click', function () {
+            if (!currentRecord) return;
+            copyText(
+              copyJsonBtn,
+              JSON.stringify(
+                currentRecord,
+                function (key, value) {
+                  return typeof value === 'bigint' ? value.toString() : value;
+                },
+                2,
+              ),
+            );
+          });
+        }
+
+        // Session persistence: the input-mode switch and the hex textarea
+        // auto-save/restore via data-session-field. The file input is
+        // deliberately untagged (a file handle can't round-trip through
+        // localStorage — see toolSession.ts), so Reset clears it manually
+        // here and forces an immediate re-render instead of waiting on the
+        // hex field's own 150ms debounce.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-rbin-reset]',
+          onReset: function () {
+            clearTimeout(debounceTimer);
+            if (fileInput) fileInput.value = '';
+            if (fileNameEl) fileNameEl.textContent = NO_FILE;
+            currentFileName = null;
+            clearResults();
+          },
+        });
+
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<style>
+  [data-rbin-status][data-state='error'] {
+    color: color-mix(in srgb, red 65%, var(--colors-text));
+  }
+  [data-rbin-status][data-state='ok'] {
+    color: var(--colors-primary);
+  }
+</style>

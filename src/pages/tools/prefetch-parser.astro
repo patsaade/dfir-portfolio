@@ -1,0 +1,361 @@
+---
+// Windows Prefetch (.pf) Parser — decode the uncompressed Prefetch formats
+// (versions 17 / 23 / 26) entirely client-side. Same page shape as the LNK
+// Parser and the MFT/USN analyzer (intro aside -> interactive tool ->
+// reference notes -> worked example -> related tools -> other resources).
+//
+// The worked-example table below is NOT hand-written: it calls the real
+// parsePrefetch() at build time on the same SAMPLE_V23_HEX bytes the tool's
+// own "Load v23 sample" button loads and test/prefetch.test.ts asserts
+// against, so the numbers printed here cannot drift from what the parser
+// actually returns.
+// Static page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import PrefetchParser from '../../components/PrefetchParser.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { parsePrefetch, PREFETCH_VERSIONS, SAMPLE_V23_HEX } from '../../utils/prefetch';
+import { hexToBytes } from '../../utils/mftUsn';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const refTd = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' });
+const refTdMono = css({
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+  color: 'text',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  verticalAlign: 'top',
+  whiteSpace: 'nowrap',
+});
+const refTdMuted = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'textMuted', fontSize: '0.8rem', verticalAlign: 'top' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const inlineCode = css({
+  fontFamily: 'mono',
+  bg: 'codeBg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.3rem',
+  fontSize: '0.9em',
+});
+const hexBlock = css({
+  m: 0,
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  lineHeight: 1.55,
+  color: 'text',
+  bg: 'codeBg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.8rem 0.95rem',
+  maxH: '16rem',
+  overflowY: 'auto',
+  overflowX: 'auto',
+});
+const okChip = css({ color: 'primary', fontWeight: 700 });
+const noChip = css({ color: 'accent', fontWeight: 700 });
+
+// Build-time proof: run the real parser over the exact sample the tool ships.
+const sample = parsePrefetch(hexToBytes(SAMPLE_V23_HEX)!);
+if (!sample.ok) {
+  // Never reachable with a valid sample — but fail the build loudly rather
+  // than render an empty "worked example" table.
+  throw new Error('prefetch-parser.astro: SAMPLE_V23_HEX no longer parses — fix the sample or the parser.');
+}
+const s = sample.data;
+const SAMPLE_ROWS: { field: string; value: string }[] = [
+  { field: 'Format version', value: String(s.formatVersion) },
+  { field: 'Written by', value: s.windows },
+  { field: 'Executable name', value: s.executableName },
+  { field: 'Expected .pf filename', value: s.expectedFileName },
+  { field: 'Path hash', value: '0x' + s.prefetchHashHex },
+  { field: 'Run count', value: String(s.runCount) },
+  { field: 'Last run time (UTC)', value: s.lastRunTime.iso ?? '(not set)' },
+  { field: 'Raw FILETIME ticks', value: s.lastRunTime.ticks },
+  { field: 'Size (declared / actual)', value: `${s.declaredFileSize} / ${s.actualFileSize} bytes` },
+];
+
+const DECODED_ROWS: { field: string; note: string }[] = [
+  {
+    field: 'Format version + "SCCA" signature',
+    note: 'Read first, and validated before anything else is trusted. The version sits at offset 0 and the four-character signature at offset 4 — a file whose signature does not match is rejected with a specific message rather than parsed on a guess.',
+  },
+  {
+    field: 'Executable name',
+    note: 'A fixed 60-byte UTF-16LE field in the header (up to 29 characters plus a terminator), stored uppercase by Windows. This is the name of the program that ran, not the path it ran from.',
+  },
+  {
+    field: 'Path hash',
+    note: 'The 32-bit value that becomes the hexadecimal half of the file’s own NAME-HASH.pf filename. It is a hash of the path the executable was launched from, so two copies of the same binary in different folders get separate Prefetch files. This tool displays the stored value and rebuilds the expected filename from it — it never recomputes the hash, because Windows has used more than one hashing function across releases and a mismatched re-derivation would be a false alarm.',
+  },
+  {
+    field: 'Run count',
+    note: 'How many executions Windows recorded. Its offset inside the file information structure moves with the format version (60, 68 and 124 bytes in for versions 17, 23 and 26 respectively) — which is exactly why the version has to be read and honoured first.',
+  },
+  {
+    field: 'Last run time(s)',
+    note: 'Windows FILETIME values (100-nanosecond ticks since 1601-01-01), rendered as ISO 8601 UTC through the same conversion this site’s Timestamp Converter uses. Versions 17 and 23 store one; version 26 stores eight slots, with unused slots left as zero and reported as "not set" rather than as the 1601 epoch.',
+  },
+];
+
+const NOT_DECODED = [
+  'The file metrics array, trace chains and referenced-filename block (the list of DLLs and files the program touched at startup).',
+  'The volume information block (volume paths, serial numbers and directory strings).',
+  'Anything inside a Windows 10/11 MAM container — see the limitation above.',
+];
+---
+
+<BaseLayout
+  title="Prefetch File Parser"
+  description="Parse a Windows Prefetch (.pf) file in your browser — executable name, run count and last-run timestamps from the uncompressed formats (versions 17, 23 and 26). Nothing is uploaded."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Prefetch File Parser' }]}
+    eyebrow="Artifact Parsers"
+    title="Prefetch File Parser"
+    description="Decode the proof-of-execution fields in a Windows .pf file — executable name, run count and last-run timestamps — entirely on your own machine."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'accent',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.75, fontSize: '0.95rem', m: 0 })}>
+      <strong>Read this first — Windows 10 and 11 files are not supported.</strong> Prefetch files are stored two
+      completely different ways. On Windows XP through 8.1 (format versions <strong>17</strong>, <strong>23</strong>{' '}
+      and <strong>26</strong>) they are written uncompressed, and this tool parses them. On Windows 10 and 11
+      (versions <strong>30</strong> and <strong>31</strong>) the whole file is wrapped in a{' '}
+      <code class={inlineCode}>MAM</code> container and compressed with LZXPRESS Huffman — and this tool
+      deliberately does <strong>not</strong> implement that decompression. A subtly wrong from-scratch Huffman
+      decoder would not crash; it would quietly emit a plausible-looking but incorrect executable name, run count
+      and timestamps, which in an investigation is far worse than plainly not supporting the format. Feed it a
+      Windows 10/11 file and it will identify the container and tell you so, rather than guess.
+    </p>
+  </aside>
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      A file you choose here is read locally through the browser's File API and parsed byte by byte — it never
+      leaves your machine, and there is no server to send it to. Field offsets follow the{' '}
+      <a href="https://github.com/libyal/libscca" target="_blank" rel="noopener" class={css({ color: 'primary' })}>libyal/libscca</a>{' '}
+      format documentation, cross-checked against the{' '}
+      <a href="https://forensics.wiki/windows_prefetch_file_format/" target="_blank" rel="noopener" class={css({ color: 'primary' })}>Forensics Wiki</a>{' '}
+      write-up of the same structures.
+    </p>
+  </aside>
+
+  <h2 id="parser" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="gauge" size={20} class={css({ color: 'primary' })} /> Parser
+  </h2>
+  <PrefetchParser />
+
+  <h2 id="versions" class={sectionH2}>
+    <Icon name="layers" size={20} class={css({ color: 'primary' })} /> Format versions and what's supported
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Version</th>
+          <th class={refTh}>Windows</th>
+          <th class={refTh}>Storage</th>
+          <th class={refTh}>Run-time slots</th>
+          <th class={refTh}>Here?</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          PREFETCH_VERSIONS.map((v) => (
+            <tr>
+              <td class={refTdMono}>{v.version}</td>
+              <td class={refTd}>{v.windows}</td>
+              <td class={refTdMuted}>{v.storage === 'uncompressed' ? 'Uncompressed' : 'MAM container, LZXPRESS Huffman'}</td>
+              <td class={refTdMono}>{v.runTimeSlots}</td>
+              <td class={refTd}>
+                <span class={v.supported ? okChip : noChip}>{v.supported ? 'Parsed' : 'Detected only'}</span>
+              </td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.9rem', lineHeight: 1.7 })}>
+    Version 30 is also skipped when the payload has already been decompressed elsewhere: two different file
+    information layouts are documented for it (220 bytes with the run count 124 bytes in, and 212 bytes with it
+    116 bytes in), and the published documentation gives no dependable way to tell them apart from the header
+    alone. Picking the wrong one yields a wrong run count with no visible sign of a problem, so the tool reports
+    the version as unsupported instead.
+  </p>
+
+  <h2 id="decoded" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> What's decoded
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Field</th>
+          <th class={refTh}>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          DECODED_ROWS.map((row) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text', fontFamily: 'mono', fontSize: '0.82rem' })}>{row.field}</strong>
+              </td>
+              <td class={refTdMuted}>{row.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'text', fontSize: '0.9rem', mt: '1.25rem', mb: '0.5rem', fontWeight: 700 })}>Not decoded here</p>
+  <ul class={css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.7, pl: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' })}>
+    {NOT_DECODED.map((item) => <li>{item}</li>)}
+  </ul>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.9rem', lineHeight: 1.7 })}>
+    Those sections are where a full-featured parser earns its keep. This tool covers the proof-of-execution
+    fields — what ran, how often, and when — and points you at a dedicated parser for the rest rather than
+    half-implementing it.
+  </p>
+
+  <h2 id="example" class={sectionH2}>
+    <Icon name="terminal" size={20} class={css({ color: 'primary' })} /> Worked example
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '0.9rem' })}>
+    These bytes are a synthetic, hand-assembled version 23 (Vista / 7) Prefetch file — not a capture from any
+    real machine. The <strong>Load v23 sample</strong> button in the parser above loads this exact hex, and the
+    table underneath is generated by running the parser over it when this page is built, so what you read here is
+    literally what the code returns.
+  </p>
+  <pre class={hexBlock}><code>{SAMPLE_V23_HEX}</code></pre>
+  <div class={css({ overflowX: 'auto', mt: '1rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Field</th>
+          <th class={refTh}>Decoded value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          SAMPLE_ROWS.map((row) => (
+            <tr>
+              <td class={refTd}>{row.field}</td>
+              <td class={refTdMono}>{row.value}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="why" class={sectionH2}>
+    <Icon name="target" size={20} class={css({ color: 'primary' })} /> Why Prefetch matters in DFIR
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.8 })}>
+    <Term slug="prefetch">Prefetch</Term> exists for performance — Windows records what a program needs at
+    startup so it launches faster next time — but the side effect is one of the cleanest execution artifacts on
+    the platform. A <code class={inlineCode}>.pf</code> file survives the deletion of the executable it describes,
+    so it can prove that a tool ran on a host that no longer holds a copy of it. The run count and the last-run
+    timestamps drop straight into <Term slug="timeline-analysis">timeline analysis</Term>, and because the path
+    hash in the filename is derived from where the binary was launched from, a{' '}
+    <Term slug="living-off-the-land">living-off-the-land</Term> binary executed from an unusual directory produces
+    a Prefetch file distinct from the legitimate copy in <code class={inlineCode}>System32</code>.
+  </p>
+  <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.8, mt: '1rem' })}>
+    Treat the absence of a Prefetch file as weak evidence, not proof of nothing: prefetching can be disabled by
+    policy, the folder is capped (128 files on Windows 7 and older, 1,024 on Windows 8 and newer, per the SANS
+    Internet Storm Center write-up linked below), and deleting <code class={inlineCode}>.pf</code> files is a
+    well-known <Term slug="anti-forensics">anti-forensics</Term> step. Corroborate against other execution
+    artifacts — <Term slug="amcache">Amcache</Term>,{' '}
+    <Term slug="shimcache-appcompatcache">ShimCache</Term>, and the event logs — before drawing conclusions from a
+    single artifact.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/lnk-parser/" class={toolChip}>
+        <Icon name="link" size={13} /> LNK Parser <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The other half of the "what did the user actually run" story — shortcut files record the target path and
+        volume a file was opened from, where Prefetch records the execution itself.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/mft-usn-analyzer/" class={toolChip}>
+        <Icon name="history" size={13} /> Timestomp Analyzer <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Cross-check a Prefetch last-run time against the target executable's own $STANDARD_INFORMATION and
+        $FILE_NAME timestamps — a binary whose MFT dates predate its own first execution is worth a second look.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/timestamp-converter/" class={toolChip}>
+        <Icon name="clock" size={13} /> Timestamp Converter <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Convert the raw FILETIME tick values this parser reports into any other format, or shift them into the
+        timezone the rest of your timeline is built in.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['prefetch-parser']} />
+</BaseLayout>

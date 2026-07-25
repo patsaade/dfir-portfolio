@@ -69,13 +69,40 @@ const sources = {
   'certifications.ts': certsSrc,
   'consts.ts': read('src/consts.ts'),
 };
+// Strip `cmd: "..."` / `cmd: '...'` shell-example strings before scanning:
+// tools.ts's cheat-sheet commands routinely embed illustrative API endpoints
+// (e.g. a curl example against api.shodan.io, or a wayback-machine CDX query
+// using "example.com" as placeholder text) as command-line SYNTAX, not a
+// reference link meant to be clicked or kept alive — checking those as if
+// they were citations produces false "dead link" noise for URLs that were
+// never supposed to resolve to a real page. Matches either quote style,
+// allowing backslash-escaped characters so it doesn't stop early at an
+// escaped `\"` inside a double-quoted command.
+const stripCmdStrings = (text) => text.replace(/cmd:\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '');
+// A handful of `url:`-shaped values are actually JS template-literal helper
+// functions (e.g. certifications.ts's `credly = (id) => \`https://www.credly.
+// com/badges/${id}/public_url\``) rather than a literal reference — the
+// dollar-sign exclusion below stops the match right before `${id}`, but the
+// resulting truncated `https://www.credly.com/badges/` is still a URL this
+// script would try to check, and it 404s (Credly's bare /badges/ path isn't
+// a real page) purely because it's missing the interpolated id, not because
+// the real per-badge URLs are actually dead. Skip the whole bare-prefix
+// result rather than report a false dead link for source code, not content.
+const TEMPLATE_HELPER_PREFIXES = ['https://www.credly.com/badges/'];
 const urlMap = new Map();
-for (const [src, text] of Object.entries(sources)) {
-  const re = /https?:\/\/[^\s'"`)]+/g;
+for (const [src, rawText] of Object.entries(sources)) {
+  const text = stripCmdStrings(rawText);
+  // Excludes backslash and `$` too: a real `url:`/`href` field value never
+  // contains either, but a JS template literal's `${expr}` interpolation
+  // (e.g. resolveAttackLink's own `https://attack.mitre.org/techniques/${base}/...`)
+  // otherwise gets scanned as if it were a literal URL and reported as a
+  // garbage 404 — this is source code, not a reference to check.
+  const re = /https?:\/\/[^\s'"`)\\$]+/g;
   let m;
   while ((m = re.exec(text))) {
     const u = m[0].replace(/[.,;]+$/, '');
     if (/attack\.mitre\.org\/techniques\/T\d/.test(u)) continue; // generated, authoritative
+    if (TEMPLATE_HELPER_PREFIXES.includes(u)) continue; // truncated template-literal helper, not real content
     if (!urlMap.has(u)) urlMap.set(u, new Set());
     urlMap.get(u).add(src);
   }
@@ -87,6 +114,11 @@ if (LIMIT < urls.length) urls = urls.slice(0, LIMIT);
 // Statuses that mean "the bot was rejected", not "the page is gone". LinkedIn
 // answers 999 to everything automated; many sites 403/429 a HEAD or odd UA.
 const BLOCKED = new Set([401, 403, 429, 999]);
+// Server-side error statuses (the origin itself is struggling), distinct from a
+// dead/removed resource. crt.sh in particular is a community-run CT-log search
+// tool that's known to intermittently 502 under load while remaining a live,
+// actively-used service — a 5xx here means "try again later", not "fix this URL".
+const FLAKY = new Set([502, 503, 504]);
 async function checkUrl(u) {
   const opt = {
     redirect: 'manual',
@@ -104,6 +136,7 @@ async function checkUrl(u) {
     if (s >= 200 && s < 300) return { u, ok: true, status: s };
     if (s >= 300 && s < 400) return { u, ok: true, status: s, redirect: r.headers.get('location') };
     if (BLOCKED.has(s)) return { u, ok: true, status: s, note: 'blocked/rate-limited' };
+    if (FLAKY.has(s)) return { u, ok: true, status: s, note: 'server error, likely transient' };
     return { u, ok: false, status: s };
   } catch (e) {
     return { u, ok: false, status: 0, note: e.name === 'TimeoutError' ? 'timeout' : 'unreachable' };
@@ -142,9 +175,11 @@ console.log(`\n▸ Link liveness (${urls.length}${LIMIT < totalUrls ? ` of ${tot
 const results = await pool(urls, 12, checkUrl);
 const ok = results.filter((r) => r.ok && !r.redirect && !r.note);
 const blocked = results.filter((r) => r.note === 'blocked/rate-limited');
+const flaky = results.filter((r) => r.note === 'server error, likely transient');
 const redir = results.filter((r) => r.ok && r.redirect);
 const dead = results.filter((r) => !r.ok);
-console.log(`  ✓ ${ok.length} ok${blocked.length ? ` · ${blocked.length} blocked/rate-limited (verify manually)` : ''}`);
+console.log(`  ✓ ${ok.length} ok${blocked.length ? ` · ${blocked.length} blocked/rate-limited (verify manually)` : ''}${flaky.length ? ` · ${flaky.length} server error (verify manually)` : ''}`);
+if (flaky.length) flaky.forEach((r) => console.log(`     ${r.u}  (${r.status})  [${[...urlMap.get(r.u)].join(', ')}]`));
 if (redir.length) {
   console.log(`  ⚠ ${redir.length} redirected (consider updating to the final URL):`);
   redir.forEach((r) => console.log(`     ${r.u}  →  ${r.redirect}  [${[...urlMap.get(r.u)].join(', ')}]`));

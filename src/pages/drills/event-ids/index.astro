@@ -1,0 +1,123 @@
+---
+// Windows Event ID Drill (/drills/event-ids/) — one of the 6 /drills/*
+// knowledge-check modules (see src/pages/drills/index.astro). Every question
+// is generated from EVENT_IDS (src/data/eventIds.ts), the same dataset the
+// full /event-ids/ reference and its per-event detail pages render — see
+// src/data/drills/eventIdsDrill.ts for the pure, deterministic generator.
+// Shares the DrillEngine.astro/drillEngine.ts quiz shell with the other 5
+// modules; nothing here reimplements grading/progress/state.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import Icon from '../../../components/Icon.astro';
+import DrillEngine from '../../../components/DrillEngine.astro';
+import { toolChip } from '../../../components/RelatedTools.astro';
+import ExternalResources from '../../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
+import { EVENT_IDS } from '../../../data/eventIds';
+import { getEventIdsDrillQuestion, EVENT_IDS_DRILL_TOTAL } from '../../../data/drills/eventIdsDrill';
+
+// Called once here (build time, for the no-JS shell) and again by the
+// client <script> below on mount — see DrillEngine.astro's own header
+// comment for why question 0 must be deterministic to avoid a flash.
+const q0 = getEventIdsDrillQuestion(0);
+
+const securityCount = EVENT_IDS.filter((e) => e.source === 'security').length;
+const sysmonCount = EVENT_IDS.filter((e) => e.source === 'sysmon').length;
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="Windows Event ID Drill"
+  description="A knowledge-check drill on Windows Security and Sysmon event log recognition, generated entirely from this site's own Event ID / Sysmon Reference — real raw sample logs, real event names, real ATT&CK mappings."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'Windows Event IDs' }]}
+    eyebrow="Practice"
+    title="Windows Event ID Drill"
+    description="Read a raw Security or Sysmon log entry and identify it — generated from the same fully-cited dataset behind this site's Event ID / Sysmon Reference."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This is a knowledge-check drill built from real site data — the {EVENT_IDS.length}-entry Event ID / Sysmon
+      Reference ({securityCount} Windows Security + {sysmonCount} Sysmon events), not a certification exam. Every raw
+      log shown below is the actual sample log from that reference's own detail pages; nothing here is invented.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    Most questions show a real raw log entry — rendered the way it'd actually appear in Event Viewer's Friendly View
+    or a Sysmon operational log — and ask you to type the event ID that generated it. A few bonus questions instead
+    ask you to type the MITRE ATT&amp;CK technique ID a given event commonly maps to, cross-checked against this
+    site's own ATT&amp;CK Coverage Map data. No multiple choice — every answer links straight to that event's own
+    detail page on the Event ID / Sysmon Reference for the full "what it is / why it matters / common triggers"
+    writeup.
+  </p>
+
+  <DrillEngine
+    drill="event-ids"
+    heading="Windows Event ID Drill"
+    intro="Ten questions — read the raw log, name the event."
+    totalQuestions={EVENT_IDS_DRILL_TOTAL}
+    firstQuestion={q0}
+  />
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/event-ids/" class={toolChip}>
+        <Icon name="list" size={13} /> Event ID / Sysmon Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Browse the full {EVENT_IDS.length}-entry reference this drill draws from — every event's fields, common
+        triggers, related IDs, and ATT&amp;CK cross-links, plus a full sample log rendering for each.
+      </p>
+    </div>
+    <div>
+      <a href="/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        See the full technique behind this drill's ATT&amp;CK-mapping bonus questions — detection telemetry,
+        real-world procedure examples, and mitigations for each.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['event-ids']} />
+</BaseLayout>
+
+<script>
+  import { initDrill } from '../../../scripts/drillEngine';
+  import { getEventIdsDrillQuestion, EVENT_IDS_DRILL_TOTAL } from '../../../data/drills/eventIdsDrill';
+  const root = document.querySelector('[data-drill="event-ids"]');
+  if (root) initDrill({ root, totalQuestions: EVENT_IDS_DRILL_TOTAL, nextQuestion: getEventIdsDrillQuestion });
+</script>

@@ -44,7 +44,8 @@ const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' })
 const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary' });
 
 // SPF (RFC 7208), DKIM (RFC 6376, result names per RFC 8601), and DMARC
-// (RFC 7489) verdict meanings — standard, publicly documented result codes,
+// (RFC 9989 — the May 2026 "DMARCbis" revision, obsoleting the original
+// RFC 7489) verdict meanings — standard, publicly documented result codes,
 // shown here purely as a reference; this tool never evaluates these itself.
 const VERDICT_NOTES: { mechanism: string; verdict: string; meaning: string }[] = [
   { mechanism: 'SPF', verdict: 'pass', meaning: "The sending server's IP is authorized by the domain's published SPF record." },
@@ -98,7 +99,7 @@ const attackChip = css({
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Email Header Analyzer' }]}
-    eyebrow="Triage & Correlation"
+    eyebrow="Extractors"
     title="Email Header & Auth-Chain Analyzer"
     description="Paste a raw header block and get the Received chain (oldest hop first, with timing), SPF/DKIM/DMARC verdicts, and From/Reply-To/Return-Path mismatch flags — entirely in your browser."
   />

@@ -1,0 +1,166 @@
+---
+// RegEx Range Drill (/drills/regex/) — one of the 7 short DFIR knowledge-check
+// modules under /drills/ (see src/pages/drills/index.astro). A
+// construct-the-pattern progression, not a multiple-choice quiz: each challenge gives sample
+// strings that should and shouldn't match, and you write the actual pattern
+// yourself, graded live by DrillEngine's 'construct' answerType — see
+// src/data/drills/regexDrill.ts for the 11 original, DFIR-themed challenges
+// (easy to hard, one new regex concept each) and how every check reuses the
+// exact same compileRegexSafely + findAllMatches pure functions the live
+// Regex Tester below is built on.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import Icon from '../../../components/Icon.astro';
+import Term from '../../../components/Term.astro';
+import DrillEngine from '../../../components/DrillEngine.astro';
+import ExternalResources from '../../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
+import { toolChip } from '../../../components/RelatedTools.astro';
+import { DFIR_REGEX_PATTERNS } from '../../../utils/regexPatterns';
+import { getRegexDrillQuestion, REGEX_DRILL_TOTAL } from '../../../data/drills/regexDrill';
+
+const TOTAL = REGEX_DRILL_TOTAL;
+// Computed once at build time from the SAME pure generator the client script
+// below calls again on mount — deterministic, so this is a real question,
+// not a placeholder (see DrillEngine.astro's no-JS contract).
+const q0 = getRegexDrillQuestion(0);
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+const refTd = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' });
+const refTdMuted = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'textMuted', fontSize: '0.8rem', verticalAlign: 'top' });
+const refCode = css({ fontFamily: 'mono', fontSize: '0.78rem', color: 'primary', wordBreak: 'break-word' });
+const refIdCode = css({ fontFamily: 'mono', fontSize: '0.72rem', color: 'textMuted' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="RegEx Range Drill"
+  description="11 original challenges, easy to hard, each teaching one regex concept by having you build a pattern that matches the given cases and rejects the rest — graded by actually running it, live."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'RegEx Range Drill' }]}
+    eyebrow="Practice"
+    title="RegEx Range Drill"
+    description={`${TOTAL} progressive challenges — build a pattern that matches every "should match" case and rejects every "should NOT match" one. Not a certification exam, just hands-on practice.`}
+  />
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    This isn't a multiple-choice quiz: each challenge shows a set of sample strings that should match
+    your pattern and a set that shouldn't, and you write the actual regular expression yourself. Test cases
+    update live as you type — no need to click Check just to see how you're doing — and a wrong or
+    non-compiling attempt doesn't end the challenge — keep refining the same pattern until every case passes.
+    Checking is real: whatever you type is compiled and run against every sample with the exact same engine behind
+    the live Regex Tester below, not compared as text. The 11 challenges are original to this site and ordered to
+    teach one new syntax concept at a time — literals, character classes, quantifiers, anchors, alternation,
+    escaping, word boundaries, negated classes, backreferences, lookahead, and a capstone that reuses the real
+    <Term slug="indicator-of-compromise">IOC</Term>-shaped IPv4 pattern from this site's own regex library.
+  </p>
+
+  <h2 id="reference" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Pattern library quick reference
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.9rem', mb: '1rem', lineHeight: 1.7 })}>
+    The site's own curated DFIR regex library — good inspiration for the syntax below, and the direct source for the
+    final challenge's IPv4 pattern. Want to try any of them against your own text? Head to
+    the <a href="/tools/regex-tester/" class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>Regex Tester</a>.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Pattern</th>
+          <th class={refTh}>Regex</th>
+          <th class={refTh}>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          DFIR_REGEX_PATTERNS.map((p) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>{p.label}</strong>
+                <br />
+                <code class={refIdCode}>{p.id}</code>
+              </td>
+              <td class={refTd}>
+                <code class={refCode}>{p.pattern}</code>
+              </td>
+              <td class={refTdMuted}>{p.description}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="drill" class={sectionH2}>
+    <Icon name="search" size={20} class={css({ color: 'primary' })} /> Drill
+  </h2>
+  <DrillEngine
+    drill="regex"
+    heading="RegEx Range Drill"
+    intro="Test cases update live as you type. Solve all of them to see your score — a hint is available on every challenge if you get stuck. Progress isn't saved between visits."
+    totalQuestions={TOTAL}
+    firstQuestion={q0}
+  />
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/regex-tester/" class={toolChip}>
+        <Icon name="search" size={13} /> DFIR Regex Tester & Pattern Library <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The live tool this drill's questions and pattern library both come from — test any pattern against your own
+        sample text with inline match highlighting and a capture-group breakdown.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="target" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A <Term slug="sigma-rule">Sigma rule</Term>'s <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>|re</code>{' '}
+        modifier runs on the same JavaScript regex engine as this drill and the Regex Tester — a pattern that works
+        here will behave identically once it's pasted into a rule.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/regex-cheatsheet/" class={toolChip}>
+        <Icon name="list" size={13} /> Regex Syntax Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A token-by-token reference for every anchor, character class, quantifier, group, and flag this drill's
+        challenges (and the pattern library above) draw from — worth a look before or during a challenge if a
+        construct isn't clicking.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['regex']} />
+</BaseLayout>
+
+<script>
+  import { initDrill } from '../../../scripts/drillEngine';
+  import { getRegexDrillQuestion, REGEX_DRILL_TOTAL } from '../../../data/drills/regexDrill';
+  const root = document.querySelector('[data-drill="regex"]');
+  if (root) initDrill({ root, totalQuestions: REGEX_DRILL_TOTAL, nextQuestion: getRegexDrillQuestion });
+</script>

@@ -1,0 +1,898 @@
+---
+// Guided Kusto Query Language (KQL) query builder for Microsoft Defender XDR
+// advanced hunting and Microsoft Sentinel. Same shape as DorkBuilder: a
+// compose UI on the left that assembles valid SYNTAX, and a persistent
+// "Query" stage on the right (sticky on wide viewports) with a copy button.
+//
+// This is NOT a query engine. Nothing here connects to a tenant, no query is
+// ever executed, and no result is ever fetched — the output is text to paste
+// into the Defender portal's advanced hunting page or a Sentinel Logs blade.
+//
+// Every table name, column name, and column type comes from src/data/kql.ts,
+// which was built from Microsoft's own current schema documentation; the
+// assembly itself is pure and lives in src/utils/kql.ts (unit tested in
+// test/kql.test.ts), not in this file. Genuinely requires JS — there is no
+// meaningful static form for a builder whose column list changes with the
+// selected table — so the workspace stays hidden until the script confirms
+// it's running, same JS-armed, no-JS-safe philosophy as DorkBuilder.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { KQL_AGGREGATIONS, KQL_BIN_SIZES, KQL_TABLES, KQL_TIMESPANS } from '../data/kql';
+import { KQL_EXAMPLE_HUNTS } from '../utils/kql';
+
+// Tables are grouped in the picker by which product surface they live in, so
+// it's never ambiguous whether a table needs the Defender portal or a
+// Sentinel workspace.
+const tableGroups = KQL_TABLES.reduce<{ surface: string; tables: typeof KQL_TABLES }[]>((groups, table) => {
+  const existing = groups.find((g) => g.surface === table.surface);
+  if (existing) existing.tables.push(table);
+  else groups.push({ surface: table.surface, tables: [table] });
+  return groups;
+}, []);
+
+const topRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' });
+const selectorField = css({ display: 'flex', flexDirection: 'column', gap: '0.3rem', flex: '1 1 190px', minW: '160px' });
+const fieldLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+});
+const selectInput = css({
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.45rem',
+  cursor: 'pointer',
+  maxW: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
+});
+const caption = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight: 1.6, m: 0, minH: '1.2em' });
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.55rem',
+  mt: 0,
+});
+const stepBlock = css({ mb: '1.4rem' });
+const workspaceGrid = css({
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', lg: 'minmax(0, 1fr) minmax(0, 340px)' },
+  gap: '1.5rem',
+  alignItems: 'start',
+});
+
+// One filter row: column, operator, value, remove. Wraps onto multiple lines
+// at narrow widths instead of overflowing.
+const filterList = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+const filterRow = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.4rem',
+  p: '0.45rem 0.55rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const filterPipe = css({
+  fontFamily: 'mono',
+  fontSize: '0.74rem',
+  fontWeight: 700,
+  color: 'primary',
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+});
+const filterSelect = css({
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  color: 'text',
+  bg: 'bg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.4rem',
+  py: '0.32rem',
+  cursor: 'pointer',
+  maxW: '100%',
+  minW: 0,
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const filterValue = css({
+  flex: '1 1 130px',
+  minW: 0,
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  color: 'text',
+  bg: 'bg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.45rem',
+  py: '0.32rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+  '&[hidden]': { display: 'none' },
+});
+const iconBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '1.7rem',
+  h: '1.7rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+  bg: 'bg',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+const emptyNote = css({ fontSize: '0.82rem', color: 'textMuted', m: 0, fontStyle: 'italic' });
+
+// Scroll, never grow — same convention as the other tools' output boxes.
+const columnList = css({
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+  gap: '0.15rem 0.6rem',
+  maxH: '13rem',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  p: '0.5rem 0.6rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const checkRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'mono',
+  fontSize: '0.76rem',
+  color: 'text',
+  cursor: 'pointer',
+  py: '0.12rem',
+  minW: 0,
+  _hover: { color: 'primary' },
+});
+const checkLabelText = css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+
+// `&[hidden]` is explicit because this class sets `display` unconditionally,
+// and an author-origin display always beats the UA stylesheet's
+// `[hidden]{display:none}` — see CLAUDE.md's Debugging gotchas.
+const inlineRow = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.4rem',
+  alignItems: 'center',
+  '&[hidden]': { display: 'none' },
+});
+const smallLabel = css({ fontFamily: 'sans', fontSize: '0.75rem', color: 'textMuted', flexShrink: 0 });
+const numberInput = css({
+  w: '5.5rem',
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.45rem',
+  py: '0.32rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+// position:relative + zIndex:0 is the whole retrofit contract for
+// src/scripts/animatedSwitch.ts's site-wide sliding-thumb switch — see
+// CLAUDE.md invariant 12. Nothing else is needed here.
+const dirRow = css({
+  display: 'inline-flex',
+  gap: '0.15rem',
+  p: '0.2rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  position: 'relative',
+  zIndex: 0,
+});
+const dirBtn = css({
+  px: '0.6rem',
+  py: '0.28rem',
+  fontFamily: 'sans',
+  fontSize: '0.78rem',
+  fontWeight: 600,
+  borderRadius: 'sm',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'text' },
+  '&[data-active]': { bg: 'bgSubtle', color: 'primary', borderColor: 'border', boxShadow: 'card' },
+});
+
+const stage = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem', position: { lg: 'sticky' }, top: { lg: '90px' } });
+const outputBox = css({
+  m: 0,
+  p: '0.8rem 0.9rem',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  lineHeight: 1.7,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  maxH: '22rem',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  minH: '5rem',
+});
+const msgList = css({ display: 'flex', flexDirection: 'column', gap: '0.4rem', m: 0, p: 0, listStyle: 'none' });
+const msgBase = {
+  fontSize: '0.78rem',
+  lineHeight: 1.6,
+  m: 0,
+  pl: '0.6rem',
+  borderLeft: '2px solid token(colors.border)',
+} as const;
+const msgWarn = css({ ...msgBase, color: 'text', borderLeftColor: 'accent' });
+const msgTip = css({ ...msgBase, color: 'textMuted' });
+
+const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+// Plain objects, not pre-atomized css() calls, so the primary variant merges
+// deeply and deterministically overrides _hover.color — see STYLE_GUIDE.md.
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.4rem',
+  fontSize: '0.85rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.8rem',
+  py: '0.5rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
+const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
+const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: '0.35rem' });
+---
+
+<WorkspaceShell
+  hook="data-kql-builder"
+  noJsMessage="The interactive KQL builder needs JavaScript enabled. The starter hunts further down the page are plain text and work without it."
+  gap="1.25rem"
+>
+  <div class={topRow}>
+    <div class={selectorField}>
+      <label class={fieldLabel} for="kql-table">Table</label>
+      <select id="kql-table" class={selectInput} data-kql-table>
+        {
+          tableGroups.map((group) => (
+            <optgroup label={group.surface}>
+              {group.tables.map((t) => <option value={t.name}>{t.name}</option>)}
+            </optgroup>
+          ))
+        }
+      </select>
+    </div>
+
+    <div class={selectorField}>
+      <label class={fieldLabel} for="kql-timespan">Time range</label>
+      <select id="kql-timespan" class={selectInput} data-kql-timespan>
+        {KQL_TIMESPANS.map((t) => <option value={t.id} selected={t.id === '7d'}>{t.label}</option>)}
+        <option value="">— No time filter —</option>
+      </select>
+    </div>
+
+    <div class={selectorField}>
+      <label class={fieldLabel} for="kql-preset">Starter hunt</label>
+      <select id="kql-preset" class={selectInput} data-kql-preset>
+        <option value="">— Build from scratch —</option>
+        {KQL_EXAMPLE_HUNTS.map((e) => <option value={e.id}>{e.title}</option>)}
+      </select>
+    </div>
+
+    <button type="button" class={smallBtn} data-kql-reset data-sound="tick" title="Reset the builder to its defaults" aria-label="Reset the builder to its defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <p class={caption} data-kql-table-blurb role="status" aria-live="polite"></p>
+
+  <div class={workspaceGrid}>
+    <div>
+      <div class={stepBlock}>
+        <p class={paneLabel}>Filters</p>
+        <div class={filterList} data-kql-filters></div>
+        <p class={emptyNote} data-kql-filters-empty hidden>No filters yet — the query returns every row in the time range.</p>
+        <div class={css({ mt: '0.55rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' })}>
+          <button type="button" class={smallBtn} data-kql-add-filter data-sound="tick" title="Add another where clause">
+            <Icon name="list" size={13} /> Add filter
+          </button>
+        </div>
+        <p class={css({ fontSize: '0.76rem', color: 'textMuted', mt: '0.5rem', lineHeight: 1.6 })}>
+          Every filter becomes its own <code class={css({ fontFamily: 'mono', color: 'primary' })}>| where</code> line, and
+          consecutive <code class={css({ fontFamily: 'mono', color: 'primary' })}>where</code> operators are AND-ed. For
+          "any of these values", use one of the list operators rather than several rows.
+        </p>
+      </div>
+
+      <div class={stepBlock}>
+        <p class={paneLabel}>Summarize</p>
+        <div class={inlineRow}>
+          <select class={filterSelect} data-kql-agg aria-label="Aggregation function">
+            <option value="">— No summarize —</option>
+            {KQL_AGGREGATIONS.map((a) => <option value={a.id}>{a.label}</option>)}
+          </select>
+          <select class={filterSelect} data-kql-agg-col aria-label="Column to aggregate" hidden></select>
+        </div>
+        <div class={css({ mt: '0.45rem' })}>
+          <div class={inlineRow} data-kql-group-wrap hidden>
+            <span class={smallLabel}>by</span>
+            <select class={filterSelect} data-kql-by-1 aria-label="First group-by column"></select>
+            <select class={filterSelect} data-kql-by-2 aria-label="Second group-by column"></select>
+            <label class={checkRow}>
+              <input type="checkbox" data-kql-bin />
+              <span class={checkLabelText}>bin() by</span>
+            </label>
+            <select class={filterSelect} data-kql-bin-size aria-label="Time bucket width">
+              {KQL_BIN_SIZES.map((b) => <option value={b.id}>{b.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class={stepBlock} data-kql-project-wrap>
+        <p class={paneLabel}>Columns to return</p>
+        {/* The two data-*-class attributes hand the script the Panda-generated
+            class names for the rows it builds at runtime — same pattern as
+            CidrCalculator's data-same-class/data-diff-class. */}
+        <div
+          class={columnList}
+          data-kql-project
+          data-check-class={checkRow}
+          data-name-class={checkLabelText}
+          role="group"
+          aria-label="Columns to return"
+        >
+        </div>
+        <div class={css({ mt: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' })}>
+          <button type="button" class={smallBtn} data-kql-project-clear data-sound="tick" title="Return every column">
+            <Icon name="x" size={13} /> Return all columns
+          </button>
+          <span class={css({ fontSize: '0.76rem', color: 'textMuted' })} data-kql-project-count></span>
+        </div>
+      </div>
+
+      <div class={stepBlock}>
+        <p class={paneLabel}>Sort &amp; limit</p>
+        <div class={inlineRow}>
+          <select class={filterSelect} data-kql-sort-col aria-label="Sort column"></select>
+          <div class={dirRow} role="radiogroup" aria-label="Sort direction">
+            <button type="button" role="radio" aria-checked="true" data-active data-kql-dir="desc" data-sound="tick" class={dirBtn}>desc</button>
+            <button type="button" role="radio" aria-checked="false" data-kql-dir="asc" data-sound="tick" class={dirBtn}>asc</button>
+          </div>
+          <label class={smallLabel} for="kql-limit">Limit</label>
+          <input type="number" id="kql-limit" class={numberInput} min="1" step="1" value="100" data-kql-limit />
+        </div>
+      </div>
+    </div>
+
+    <div class={stage}>
+      <p class={paneLabel}>Query</p>
+      <pre class={outputBox}><code data-kql-output>&nbsp;</code></pre>
+      <ul class={msgList} data-kql-messages data-warn-class={msgWarn} data-tip-class={msgTip} aria-live="polite"></ul>
+      <div class={actionCol}>
+        <button type="button" class={primaryActionBtn} data-kql-copy data-copy-pop data-sound="copy" title="Copy the query to the clipboard">
+          <Icon name="copy" size={15} /> Copy query
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <template data-kql-row-template>
+    <div class={filterRow} data-kql-filter-row>
+      <span class={filterPipe} aria-hidden="true">| where</span>
+      <select class={filterSelect} data-kql-col aria-label="Column"></select>
+      <select class={filterSelect} data-kql-op aria-label="Operator"></select>
+      <input type="text" class={filterValue} data-kql-val autocomplete="off" spellcheck="false" aria-label="Value" />
+      <button type="button" class={iconBtn} data-kql-remove data-sound="tick" title="Remove this filter" aria-label="Remove this filter">
+        <Icon name="x" size={13} />
+      </button>
+    </div>
+  </template>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import {
+    KQL_EXAMPLE_HUNTS,
+    availableSortColumns,
+    buildKqlQuery,
+    findAggregation,
+    findColumn,
+    findTable,
+    operatorsForKind,
+  } from '../utils/kql';
+  import { persistToolSession } from '../scripts/toolSession';
+  import { pop } from '../scripts/copyPop';
+
+  (function () {
+    var DEFAULT_TABLE = 'DeviceProcessEvents';
+    var DEFAULT_TIMESPAN = '7d';
+    var DEFAULT_LIMIT = 100;
+
+    function option(value, label) {
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      return opt;
+    }
+
+    // Replace a <select>'s options, keeping the current value selected when
+    // it still exists in the new list.
+    function fillSelect(sel, values, labels, blankLabel) {
+      var previous = sel.value;
+      sel.innerHTML = '';
+      if (blankLabel !== null && blankLabel !== undefined) sel.appendChild(option('', blankLabel));
+      for (var i = 0; i < values.length; i++) sel.appendChild(option(values[i], labels ? labels[i] : values[i]));
+      var kept = false;
+      for (var j = 0; j < sel.options.length; j++) {
+        if (sel.options[j].value === previous) { kept = true; break; }
+      }
+      sel.value = kept ? previous : sel.options.length ? sel.options[0].value : '';
+      return kept;
+    }
+
+    function init() {
+      var roots = document.querySelectorAll('[data-kql-builder]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var tableSel = root.querySelector('[data-kql-table]');
+        var timespanSel = root.querySelector('[data-kql-timespan]');
+        var presetSel = root.querySelector('[data-kql-preset]');
+        // The Reset button is wired by persistToolSession's `resetButton`
+        // option at the bottom of this file, not here.
+        var blurbEl = root.querySelector('[data-kql-table-blurb]');
+        var filtersEl = root.querySelector('[data-kql-filters]');
+        var filtersEmptyEl = root.querySelector('[data-kql-filters-empty]');
+        var addFilterBtn = root.querySelector('[data-kql-add-filter]');
+        var aggSel = root.querySelector('[data-kql-agg]');
+        var aggColSel = root.querySelector('[data-kql-agg-col]');
+        var groupWrap = root.querySelector('[data-kql-group-wrap]');
+        var by1Sel = root.querySelector('[data-kql-by-1]');
+        var by2Sel = root.querySelector('[data-kql-by-2]');
+        var binBox = root.querySelector('[data-kql-bin]');
+        var binSizeSel = root.querySelector('[data-kql-bin-size]');
+        var projectWrap = root.querySelector('[data-kql-project-wrap]');
+        var projectEl = root.querySelector('[data-kql-project]');
+        var projectClearBtn = root.querySelector('[data-kql-project-clear]');
+        var projectCountEl = root.querySelector('[data-kql-project-count]');
+        var sortColSel = root.querySelector('[data-kql-sort-col]');
+        var dirBtns = Array.prototype.slice.call(root.querySelectorAll('[data-kql-dir]'));
+        var limitInput = root.querySelector('[data-kql-limit]');
+        var outputEl = root.querySelector('[data-kql-output]');
+        var messagesEl = root.querySelector('[data-kql-messages]');
+        var copyBtn = root.querySelector('[data-kql-copy]');
+        var rowTemplate = root.querySelector('[data-kql-row-template]');
+        if (!tableSel || !outputEl || !rowTemplate || !filtersEl) return;
+
+        var direction = 'desc';
+        // Owned save trigger — see the persistToolSession call at the bottom.
+        var sessionHandle = null;
+        var saveTimer = null;
+        var suppressSave = false;
+
+        function scheduleSave() {
+          if (suppressSave || !sessionHandle) return;
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(function () {
+            saveTimer = null;
+            sessionHandle.save();
+          }, 400);
+        }
+
+        function currentTable() {
+          return findTable(tableSel.value) || findTable(DEFAULT_TABLE);
+        }
+
+        // -- filter rows ----------------------------------------------------
+
+        function fillOperatorSelect(opSel, column) {
+          if (!column) { opSel.innerHTML = ''; return; }
+          var operators = operatorsForKind(column.kind);
+          var ids = operators.map(function (o) { return o.id; });
+          var labels = operators.map(function (o) { return o.symbol; });
+          fillSelect(opSel, ids, labels, null);
+          var chosen = null;
+          for (var i = 0; i < operators.length; i++) if (operators[i].id === opSel.value) chosen = operators[i];
+          opSel.title = chosen ? chosen.hint : '';
+        }
+
+        function syncRow(row) {
+          var table = currentTable();
+          var colSel = row.querySelector('[data-kql-col]');
+          var opSel = row.querySelector('[data-kql-op]');
+          var valInput = row.querySelector('[data-kql-val]');
+          var column = findColumn(table, colSel.value);
+          colSel.title = column ? column.hint : '';
+          var operators = operatorsForKind(column ? column.kind : 'string');
+          var operator = null;
+          for (var i = 0; i < operators.length; i++) if (operators[i].id === opSel.value) operator = operators[i];
+          if (!operator) {
+            fillOperatorSelect(opSel, column);
+            for (var j = 0; j < operators.length; j++) if (operators[j].id === opSel.value) operator = operators[j];
+          }
+          opSel.title = operator ? operator.hint : '';
+          if (!operator || operator.form === 'function') {
+            valInput.hidden = true;
+            valInput.value = '';
+          } else {
+            valInput.hidden = false;
+            if (operator.form === 'list') valInput.placeholder = 'value, value, value';
+            else if (column && column.kind === 'numeric') valInput.placeholder = 'number';
+            else if (column && column.kind === 'bool') valInput.placeholder = 'true or false';
+            else if (column && column.kind === 'datetime') valInput.placeholder = 'ago(1d) or 2026-01-31';
+            else valInput.placeholder = 'value';
+          }
+        }
+
+        function addFilterRow(preset) {
+          var table = currentTable();
+          var node = rowTemplate.content.cloneNode(true);
+          var row = node.querySelector('[data-kql-filter-row]');
+          var colSel = row.querySelector('[data-kql-col]');
+          var opSel = row.querySelector('[data-kql-op]');
+          var valInput = row.querySelector('[data-kql-val]');
+          var names = table.columns.map(function (c) { return c.name; });
+          fillSelect(colSel, names, names, null);
+          if (preset && preset.column) colSel.value = preset.column;
+          var column = findColumn(table, colSel.value);
+          fillOperatorSelect(opSel, column);
+          if (preset && preset.operatorId) opSel.value = preset.operatorId;
+          syncRow(row);
+          if (preset && preset.value) valInput.value = preset.value;
+
+          colSel.addEventListener('change', function () {
+            fillOperatorSelect(opSel, findColumn(currentTable(), colSel.value));
+            syncRow(row);
+            render();
+          });
+          opSel.addEventListener('change', function () { syncRow(row); render(); });
+          valInput.addEventListener('input', render);
+          row.querySelector('[data-kql-remove]').addEventListener('click', function () {
+            row.remove();
+            render();
+          });
+          filtersEl.appendChild(row);
+          return row;
+        }
+
+        function filterRows() {
+          return Array.prototype.slice.call(filtersEl.querySelectorAll('[data-kql-filter-row]'));
+        }
+
+        // -- column-dependent controls --------------------------------------
+
+        // Split into three so a change that only invalidates ONE of them
+        // doesn't reset the others — switching aggregation function must not
+        // silently clear the project checkboxes the visitor already ticked.
+        // Only a table change invalidates all three at once.
+        function rebuildGroupSelects() {
+          var table = currentTable();
+          var names = table.columns.map(function (c) { return c.name; });
+          fillSelect(by1Sel, names, names, '— none —');
+          fillSelect(by2Sel, names, names, '— none —');
+        }
+
+        function rebuildAggColumnSelect() {
+          // Aggregation target: only columns the chosen function accepts.
+          var table = currentTable();
+          var aggregation = findAggregation(aggSel.value);
+          var allowed = aggregation
+            ? table.columns.filter(function (c) { return aggregation.columnKinds.indexOf(c.kind) !== -1; })
+            : [];
+          var allowedNames = allowed.map(function (c) { return c.name; });
+          fillSelect(aggColSel, allowedNames, allowedNames, null);
+        }
+
+        function rebuildProjectList() {
+          var table = currentTable();
+          // Clear-then-rebuild. The clear is the documented-safe
+          // `innerHTML = ''` form (no HTML string is ever assembled from
+          // data); every node below is built with createElement/textContent.
+          projectEl.innerHTML = '';
+          var checkClass = projectEl.getAttribute('data-check-class') || '';
+          var nameClass = projectEl.getAttribute('data-name-class') || '';
+          for (var i = 0; i < table.columns.length; i++) {
+            var column = table.columns[i];
+            var label = document.createElement('label');
+            label.className = checkClass;
+            label.title = column.hint;
+            var box = document.createElement('input');
+            box.type = 'checkbox';
+            box.value = column.name;
+            box.setAttribute('data-kql-project-box', '');
+            box.addEventListener('change', render);
+            var span = document.createElement('span');
+            span.className = nameClass;
+            span.textContent = column.name;
+            label.appendChild(box);
+            label.appendChild(span);
+            projectEl.appendChild(label);
+          }
+        }
+
+        function rebuildAllColumnControls() {
+          rebuildGroupSelects();
+          rebuildAggColumnSelect();
+          rebuildProjectList();
+        }
+
+        function projectedColumns() {
+          return Array.prototype.slice
+            .call(projectEl.querySelectorAll('[data-kql-project-box]'))
+            .filter(function (b) { return b.checked; })
+            .map(function (b) { return b.value; });
+        }
+
+        function syncSummarizeControls() {
+          var aggregation = findAggregation(aggSel.value);
+          aggColSel.hidden = !aggregation || !aggregation.needsColumn;
+          groupWrap.hidden = !aggregation;
+          binSizeSel.disabled = !binBox.checked;
+          // project and summarize are mutually exclusive — see utils/kql.ts.
+          projectWrap.hidden = !!aggregation;
+        }
+
+        // -- spec + render ---------------------------------------------------
+
+        function readSpec() {
+          var table = currentTable();
+          var where = filterRows().map(function (row) {
+            return {
+              column: row.querySelector('[data-kql-col]').value,
+              operatorId: row.querySelector('[data-kql-op]').value,
+              value: row.querySelector('[data-kql-val]').value,
+            };
+          });
+          var aggregation = findAggregation(aggSel.value);
+          var summarize = null;
+          if (aggregation) {
+            var by = [];
+            if (by1Sel.value) by.push(by1Sel.value);
+            if (by2Sel.value) by.push(by2Sel.value);
+            summarize = {
+              aggregationId: aggregation.id,
+              aggColumn: aggregation.needsColumn ? aggColSel.value : '',
+              by: by,
+              binColumn: binBox.checked ? table.timeColumn : '',
+              binSize: binBox.checked ? binSizeSel.value : '',
+            };
+          }
+          var rawLimit = limitInput.value.trim();
+          var limit = rawLimit === '' ? null : Number(rawLimit);
+          return {
+            table: table.name,
+            timespan: timespanSel.value,
+            where: where,
+            project: aggregation ? [] : projectedColumns(),
+            summarize: summarize,
+            sort: sortColSel.value ? { column: sortColSel.value, direction: direction } : null,
+            limit: limit,
+          };
+        }
+
+        function messageItem(text, className) {
+          var li = document.createElement('li');
+          li.className = className;
+          li.textContent = text;
+          return li;
+        }
+
+        function render() {
+          syncSummarizeControls();
+          var spec = readSpec();
+
+          // Sort options depend on what the pipeline actually returns.
+          var sortable = availableSortColumns(spec);
+          fillSelect(sortColSel, sortable, sortable, '— no sort —');
+          spec = readSpec();
+
+          var result = buildKqlQuery(spec);
+          outputEl.textContent = result.query || ' ';
+
+          messagesEl.innerHTML = '';
+          for (var i = 0; i < result.warnings.length; i++) {
+            messagesEl.appendChild(messageItem(result.warnings[i], messagesEl.getAttribute('data-warn-class') || ''));
+          }
+          for (var j = 0; j < result.tips.length; j++) {
+            messagesEl.appendChild(messageItem(result.tips[j], messagesEl.getAttribute('data-tip-class') || ''));
+          }
+
+          filtersEmptyEl.hidden = filterRows().length > 0;
+          var count = projectedColumns().length;
+          projectCountEl.textContent = count === 0 ? 'None selected — every column is returned.' : count + ' selected.';
+
+          var table = currentTable();
+          blurbEl.textContent = table.blurb + ' Time column: ' + table.timeColumn + '.';
+
+          scheduleSave();
+        }
+
+        // -- apply a whole spec (presets, session restore, reset) ------------
+
+        function applySpec(spec) {
+          if (!spec || !findTable(spec.table)) return;
+          tableSel.value = spec.table;
+          rebuildAllColumnControls();
+          timespanSel.value = spec.timespan || '';
+          filtersEl.innerHTML = '';
+          var where = spec.where || [];
+          for (var i = 0; i < where.length; i++) addFilterRow(where[i]);
+          aggSel.value = spec.summarize ? spec.summarize.aggregationId : '';
+          // Re-derive the aggregate-target options now that the function is
+          // set; the group selects and project list were already built above
+          // and must not be wiped before the values below are applied.
+          rebuildAggColumnSelect();
+          if (spec.summarize) {
+            if (spec.summarize.aggColumn) aggColSel.value = spec.summarize.aggColumn;
+            by1Sel.value = (spec.summarize.by && spec.summarize.by[0]) || '';
+            by2Sel.value = (spec.summarize.by && spec.summarize.by[1]) || '';
+            binBox.checked = !!spec.summarize.binColumn;
+            if (spec.summarize.binSize) binSizeSel.value = spec.summarize.binSize;
+          } else {
+            by1Sel.value = '';
+            by2Sel.value = '';
+            binBox.checked = false;
+          }
+          var project = spec.project || [];
+          Array.prototype.forEach.call(projectEl.querySelectorAll('[data-kql-project-box]'), function (box) {
+            box.checked = project.indexOf(box.value) !== -1;
+          });
+          setDirection(spec.sort ? spec.sort.direction : 'desc');
+          syncSummarizeControls();
+          var sortable = availableSortColumns(readSpec());
+          fillSelect(sortColSel, sortable, sortable, '— no sort —');
+          sortColSel.value = spec.sort && sortable.indexOf(spec.sort.column) !== -1 ? spec.sort.column : '';
+          limitInput.value = spec.limit === null || spec.limit === undefined ? '' : String(spec.limit);
+          render();
+        }
+
+        function defaultSpec() {
+          return {
+            table: DEFAULT_TABLE,
+            timespan: DEFAULT_TIMESPAN,
+            where: [{ column: 'FileName', operatorId: 'eq_ci', value: '' }],
+            project: [],
+            summarize: null,
+            sort: { column: 'Timestamp', direction: 'desc' },
+            limit: DEFAULT_LIMIT,
+          };
+        }
+
+        function setDirection(next) {
+          direction = next === 'asc' ? 'asc' : 'desc';
+          dirBtns.forEach(function (b) {
+            var active = b.getAttribute('data-kql-dir') === direction;
+            if (active) b.setAttribute('data-active', '');
+            else b.removeAttribute('data-active');
+            b.setAttribute('aria-checked', String(active));
+          });
+        }
+
+        // -- wiring ----------------------------------------------------------
+
+        tableSel.addEventListener('change', function () {
+          // A table change invalidates every column reference, so the filter
+          // rows are rebuilt against the new schema rather than left pointing
+          // at columns that no longer exist.
+          filtersEl.innerHTML = '';
+          rebuildAllColumnControls();
+          addFilterRow(null);
+          Array.prototype.forEach.call(projectEl.querySelectorAll('[data-kql-project-box]'), function (b) { b.checked = false; });
+          sortColSel.value = '';
+          render();
+        });
+        timespanSel.addEventListener('change', render);
+        addFilterBtn.addEventListener('click', function () { addFilterRow(null); render(); });
+        // Only the aggregate-target list depends on which function is chosen —
+        // rebuilding the project checkboxes here would silently clear them.
+        aggSel.addEventListener('change', function () { rebuildAggColumnSelect(); render(); });
+        aggColSel.addEventListener('change', render);
+        by1Sel.addEventListener('change', render);
+        by2Sel.addEventListener('change', render);
+        binBox.addEventListener('change', render);
+        binSizeSel.addEventListener('change', render);
+        sortColSel.addEventListener('change', render);
+        limitInput.addEventListener('input', render);
+        projectClearBtn.addEventListener('click', function () {
+          Array.prototype.forEach.call(projectEl.querySelectorAll('[data-kql-project-box]'), function (b) { b.checked = false; });
+          render();
+        });
+        dirBtns.forEach(function (b) {
+          b.addEventListener('click', function () { setDirection(b.getAttribute('data-kql-dir')); render(); });
+        });
+
+        presetSel.addEventListener('change', function () {
+          var id = presetSel.value;
+          if (!id) return;
+          for (var i = 0; i < KQL_EXAMPLE_HUNTS.length; i++) {
+            if (KQL_EXAMPLE_HUNTS[i].id === id) { applySpec(KQL_EXAMPLE_HUNTS[i].spec); return; }
+          }
+        });
+
+        var status = document.createElement('div');
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;';
+        document.body.appendChild(status);
+
+        copyBtn.addEventListener('click', function () {
+          var text = outputEl.textContent || '';
+          if (!text.trim()) return;
+          navigator.clipboard.writeText(text).then(function () {
+            pop(copyBtn);
+            status.textContent = 'KQL query copied to clipboard';
+            setTimeout(function () { status.textContent = ''; }, 1600);
+          }).catch(function () {});
+        });
+
+        applySpec(defaultSpec());
+
+        // Session persistence: the tool's whole state IS the query spec, and
+        // the filter rows are created dynamically, so this serializes the spec
+        // itself rather than relying on toolSession's data-session-field
+        // auto-binding (which only sees elements present at init).
+        //
+        // Because there are no bound fields, nothing inside toolSession is
+        // listening for changes either — this owns the save trigger, calling
+        // the handle's immediate save() behind its own debounce from render().
+        // `suppressSave` is held across the reset pass so the applySpec() that
+        // repaints the defaults can't schedule a write that resurrects the key
+        // toolSession just removed (its own `resetting` flag does the same job
+        // for bound fields, and isn't reachable from out here).
+        var session = persistToolSession({
+          root: root,
+          resetButton: '[data-kql-reset]',
+          serialize: function () { return readSpec(); },
+          restore: function (data) { applySpec(data); },
+          onReset: function () {
+            suppressSave = true;
+            presetSel.value = '';
+            applySpec(defaultSpec());
+            if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+            suppressSave = false;
+          },
+        });
+        sessionHandle = session;
+
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>

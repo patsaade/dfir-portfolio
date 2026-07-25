@@ -1,0 +1,387 @@
+---
+// Splunk SPL Query Builder — compose a base search plus a chain of pipe
+// commands and copy the assembled SPL. Same page shape as the other
+// interactive tools (intro aside -> tool -> reference notes -> related ->
+// external resources). Static page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import SplBuilder from '../../components/SplBuilder.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { SPL_AGG_FUNCTIONS, SPL_PIPE_COMMANDS, SPL_PRESETS, SPL_SEARCH_OPERATORS, buildSplQuery } from '../../utils/spl';
+
+// Every query string printed on this page is assembled by the same function
+// the tool itself calls — never hand-typed — and each result is asserted
+// character-for-character in test/spl.test.ts, so a wrong example can't ship.
+const workedExamples = SPL_PRESETS.map((p) => ({ ...p, query: buildSplQuery(p.spec) }));
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const refTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' } as const;
+const refTd = css(refTdBase);
+const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' });
+const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary', whiteSpace: 'nowrap' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const bodyText = css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' });
+const mutedNote = css({ color: 'textMuted', fontSize: '0.88rem', mt: '1.5rem', lineHeight: 1.7 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' });
+const linkStyle = css({ color: 'primary' });
+
+const exampleList = css({ display: 'flex', flexDirection: 'column', gap: '1.25rem' });
+const exampleTitle = css({ fontSize: '1rem', fontWeight: 700, color: 'text', m: 0 });
+const exampleDesc = css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mt: '0.3rem', mb: '0.55rem' });
+const exampleCode = css({
+  m: 0,
+  p: '0.7rem 0.85rem',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  lineHeight: 1.7,
+  color: 'text',
+  bg: 'codeBg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  maxH: '12rem',
+  overflowY: 'auto',
+});
+---
+
+<BaseLayout
+  title="Splunk SPL Query Builder"
+  description="Compose a Splunk SPL search step by step — a base search plus stats, table, sort, where, eval, and head — and copy the assembled query. Syntax verified against Splunk's own Search Reference; runs entirely in your browser."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Splunk SPL Query Builder' }]}
+    eyebrow="Query Builders"
+    title="Splunk SPL Query Builder"
+    description="Build a Splunk search a stage at a time — index and filters first, then the pipe commands — and copy the assembled SPL to run in your own environment."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This builder <strong class={css({ color: 'text' })}>writes SPL, it doesn't run it</strong> — there's no connection to any
+      Splunk instance here, no search is executed, and nothing you type leaves your browser. It assembles query text for
+      you to paste into your own search bar. It covers a defined subset of SPL — a base search plus six pipe commands —
+      each verified against{' '}
+      <a
+        href="https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference/10.2/quick-reference/command-quick-reference"
+        target="_blank"
+        rel="noopener"
+        class={linkStyle}
+      >
+        Splunk's own Search Reference
+      </a>, not the whole language.
+    </p>
+  </aside>
+
+  <p class={bodyText}>
+    SPL is the query language behind Splunk, and it reads left to right as a pipeline: a base search narrows the events
+    down, then each <code class={inlineCode}>|</code> hands that result set to the next command. That structure is what
+    makes it worth building deliberately rather than typing from memory — most of the mistakes that cost an analyst time
+    aren't syntax errors, they're ordering errors. Filter after you aggregate and the field you wanted is already gone;
+    forget a time range and a <Term slug="triage">triage</Term> query turns into an all-time scan of every index your role
+    can reach. This tool makes the pipeline visible: each stage is a card you can enable, fill in, and move, and the
+    assembled query updates as you go.
+  </p>
+
+  <p class={bodyText}>
+    The DFIR use for that is direct. Splunk is one of the <Term slug="siem">SIEM</Term> platforms an investigation's{' '}
+    <Term slug="log-aggregation">log aggregation</Term> tends to land in, and the queries that matter during an incident
+    are mostly the same handful of shapes: count one event code by source to spot a spray, aggregate process launches to
+    find the rare parent, compare two fields against each other,{' '}
+    <Term slug="threat-hunting">hunt</Term> for the outlier rather than the known-bad. Those shapes are worth knowing
+    cold — the field names change with every deployment, but the pipeline doesn't.
+  </p>
+
+  <h2 id="builder" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="terminal" size={20} class={css({ color: 'primary' })} /> Query builder
+  </h2>
+  <SplBuilder />
+
+  <h2 id="commands" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Supported pipe commands
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Command</th>
+          <th class={refTh}>Documented syntax</th>
+          <th class={refTh}>What it does</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          SPL_PIPE_COMMANDS.map((c) => (
+            <tr>
+              <td class={refTd}>
+                <a href={c.docUrl} target="_blank" rel="noopener" class={css({ color: 'primary', fontWeight: 600 })}>
+                  {c.id}
+                </a>
+              </td>
+              <td class={refTdCode}>{c.syntax}</td>
+              <td class={refTdMuted}>{c.summary}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={mutedNote}>
+    Command names link to their page in Splunk's Search Reference. The syntax column is the documented form this builder
+    emits, not the command's complete argument list — <code class={inlineCode}>stats</code>, for instance, also takes{' '}
+    <code class={inlineCode}>partitions</code>, <code class={inlineCode}>allnum</code>, and <code class={inlineCode}>delim</code>{' '}
+    arguments that this tool doesn't expose.
+  </p>
+
+  <h2 id="aggregations" class={sectionH2}>
+    <Icon name="activity" size={20} class={css({ color: 'primary' })} /> Aggregation functions in stats
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Function</th>
+          <th class={refTh}>Syntax</th>
+          <th class={refTh}>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          SPL_AGG_FUNCTIONS.map((f) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>{f.label}</strong>
+              </td>
+              <td class={refTdCode}>{f.syntax}</td>
+              <td class={refTdMuted}>{f.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={mutedNote}>
+    <code class={inlineCode}>count</code> is the only one of these Splunk's own examples write bare — every other function
+    takes a field in parentheses, and the builder flags it as an error if you leave that field empty rather than quietly
+    dropping the aggregation. Splunk has many more aggregate and multivalue functions than these six; they're out of this
+    tool's scope rather than partially supported. Add an <code class={inlineCode}>AS</code> name to any of them to rename
+    the resulting column — the builder quotes that name for you if it contains a space.
+  </p>
+
+  <h2 id="filters" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Base-search comparison operators
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Operator</th>
+          <th class={refTh}>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          SPL_SEARCH_OPERATORS.map((op) => (
+            <tr>
+              <td class={refTdCode}>field{op.id}value</td>
+              <td class={refTdMuted}>{op.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={mutedNote}>
+    Splunk documents <code class={inlineCode}>AND</code> as implied between terms, so the builder space-separates your
+    filters rather than writing the operator out. Boolean operators, when you do write them by hand, have to be uppercase.
+  </p>
+
+  <h2 id="quoting" class={sectionH2}>
+    <Icon name="key" size={20} class={css({ color: 'primary' })} /> Quoting, escaping, and where vs. search
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '0.95rem', mb: '1rem' })}>
+    Two rules cause most of the confusion in hand-written SPL, and the builder applies both for you so you can type the
+    literal value you want to match:
+  </p>
+  <ul class={css({ display: 'flex', flexDirection: 'column', gap: '0.7rem', color: 'text', fontSize: '0.92rem', lineHeight: 1.75, pl: '1.2rem', mb: '1rem' })}>
+    <li>
+      <strong>Quoting and escaping.</strong> Splunk's docs call for quotation marks around values containing white space,
+      commas, pipes, quotation marks, or brackets — so the builder quotes exactly those and leaves everything else bare,
+      including wildcards, which stay unquoted the way Splunk's own <code class={inlineCode}>host=webserver*</code>{' '}
+      example writes them. A literal backslash is escaped as <code class={inlineCode}>\\</code> and a literal double quote
+      as <code class={inlineCode}>\"</code>, which is why a Windows path you type as
+      <code class={inlineCode}>C:\Windows</code> comes out as <code class={inlineCode}>C:\\Windows</code>. Note that a
+      backslash can't escape an asterisk in SPL — Splunk documents that explicitly.
+    </li>
+    <li>
+      <strong><code class={inlineCode}>where</code> reads bare names as fields.</strong> This is the difference between the
+      two filtering commands. In the base search, <code class={inlineCode}>ipaddress=clientip</code> matches the literal
+      string "clientip"; in <code class={inlineCode}>where</code>, the same expression compares the{' '}
+      <em>two fields</em> against each other, and a string literal has to be double-quoted to be read as one. The
+      builder's <code class={inlineCode}>where</code> stage makes that an explicit choice — text, number, or field —
+      rather than something you find out from an empty result set. Field names get single quotes when Splunk requires
+      them: a name starting with a digit, or containing anything outside letters, digits, and underscores.
+    </li>
+  </ul>
+
+  <h2 id="time" class={sectionH2}>
+    <Icon name="clock" size={20} class={css({ color: 'primary' })} /> Time modifiers
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '0.95rem', mb: '1rem' })}>
+    <code class={inlineCode}>earliest</code> and <code class={inlineCode}>latest</code> take Splunk's relative-time format:
+    an optional sign, an integer, a unit, and an optional <code class={inlineCode}>@</code> snap that rounds down to the
+    start of that unit. So <code class={inlineCode}>-24h@h</code> means "24 hours ago, snapped back to the top of the
+    hour", and <code class={inlineCode}>now</code> is its own literal. Units run from <code class={inlineCode}>s</code>{' '}
+    through <code class={inlineCode}>m</code>, <code class={inlineCode}>h</code>, <code class={inlineCode}>d</code>,{' '}
+    <code class={inlineCode}>w</code>, <code class={inlineCode}>mon</code>, <code class={inlineCode}>q</code>, and{' '}
+    <code class={inlineCode}>y</code>, each with longer spellings Splunk also accepts. Splunk's docs recommend pairing a
+    relative <code class={inlineCode}>earliest</code> with <code class={inlineCode}>latest=now</code> to avoid an
+    inaccurate window.
+  </p>
+  <p class={mutedNote}>
+    These two values are passed through <strong class={css({ color: 'text' })}>exactly as typed</strong> — never quoted or
+    rewritten — because Splunk also accepts absolute timestamps here, and reformatting one would mean guessing at your
+    intent. When a value doesn't match the relative-time grammar, the builder says so as a note rather than silently
+    "fixing" it.
+  </p>
+
+  <h2 id="examples" class={sectionH2}>
+    <Icon name="file-text" size={20} class={css({ color: 'primary' })} /> Worked examples
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '0.95rem', mb: '1.25rem' })}>
+    Each of these loads into the builder from the dropdown at the top of the tool. They're here to show the{' '}
+    <em>shape</em> of a query, not to be pasted as-is: the index, sourcetype, and field names below follow the conventions
+    Splunk's own Windows and web add-ons create, but every deployment onboards data differently, so treat them as starting
+    points to adapt to your own field names.
+  </p>
+  <div class={exampleList}>
+    {
+      workedExamples.map((ex) => (
+        <div>
+          <h3 class={exampleTitle}>{ex.label}</h3>
+          <p class={exampleDesc}>{ex.description}</p>
+          <pre class={exampleCode}><code>{ex.query}</code></pre>
+        </div>
+      ))
+    }
+  </div>
+
+  <h2 id="scope" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> What this tool deliberately doesn't do
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '0.95rem', mb: '1rem' })}>
+    These are scope decisions, not gaps waiting to be filled in — worth stating plainly so you know exactly what you're
+    getting:
+  </p>
+  <ul class={css({ display: 'flex', flexDirection: 'column', gap: '0.55rem', color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.7, pl: '1.2rem' })}>
+    <li>
+      <strong class={css({ color: 'text' })}>It doesn't run searches.</strong> No Splunk connection, no credentials, no
+      results — it produces text.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>It doesn't read SPL.</strong> There's no parser, so you can't paste an
+      existing query in and have the form fill itself out. The data flow is one-way.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>It doesn't validate free-text expressions.</strong> An{' '}
+      <code class={inlineCode}>eval</code> expression is emitted verbatim. Checking it properly would mean implementing
+      Splunk's full eval grammar, and a half-implementation that quietly accepts a broken expression would be worse than
+      none.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>It covers six pipe commands.</strong> Subsearches, macros, lookups,{' '}
+      <code class={inlineCode}>tstats</code> and data models, <code class={inlineCode}>transaction</code>,{' '}
+      <code class={inlineCode}>rex</code>, <code class={inlineCode}>timechart</code>, <code class={inlineCode}>dedup</code>,{' '}
+      <code class={inlineCode}>top</code>/<code class={inlineCode}>rare</code>, and SPL2 syntax are all out of scope.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>One card per command.</strong> The pipeline holds at most one of each
+      command, in whatever order you arrange them — real SPL happily uses <code class={inlineCode}>eval</code> three times
+      in a row, and this doesn't.
+    </li>
+  </ul>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="target" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Sigma is the vendor-neutral way to write the same detection logic once and convert it to a backend's own syntax —
+        the complement to writing SPL directly. Build the rule there, hand-write the search here.
+      </p>
+    </div>
+    <div>
+      <a href="/event-ids/" class={toolChip}>
+        <Icon name="list" size={13} /> Windows Event ID Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Looking up which event code to filter on before you build the search — 4625 for a failed logon, Sysmon 1 for
+        process creation, and what each one actually records.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/regex-tester/" class={toolChip}>
+        <Icon name="search" size={13} /> Regex Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        SPL's own regex commands are outside this builder's scope, but if you're writing a pattern to drop into one,
+        validate it against sample text first.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/ioc-extractor/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> IOC Extractor <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Pull the indicators out of a report first, then drop them into a base-search filter here to check whether they
+        ever appear in your own data.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['spl-builder']} />
+</BaseLayout>

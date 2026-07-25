@@ -1,5 +1,5 @@
 ---
-// Deobfuscation Recipe Builder — chain reversible transforms (Base64/hex/URL
+// Codec Builder — chain reversible transforms (Base64/hex/URL
 // encode+decode, ROT13/ROT47, single-byte XOR, Gzip/Deflate inflate) to peel
 // back an obfuscated loader/dropper payload one step at a time. Same page
 // shape as the other interactive tools (intro aside -> tool -> reference
@@ -50,17 +50,18 @@ const STEP_NOTES: Record<string, string> = {
   xor: 'A single repeating byte key. Enter a known key directly, or brute-force all 256 keys and rank the results by printable-ASCII ratio.',
   'gzip-inflate': 'For a gzip-wrapped payload (the 1f 8b magic bytes) — needs the browser\'s Decompression Streams API.',
   'deflate-inflate': 'For a raw zlib-wrapped Deflate stream — also needs the Decompression Streams API.',
+  'utf16le-decode': 'Recovers readable text from a PowerShell -EncodedCommand payload — those are Base64 of UTF-16LE, not UTF-8, so a Base64 decode alone leaves a null byte between every character; this step commonly follows right after a Base64 decode step.',
 };
 ---
 
 <BaseLayout
-  title="Deobfuscation Recipe Builder"
-  description="Chain Base64/hex/URL decode, ROT13/ROT47, single-byte XOR, and Gzip/Deflate inflate to peel back an obfuscated loader or dropper payload one step at a time — entirely in your browser, nothing uploaded."
+  title="Codec Builder"
+  description="Chain Base64/hex/URL encode or decode, ROT13/ROT47, single-byte XOR, and Gzip/Deflate inflate to build or peel back an obfuscated loader or dropper payload one step at a time — entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Deobfuscation Recipe Builder' }]}
-    eyebrow="Malware & Static Analysis"
-    title="Deobfuscation Recipe Builder"
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Codec Builder' }]}
+    eyebrow="Converters"
+    title="Codec Builder"
     description="Chain reversible transforms — encode/decode, rotate, XOR, inflate — to peel back an obfuscated payload one step at a time, entirely local."
   />
 
@@ -76,11 +77,10 @@ const STEP_NOTES: Record<string, string> = {
     })}
   >
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
-      Everything here runs entirely in your browser — <strong class={css({ color: 'text' })}>no external APIs, no
-      upload, nothing you paste ever leaves your machine</strong>. Each step reads the previous step's raw bytes and
-      feeds its own output to the next, so a chain that breaks partway through still shows exactly where and why.
-      Gzip and Deflate inflate use the browser's native Decompression Streams API; everything else is a from-scratch
-      implementation.
+      Each step reads the previous step's raw bytes and feeds its own output to the next, so a chain that breaks
+      partway through still shows exactly where and why. Gzip and Deflate inflate use the browser's native
+      Decompression Streams API; everything else is a from-scratch implementation — all local, so nothing you
+      paste here ever leaves your machine.
     </p>
   </aside>
 

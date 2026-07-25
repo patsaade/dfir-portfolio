@@ -84,6 +84,48 @@ describe('extractIocs', () => {
     expect(vals(out.btc)).toContain('bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq');
   });
 
+  it('extracts a Windows file path', () => {
+    // The reused pattern only stops at a character Windows disallows in file
+    // names (backslash, forward slash, colon, *, ?, ", <, >, |, CR/LF) — not
+    // at whitespace — so the path is quoted here the way it'd realistically
+    // appear in a log line, giving the match a real character to stop at.
+    const out = extractIocs('dropped payload at "C:\\Users\\admin\\AppData\\Local\\Temp\\evil.exe" on disk');
+    expect(vals(out.winpath)).toContain('C:\\Users\\admin\\AppData\\Local\\Temp\\evil.exe');
+  });
+
+  it('does not match a Windows-style path missing its drive letter', () => {
+    const out = extractIocs('shared payload from \\\\fileserver\\share\\evil.exe over SMB');
+    expect(out.winpath).toEqual([]);
+  });
+
+  it('extracts a registry key path, both hive abbreviation and full hive name', () => {
+    // Each backslash-delimited segment of the reused pattern runs until the
+    // next backslash (or CR/LF), so the two mentions are put on separate
+    // lines here — otherwise the ordinary prose between them (no backslash
+    // until the second hive's own path) would merge into a single match.
+    const out = extractIocs(
+      'persistence via HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\nalso seen: HKEY_CURRENT_USER\\Software\\Classes',
+    );
+    expect(vals(out.regkey)).toContain('HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Run');
+    expect(vals(out.regkey)).toContain('HKEY_CURRENT_USER\\Software\\Classes');
+  });
+
+  it('does not match an unrecognized hive-like prefix', () => {
+    const out = extractIocs('config stored under HK\\Software\\Foo');
+    expect(out.regkey).toEqual([]);
+  });
+
+  it('extracts MAC addresses, colon- or hyphen-separated', () => {
+    const out = extractIocs('NIC observed as 00:1A:2B:3C:4D:5E and also 00-1A-2B-3C-4D-5E');
+    expect(vals(out.mac)).toContain('00:1A:2B:3C:4D:5E');
+    expect(vals(out.mac)).toContain('00-1A-2B-3C-4D-5E');
+  });
+
+  it('does not match a 5-octet MAC address', () => {
+    const out = extractIocs('truncated NIC id 00:1A:2B:3C:4D seen in the log');
+    expect(out.mac).toEqual([]);
+  });
+
   it('returns an empty array per category for text with nothing to find', () => {
     const out = extractIocs('nothing indicator-shaped here');
     for (const cat of IOC_CATEGORIES) expect(out[cat.id]).toEqual([]);
@@ -220,10 +262,13 @@ describe('defangValue / refangValue', () => {
     expect(refangValue(defanged, 'ipv6')).toBe('fe80::1');
   });
 
-  it('leaves non-defangable categories (hashes, CVE, ATT&CK, BTC) unchanged', () => {
+  it('leaves non-defangable categories (hashes, CVE, ATT&CK, BTC, Windows paths, registry keys, MAC addresses) unchanged', () => {
     const md5 = 'd41d8cd98f00b204e9800998ecf8427e';
     expect(defangValue(md5, 'md5')).toBe(md5);
     expect(defangValue('CVE-2021-44228', 'cve')).toBe('CVE-2021-44228');
     expect(defangValue('T1055.001', 'attack')).toBe('T1055.001');
+    expect(defangValue('C:\\Users\\admin\\evil.exe', 'winpath')).toBe('C:\\Users\\admin\\evil.exe');
+    expect(defangValue('HKLM\\Software\\Run', 'regkey')).toBe('HKLM\\Software\\Run');
+    expect(defangValue('00:1A:2B:3C:4D:5E', 'mac')).toBe('00:1A:2B:3C:4D:5E');
   });
 });

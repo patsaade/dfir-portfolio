@@ -1,5 +1,5 @@
 ---
-// Deobfuscation Recipe Builder — an ordered, growable chain of reversible
+// Codec Builder — an ordered, growable chain of reversible
 // transforms (src/utils/deobfuscate.ts): Base64/hex/URL encode+decode,
 // ROT13/ROT47, single-byte XOR (manual key or a 256-key brute-force ranked
 // by printable-ASCII ratio), and Gzip/Deflate inflate (native
@@ -271,6 +271,7 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
       autocomplete="off"
       spellcheck="false"
       data-deob-input
+      data-session-field="input"
     ></textarea>
   </div>
 
@@ -287,8 +288,15 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
         </select>
       </div>
       <button type="button" class={primaryActionBtn} data-deob-add-step data-sound="tick">Add step</button>
-      <button type="button" class={actionBtn} data-deob-clear-steps data-sound="tick">
-        <Icon name="x" size={14} /> Clear steps
+      <button
+        type="button"
+        class={actionBtn}
+        data-deob-clear-steps
+        data-sound="tick"
+        title="Clear all steps and input"
+        aria-label="Clear all steps and input"
+      >
+        <Icon name="x" size={14} /> Clear all
       </button>
     </div>
     <p class={featureNote} data-deob-feature-note hidden>
@@ -402,6 +410,7 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
   } from '../utils/deobfuscate';
   import { animateSwitch } from '../scripts/animatedSwitch';
   import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
 
   (function () {
     function init() {
@@ -435,6 +444,24 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
         var stepSeq = 0;
         var steps = []; // { id, kind, xorMode: 'manual'|'brute', xorKey: number|null, refs: {...} }
         var renderSeq = 0; // monotonic guard against a stale async render clobbering a newer one
+        var session = null; // assigned once persistToolSession() runs, below
+        var stepSaveTimer = null;
+
+        // The recipe (steps array) isn't a plain data-session-field — it's a
+        // dynamic, growable list handled via serialize()/restore() instead
+        // (see toolSession's own config docs). Since toolSession only
+        // auto-saves fields it auto-binds, every step mutation (add/remove/
+        // reorder/xor-mode/xor-key) has to explicitly ask it to persist —
+        // debounced locally at the same 400ms default toolSession itself
+        // uses, so rapid edits (e.g. typing a manual XOR key) don't write on
+        // every keystroke.
+        function scheduleStepSave() {
+          if (!session) return;
+          clearTimeout(stepSaveTimer);
+          stepSaveTimer = setTimeout(function () {
+            session.save();
+          }, 400);
+        }
 
         function labelFor(kind) {
           return stepDefinition(kind).label;
@@ -466,6 +493,7 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
               setXorMode(step, 'manual');
               step.refs.xorKeyInput.value = String(c.key);
               render();
+              scheduleStepSave();
             });
             list.appendChild(li);
           });
@@ -589,6 +617,39 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
           renderFinalStage(results);
         }
 
+        // toolSession's serialize()/restore() pair for the recipe (see the
+        // `session` note above) — snapshots just the ordered kind/xorMode/
+        // xorKey per step (everything else, e.g. the rendered output, is
+        // recomputed by render(), not stored). Restoring replays the site's
+        // own addStep() once per saved item, same as a visitor rebuilding
+        // the recipe by hand, so every side effect addStep() already has
+        // (DOM creation, animateSwitch wiring, etc.) happens for free.
+        function serializeSteps() {
+          return steps.map(function (s) {
+            return { kind: s.kind, xorMode: s.xorMode, xorKey: s.xorKey };
+          });
+        }
+
+        function restoreSteps(data) {
+          if (!Array.isArray(data)) return;
+          data.forEach(function (s) {
+            if (!s || typeof s.kind !== 'string') return;
+            var before = steps.length;
+            addStep(s.kind);
+            if (steps.length === before) return; // e.g. a decompression step on a browser that lacks it
+            var step = steps[steps.length - 1];
+            if (step.kind !== 'xor') return;
+            if (s.xorMode === 'brute') {
+              setXorMode(step, 'brute');
+            } else if (typeof s.xorKey === 'number' && isFinite(s.xorKey)) {
+              step.xorKey = s.xorKey;
+              step.refs.xorKeyInput.value = String(s.xorKey);
+              setXorMode(step, 'manual');
+            }
+            render();
+          });
+        }
+
         function addStep(kind) {
           var def = null;
           for (var i = 0; i < DEOBFUSCATE_STEPS.length; i++) if (DEOBFUSCATE_STEPS[i].id === kind) def = DEOBFUSCATE_STEPS[i];
@@ -630,19 +691,21 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
               b.addEventListener('click', function () {
                 setXorMode(step, b.getAttribute('data-xor-mode'));
                 render();
+                scheduleStepSave();
               });
             });
             step.refs.xorKeyInput.addEventListener('input', function () {
               var parsed = parseXorKey(step.refs.xorKeyInput.value);
               step.xorKey = parsed;
               render();
+              scheduleStepSave();
             });
             animateSwitch(step.refs.xorModeGroup);
           }
 
-          step.refs.moveUp.addEventListener('click', function () { moveStep(step, -1); });
-          step.refs.moveDown.addEventListener('click', function () { moveStep(step, 1); });
-          step.refs.remove.addEventListener('click', function () { removeStep(step); });
+          step.refs.moveUp.addEventListener('click', function () { moveStep(step, -1); scheduleStepSave(); });
+          step.refs.moveDown.addEventListener('click', function () { moveStep(step, 1); scheduleStepSave(); });
+          step.refs.remove.addEventListener('click', function () { removeStep(step); scheduleStepSave(); });
 
           steps.push(step);
           stepsList.appendChild(li);
@@ -673,6 +736,7 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
 
         addBtn.addEventListener('click', function () {
           addStep(stepSelect.value);
+          scheduleStepSave();
         });
 
         if (clearBtn) {
@@ -704,6 +768,23 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
             navigator.clipboard.writeText(hex).then(function () { pop(copyHexBtn); }).catch(function () {});
           });
         }
+
+        // Wired last, once every handler above exists: the "Clear steps"
+        // button already empties the recipe (the click handler registered
+        // above), so registering toolSession's own reset listener on the
+        // same button afterwards makes it run second — clearing the saved
+        // blob and restoring the input textarea to its true (empty) default
+        // on top of that, which is exactly "also clear the textarea +
+        // storage" without a second, confusingly-similar button.
+        session = persistToolSession({
+          root: root,
+          resetButton: '[data-deob-clear-steps]',
+          serialize: serializeSteps,
+          restore: restoreSteps,
+          onReset: function () {
+            clearTimeout(stepSaveTimer);
+          },
+        });
 
         renumber();
         render();

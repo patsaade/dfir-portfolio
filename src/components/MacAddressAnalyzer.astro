@@ -1,0 +1,418 @@
+---
+// MAC Analyzer — decodes the IEEE 802 MAC-48 address
+// FORMAT itself (src/utils/macAddress.ts): the OUI / NIC-specific byte
+// split, the U/L and I/G bits in the first octet, and the broadcast special
+// case. Pure bit math, nothing here is looked up or fact-checked against a
+// vendor database — this tool deliberately does NOT attempt to name a
+// manufacturer from the OUI (see tools/mac-address.astro's own note on why).
+// Same "Scratch-inspired workspace" shell + live-decode-as-you-type shape as
+// the site's other single-input builder tools (Hash Calculator's Identify
+// pane, the CIDR Calculator's analysis pane).
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+
+const IEEE_REGISTRY_URL = 'https://regauth.standards.ieee.org/standards-ra-web/pub/view.html#registries';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', mb: '0.3rem', display: 'block' });
+const input = css({
+  fontFamily: 'mono',
+  fontSize: '0.95rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.6rem 0.85rem',
+  w: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+const errorBox = css({ color: 'textMuted', fontSize: '0.88rem', p: '0.75rem 1rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md', mt: '1rem' });
+
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end' });
+const resetBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+// ── Octet breakdown (OUI vs. NIC-specific) ──────────────────────────────────
+const groupsWrap = css({ display: 'flex', flexWrap: 'wrap', gap: '0.85rem' });
+const octetGroup = css({ flex: '1 1 220px', minW: '210px' });
+const groupHeadRow = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', mb: '0.4rem' });
+const groupTitle = css({ fontFamily: 'sans', fontSize: '0.78rem', fontWeight: 700, color: 'text' });
+const groupCopyBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '24px',
+  h: '24px',
+  color: 'textMuted',
+  bg: 'transparent',
+  border: 'none',
+  borderRadius: 'sm',
+  cursor: 'pointer',
+  transition: 'color 150ms ease',
+  _hover: { color: 'primary' },
+});
+const octetRow = css({ display: 'flex', gap: '0.35rem' });
+const octetBoxBase = {
+  flex: 1,
+  textAlign: 'center',
+  fontFamily: 'mono',
+  fontSize: '1rem',
+  fontWeight: 700,
+  py: '0.55rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+} as const;
+const octetBoxOui = css({ ...octetBoxBase, bg: 'color-mix(in srgb, token(colors.primary) 13%, transparent)', borderColor: 'color-mix(in srgb, token(colors.primary) 35%, transparent)', color: 'primary' });
+const octetBoxNic = css({ ...octetBoxBase, bg: 'color-mix(in srgb, token(colors.accent) 13%, transparent)', borderColor: 'color-mix(in srgb, token(colors.accent) 35%, transparent)', color: 'accent' });
+
+// ── First-octet bit breakdown ───────────────────────────────────────────────
+const bitStripWrap = css({ mt: '0.5rem' });
+const bitStrip = css({ display: 'flex', gap: '0.3rem' });
+const bitCellBase = {
+  flex: 1,
+  textAlign: 'center',
+  fontFamily: 'mono',
+  fontSize: '0.9rem',
+  fontWeight: 700,
+  py: '0.5rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+  color: 'textMuted',
+  bg: 'bgCard',
+} as const;
+const bitCellPlain = css(bitCellBase);
+const bitCellUl = css({ ...bitCellBase, bg: 'color-mix(in srgb, token(colors.accent) 16%, transparent)', borderColor: 'color-mix(in srgb, token(colors.accent) 45%, transparent)', color: 'accent' });
+const bitCellIg = css({ ...bitCellBase, bg: 'color-mix(in srgb, token(colors.primary) 16%, transparent)', borderColor: 'color-mix(in srgb, token(colors.primary) 45%, transparent)', color: 'primary' });
+const bitCaptionRow = css({ display: 'flex', gap: '0.3rem', mt: '0.3rem' });
+const bitCaption = css({ flex: 1, textAlign: 'center', fontSize: '0.62rem', color: 'textMuted', lineHeight: 1.3 });
+
+// ── Field grid (formatted / administration / type / broadcast) ─────────────
+const resultGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: '1fr 1fr' }, gap: '0.6rem', mt: '1.1rem' });
+const resultCell = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.25rem',
+  p: '0.6rem 0.8rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const resultCellHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' });
+const resultLabel = css({ fontFamily: 'sans', fontSize: '0.72rem', color: 'textMuted', flexShrink: 0 });
+const resultValue = css({ fontFamily: 'mono', fontSize: '0.88rem', color: 'text', wordBreak: 'break-word' });
+const copyBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '24px',
+  h: '24px',
+  color: 'textMuted',
+  bg: 'transparent',
+  border: 'none',
+  borderRadius: 'sm',
+  cursor: 'pointer',
+  transition: 'color 150ms ease',
+  _hover: { color: 'primary' },
+});
+
+const broadcastBanner = css({
+  mt: '1.1rem',
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.6rem',
+  p: '0.75rem 1rem',
+  bg: 'color-mix(in srgb, token(colors.accent) 12%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.accent) 35%, transparent)',
+  borderRadius: 'md',
+  color: 'text',
+  fontSize: '0.88rem',
+  lineHeight: 1.6,
+});
+
+const ouiLookupRow = css({ display: 'flex', alignItems: 'center', gap: '0.35rem', mt: '0.75rem', fontSize: '0.82rem', color: 'textMuted' });
+const ouiLookupLink = css({ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'primary', fontWeight: 600, _hover: { textDecoration: 'underline' } });
+---
+
+<WorkspaceShell hook="data-mac-analyzer" noJsMessage="This analyzer requires JavaScript to decode the address live as you type.">
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-mac-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <div>
+    <label class={fieldLabel} for="mac-input">MAC address</label>
+    <input
+      type="text"
+      id="mac-input"
+      class={input}
+      placeholder="e.g. 00:1A:2B:3C:4D:5E"
+      value="00:1A:2B:3C:4D:5E"
+      autocomplete="off"
+      spellcheck="false"
+      aria-label="MAC address input"
+      data-mac-input
+      data-session-field="mac-input"
+    />
+    <p id="mac-error" hidden class={errorBox} data-mac-error>
+      Enter a 48-bit MAC address as six hex octets, e.g. 00:1A:2B:3C:4D:5E, 00-1A-2B-3C-4D-5E, or 001A2B3C4D5E.
+    </p>
+
+    <div data-mac-results hidden>
+      <p class={paneLabel}>Address structure</p>
+      <div class={groupsWrap}>
+        <div class={octetGroup}>
+          <div class={groupHeadRow}>
+            <span class={groupTitle}>OUI (vendor-assigned identifier)</span>
+            <button type="button" class={groupCopyBtn} data-mac-copy="oui" data-sound="copy" title="Copy OUI" aria-label="Copy OUI">
+              <Icon name="copy" size={13} />
+            </button>
+          </div>
+          <div class={octetRow}>
+            <span class={octetBoxOui} data-mac-octet="0"></span>
+            <span class={octetBoxOui} data-mac-octet="1"></span>
+            <span class={octetBoxOui} data-mac-octet="2"></span>
+          </div>
+          <div class={ouiLookupRow}>
+            <a href={IEEE_REGISTRY_URL} target="_blank" rel="noopener" class={ouiLookupLink} data-sound="tick">
+              Look up this OUI's vendor <Icon name="external-link" size={11} />
+            </a>
+          </div>
+        </div>
+        <div class={octetGroup}>
+          <div class={groupHeadRow}>
+            <span class={groupTitle}>NIC-specific (device-assigned)</span>
+            <button type="button" class={groupCopyBtn} data-mac-copy="nic" data-sound="copy" title="Copy NIC-specific portion" aria-label="Copy NIC-specific portion">
+              <Icon name="copy" size={13} />
+            </button>
+          </div>
+          <div class={octetRow}>
+            <span class={octetBoxNic} data-mac-octet="3"></span>
+            <span class={octetBoxNic} data-mac-octet="4"></span>
+            <span class={octetBoxNic} data-mac-octet="5"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class={bitStripWrap}>
+        <p class={paneLabel}>First octet — U/L and I/G bits</p>
+        <div
+          class={bitStrip}
+          data-mac-bitstrip
+          data-plain-class={bitCellPlain}
+          data-ul-class={bitCellUl}
+          data-ig-class={bitCellIg}
+        ></div>
+        <div class={bitCaptionRow} data-mac-bitcaptions data-caption-class={bitCaption}></div>
+      </div>
+
+      <div class={resultGrid} data-mac-fieldgrid></div>
+
+      <div class={broadcastBanner} data-mac-broadcast-banner hidden>
+        <Icon name="alert-triangle" size={16} class={css({ color: 'accent', flexShrink: 0, mt: '0.1rem' })} />
+        <span>This is the broadcast address — every device on the local network segment receives a frame sent to it.</span>
+      </div>
+    </div>
+
+    <template id="mac-field-template">
+      <div class={resultCell}>
+        <div class={resultCellHead}>
+          <span class={resultLabel} data-label></span>
+          <button type="button" class={copyBtn} data-copy-btn title="Copy" aria-label="Copy value">
+            <Icon name="copy" size={12} />
+          </button>
+        </div>
+        <span class={resultValue} data-value></span>
+      </div>
+    </template>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { parseMacAddress } from '../utils/macAddress';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var root = document.querySelector('[data-mac-analyzer]:not([data-ready])');
+    if (!root) return;
+
+    var macInput = root.querySelector('[data-mac-input]');
+    var errorEl = root.querySelector('[data-mac-error]');
+    var resultsEl = root.querySelector('[data-mac-results]');
+    var octetEls = Array.prototype.slice.call(root.querySelectorAll('[data-mac-octet]'));
+    var bitStripEl = root.querySelector('[data-mac-bitstrip]');
+    var bitCaptionsEl = root.querySelector('[data-mac-bitcaptions]');
+    var fieldGridEl = root.querySelector('[data-mac-fieldgrid]');
+    var fieldTemplate = document.getElementById('mac-field-template');
+    var broadcastBanner = root.querySelector('[data-mac-broadcast-banner]');
+    var copyGroupBtns = Array.prototype.slice.call(root.querySelectorAll('[data-mac-copy]'));
+
+    if (!macInput || !resultsEl || !fieldTemplate) return;
+
+    var current = null; // last successfully parsed MacAddressResult, for copy buttons
+
+    // Bit index 7..0 (MSB to LSB) matches how the address is normally read
+    // left-to-right; bit 1 is U/L, bit 0 is I/G.
+    var BIT_LABELS = [
+      { idx: 7, tag: 'plain' },
+      { idx: 6, tag: 'plain' },
+      { idx: 5, tag: 'plain' },
+      { idx: 4, tag: 'plain' },
+      { idx: 3, tag: 'plain' },
+      { idx: 2, tag: 'plain' },
+      { idx: 1, tag: 'ul' },
+      { idx: 0, tag: 'ig' },
+    ];
+
+    function cellClassFor(tag) {
+      if (tag === 'ul') return bitCellUlClass;
+      if (tag === 'ig') return bitCellIgClass;
+      return bitCellPlainClass;
+    }
+
+    // Captured once from the server-rendered <template>'s sibling styles via
+    // a throwaway probe isn't available (styles are Panda-generated class
+    // strings, not accessible at runtime) — so the three bit-cell classes are
+    // passed in as data attributes on the strip container instead. See markup.
+    var bitCellPlainClass = bitStripEl ? bitStripEl.getAttribute('data-plain-class') : '';
+    var bitCellUlClass = bitStripEl ? bitStripEl.getAttribute('data-ul-class') : '';
+    var bitCellIgClass = bitStripEl ? bitStripEl.getAttribute('data-ig-class') : '';
+
+    function renderBitStrip(binary) {
+      if (!bitStripEl || !bitCaptionsEl) return;
+      bitStripEl.innerHTML = '';
+      bitCaptionsEl.innerHTML = '';
+      BIT_LABELS.forEach(function (b) {
+        var bitChar = binary.charAt(7 - b.idx);
+        var cell = document.createElement('span');
+        cell.className = cellClassFor(b.tag);
+        cell.textContent = bitChar;
+        cell.title = 'Bit ' + b.idx + (b.tag === 'ul' ? ' — U/L bit' : b.tag === 'ig' ? ' — I/G bit' : '');
+        bitStripEl.appendChild(cell);
+
+        var caption = document.createElement('span');
+        caption.className = bitCaptionClass;
+        caption.textContent = b.tag === 'ul' ? 'U/L' : b.tag === 'ig' ? 'I/G' : '';
+        bitCaptionsEl.appendChild(caption);
+      });
+    }
+
+    var bitCaptionClass = bitCaptionsEl ? bitCaptionsEl.getAttribute('data-caption-class') : '';
+
+    function renderFields(result) {
+      fieldGridEl.innerHTML = '';
+      var fields = [
+        ['Formatted address', result.formatted, true],
+        [
+          'Administration (U/L bit)',
+          result.isUniversallyAdministered
+            ? 'Universally administered — factory-assigned, globally unique per IEEE'
+            : 'Locally administered — manually or virtually assigned (VMs, VPNs, randomized Wi-Fi MACs, etc.)',
+          false,
+        ],
+        [
+          'Address type (I/G bit)',
+          result.isUnicast ? 'Unicast — addresses a single device' : 'Multicast/broadcast — addresses a group of devices',
+          false,
+        ],
+        ['Broadcast address', result.isBroadcast ? 'Yes — ff:ff:ff:ff:ff:ff' : 'No', false],
+      ];
+      fields.forEach(function (f) {
+        var label = f[0];
+        var value = f[1];
+        var copyable = f[2];
+        var node = fieldTemplate.content.cloneNode(true);
+        var labelEl = node.querySelector('[data-label]');
+        var valueEl = node.querySelector('[data-value]');
+        var btn = node.querySelector('[data-copy-btn]');
+        labelEl.textContent = label;
+        valueEl.textContent = value;
+        btn.setAttribute('aria-label', 'Copy ' + label);
+        if (!copyable) {
+          btn.style.display = 'none';
+        } else {
+          btn.addEventListener('click', function () {
+            navigator.clipboard.writeText(value).then(function () { pop(btn); }).catch(function () {});
+          });
+        }
+        fieldGridEl.appendChild(node);
+      });
+    }
+
+    function render() {
+      var value = macInput.value;
+      var result = parseMacAddress(value);
+      if (!result) {
+        current = null;
+        resultsEl.hidden = true;
+        errorEl.hidden = value.trim() === '';
+        return;
+      }
+      current = result;
+      errorEl.hidden = true;
+      resultsEl.hidden = false;
+
+      octetEls.forEach(function (el) {
+        var i = parseInt(el.getAttribute('data-mac-octet'), 10);
+        el.textContent = result.octets[i];
+      });
+
+      renderBitStrip(result.firstOctetBinary);
+      renderFields(result);
+      broadcastBanner.hidden = !result.isBroadcast;
+    }
+
+    macInput.addEventListener('input', function () {
+      clearTimeout(macInput._debounce);
+      macInput._debounce = setTimeout(render, 120);
+    });
+
+    copyGroupBtns.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!current) return;
+        var which = btn.getAttribute('data-mac-copy');
+        var text = which === 'oui' ? current.oui : current.nic;
+        navigator.clipboard.writeText(text).then(function () { pop(btn); }).catch(function () {});
+      });
+    });
+
+    render();
+
+    // The reset button restores the input's server-rendered default value and
+    // dispatches 'input' on it (toolSession.ts's fireEvents), which the plain
+    // listener above already picks up to re-run render() — no onReset needed,
+    // same as HashCalculator/CidrCalculator's own single-input reset flow.
+    persistToolSession({ root: root, resetButton: '[data-mac-reset]' });
+
+    root.setAttribute('data-ready', '');
+  })();
+</script>

@@ -19,6 +19,7 @@ import {
   printableAsciiRatio,
   isLikelyBinary,
   bytesToDisplayText,
+  utf16leDecodeBytes,
 } from '../src/utils/deobfuscate';
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -245,6 +246,44 @@ describe('bytesToDisplayText', () => {
 
   it('decodes valid UTF-8 text correctly', () => {
     expect(bytesToDisplayText(enc('héllo wörld'))).toBe('héllo wörld');
+  });
+});
+
+describe('utf16leDecodeBytes', () => {
+  it('recovers a known ASCII string from its UTF-16LE byte representation', () => {
+    // Build UTF-16LE bytes by hand: each code unit is 2 bytes, low byte first,
+    // high byte 0x00 for ASCII — exactly what PowerShell's -EncodedCommand
+    // produces before Base64-wrapping.
+    const utf16le = Uint8Array.from(Array.from('whoami').flatMap((c) => [c.charCodeAt(0), 0]));
+    const result = utf16leDecodeBytes(utf16le);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(dec(result.bytes)).toBe('whoami');
+      expect(bytesToDisplayText(result.bytes)).toBe('whoami');
+    }
+  });
+
+  it('fails cleanly on odd-length input instead of throwing', () => {
+    const out = utf16leDecodeBytes(Uint8Array.from([0x77, 0x00, 0x68]));
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.error).toMatch(/odd number of bytes/i);
+  });
+
+  it('runs end-to-end through the pipeline: base64-decode then utf16le-decode recovers a PowerShell -EncodedCommand-style payload', async () => {
+    const command = 'whoami /all';
+    // Mimic PowerShell's own -EncodedCommand convention: UTF-16LE bytes of the
+    // command text, then Base64-encoded.
+    const utf16le = Uint8Array.from(Array.from(command).flatMap((c) => [c.charCodeAt(0), 0]));
+    const base64 = btoa(String.fromCharCode(...utf16le));
+
+    const results = await runPipeline(enc(base64), [
+      { kind: 'base64-decode' },
+      { kind: 'utf16le-decode' },
+    ]);
+    expect(results).toHaveLength(2);
+    expect(results[0].status).toBe('ok');
+    expect(results[1].status).toBe('ok');
+    expect(dec(results[1].bytes)).toBe(command);
   });
 });
 

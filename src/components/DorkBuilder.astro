@@ -220,7 +220,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
   attrs={{ 'data-dork-engines': JSON.stringify(engines), 'data-dork-focuses': JSON.stringify(focuses) }}
 >
     <div class={topRow}>
-      <div class={engineRow} role="radiogroup" aria-label="Search engine">
+      <div class={engineRow} role="radiogroup" aria-label="Search engine" data-session-field="engine">
         {
           engines.map((e, i) => (
             <button type="button" role="radio" aria-checked={i === 0 ? 'true' : 'false'} {...(i === 0 ? { 'data-active': true } : {})} data-engine-btn={e.id} data-sound="tick" class={engineBtn}>
@@ -232,7 +232,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
 
       <div class={selectorField}>
         <label class={fieldLabel} for="dork-focus">Focus</label>
-        <select id="dork-focus" class={selectInput} data-dork-focus>
+        <select id="dork-focus" class={selectInput} data-dork-focus data-session-field="focus">
           <option value="">— Manual (no focus) —</option>
           {focuses.map((f) => <option value={f.id}>{f.label}</option>)}
         </select>
@@ -240,7 +240,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
 
       <div class={selectorField}>
         <label class={fieldLabel} for="dork-preset">Preset</label>
-        <select id="dork-preset" class={selectInput} data-dork-preset disabled>
+        <select id="dork-preset" class={selectInput} data-dork-preset data-session-field="preset" disabled>
           <option value="">— Pick a focus first —</option>
         </select>
       </div>
@@ -272,6 +272,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
                   data-dork-field={op.id}
                   data-kind={op.kind}
                   data-prefix={op.prefix ?? ''}
+                  data-session-field={op.id}
                   autocomplete="off"
                 />
               </div>
@@ -300,6 +301,8 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
 
 <script>
   // @ts-nocheck — vanilla DOM client script
+  import { persistToolSession } from '../scripts/toolSession';
+
   (function () {
     function init() {
       var roots = document.querySelectorAll('[data-dork-builder]:not([data-ready])');
@@ -495,6 +498,24 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
         clearBtn.addEventListener('click', function () {
           fields.forEach(function (f) { f.input.value = ''; });
           render();
+        });
+
+        // Session persistence: remembers the engine choice, focus/preset
+        // selection, and every ingredient value across visits and restores
+        // them on return; the existing Clear button doubles as the reset
+        // control (its own selector is reused as resetButton below, rather
+        // than adding a second button) — clicking it now also wipes the
+        // stored session and snaps the engine/focus/preset switches back to
+        // their true server-rendered defaults (Google, "Manual (no focus)",
+        // preset disabled), not just the ingredient inputs the original
+        // handler above already clears. Wired last, once every field's own
+        // listener above exists, since restoring a value re-dispatches
+        // through them (e.g. restoring a focus repopulates the preset
+        // dropdown before the stored preset value is applied, since
+        // data-session-field discovery walks the DOM in document order).
+        persistToolSession({
+          root: root,
+          resetButton: '[data-dork-clear]',
         });
 
         setEngine(currentEngine);

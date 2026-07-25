@@ -1,0 +1,120 @@
+---
+// MAC Analyzer — decodes the IEEE 802 MAC-48 address
+// FORMAT itself (src/utils/macAddress.ts, src/components/MacAddressAnalyzer.astro):
+// the OUI/NIC-specific byte split, the U/L and I/G bits, and the broadcast
+// special case. IT fundamentals, not DFIR framing (per CLAUDE.md's IT-vs-DFIR
+// rule — this page teaches the address format itself, not an investigator's
+// use of it). Deliberately does NOT resolve a manufacturer name from the OUI —
+// see the intro copy below for why, and the "Other resources" section for the
+// IEEE Registration Authority's own public lookup for that specific question.
+// Same page shape as the other interactive tools (intro aside -> tool ->
+// related tools -> external resources). Static page — prerender to HTML
+// served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import MacAddressAnalyzer from '../../components/MacAddressAnalyzer.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="MAC Analyzer"
+  description="Decode a MAC address into its OUI and NIC-specific bytes, and see what the U/L and I/G bits in its first octet mean — entirely in your browser. Decodes structure only; it doesn't identify the manufacturer."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'MAC Analyzer' }]}
+    eyebrow="Tools"
+    title="MAC Analyzer"
+    description="Paste a MAC address and see exactly how its 48 bits break down — the OUI and NIC-specific byte split, and what the U/L and I/G bits in the first octet actually mean — live as you type."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This is plain bit math defined by the IEEE 802 MAC-48 address format, computed as you type — nothing here is
+      looked up or fact-checked, it's structure, and it all happens locally, so nothing you type ever leaves your
+      machine.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    Every network interface — a laptop's Wi-Fi radio, a server's Ethernet port, a virtual NIC inside a VM — has a
+    48-bit MAC address baked into its own format, and that format tells you a few things before you ever look up
+    who made the hardware. The first three bytes (the OUI) were assigned by the IEEE to whoever built the interface;
+    the last three are that manufacturer's own serial numbering. And two single bits inside the very first byte
+    quietly answer two other questions: was this address burned into the hardware at the factory, or was it
+    generated on the fly — the case for a virtual machine's NIC, a VPN adapter, or a modern phone or laptop
+    randomizing its address each time it joins a Wi-Fi network for privacy? And is it a normal address for one
+    device, or one of the multicast/broadcast forms meant for a group of them all at once, up to and including{' '}
+    <code class={css({ fontFamily: 'mono', fontSize: '0.92em', color: 'primary' })}>ff:ff:ff:ff:ff:ff</code>,
+    which every device on the local segment listens for. This tool answers exactly those structural questions —
+    nothing more.
+  </p>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    What it deliberately doesn't do: name the manufacturer behind a given OUI. That mapping is assigned and
+    reassigned over time by the IEEE Registration Authority — it's a live registry, not a fixed table — so getting
+    it right means asking that registry directly rather than trusting a hardcoded list that's guaranteed to drift
+    out of date. Once this tool decodes an address's OUI, the result links straight to the IEEE's own public search
+    tool for that lookup.
+  </p>
+
+  <h2 id="analyzer" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="cpu" size={20} class={css({ color: 'primary' })} /> Analyzer
+  </h2>
+  <MacAddressAnalyzer />
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/cidr-calculator/" class={toolChip}>
+        <Icon name="grid" size={13} /> CIDR &amp; VLAN Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A MAC address identifies a network interface at Layer 2; once you're reasoning about the Layer 3 addressing
+        on top of it, this is the calculator for that side of the stack.
+      </p>
+    </div>
+    <div>
+      <a href="/ip-reference/" class={toolChip}>
+        <Icon name="map-pin" size={13} /> IP &amp; CIDR Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A cheat sheet for special-use IPv4/IPv6 ranges and a CIDR quick-reference table — the IP-layer counterpart
+        to this page's MAC-layer one.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['mac-address']} />
+</BaseLayout>

@@ -51,6 +51,23 @@ const CVE = /\bCVE-\d{4}-\d{4,7}\b/gi;
 const ATTACK_ID = /\bT\d{4}(?:\.\d{3})?\b/g;
 const BTC = /\b(?:[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{25,90})\b/g;
 
+// Reused verbatim (source + semantics) from the Windows File Path entry in
+// src/utils/regexPatterns.ts's DFIR_REGEX_PATTERNS, just with a 'g' flag added
+// to match this file's global-scan convention — a drive letter + backslash-
+// separated path, excluding characters Windows disallows in file names.
+const WINPATH = /[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+/g;
+
+// Reused verbatim from the Registry Key Path entry in regexPatterns.ts (see
+// WINPATH above) — a recognized hive (full name or common abbreviation)
+// followed by its backslash-separated key path.
+const REGKEY =
+  /\b(?:HKEY_LOCAL_MACHINE|HKEY_CURRENT_USER|HKEY_CLASSES_ROOT|HKEY_USERS|HKEY_CURRENT_CONFIG|HKLM|HKCU|HKCR|HKU|HKCC)\b(?:\\[^\\\r\n]+)*/g;
+
+// Standard 6-octet MAC address, colon- or hyphen-separated. No 'i' flag
+// needed — [0-9A-Fa-f] already covers both cases, same convention as the
+// MD5/SHA1/SHA256/SHA512 hash patterns above.
+const MAC = /\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b/g;
+
 export const IOC_CATEGORIES: IocCategory[] = [
   { id: 'ipv4', label: 'IPv4 addresses', pattern: IPV4, placeholder: '203.0.113.42' },
   { id: 'ipv6', label: 'IPv6 addresses', pattern: IPV6, placeholder: '2001:db8::8a2e:370:7334' },
@@ -64,6 +81,9 @@ export const IOC_CATEGORIES: IocCategory[] = [
   { id: 'cve', label: 'CVE IDs', pattern: CVE, placeholder: 'CVE-2021-44228' },
   { id: 'attack', label: 'MITRE ATT&CK IDs', pattern: ATTACK_ID, placeholder: 'T1055.001' },
   { id: 'btc', label: 'Bitcoin addresses', pattern: BTC, placeholder: 'bc1q… / 1… / 3…' },
+  { id: 'winpath', label: 'Windows file paths', pattern: WINPATH, placeholder: 'C:\\Users\\...\\file.exe' },
+  { id: 'regkey', label: 'Registry key paths', pattern: REGKEY, placeholder: 'HKLM\\Software\\...' },
+  { id: 'mac', label: 'MAC addresses', pattern: MAC, placeholder: '00:1A:2B:3C:4D:5E' },
 ];
 
 /** Extract + dedupe every category's matches from a block of text. */

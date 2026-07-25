@@ -17,6 +17,7 @@ import ListFilter from '../components/ListFilter.astro';
 import TacticStepper from '../components/TacticStepper.astro';
 import ViewToggle from '../components/ViewToggle.astro';
 import TacticMatrix from '../components/TacticMatrix.astro';
+import { toolChip } from '../components/RelatedTools.astro';
 import { tag, card } from 'styled-system/recipes';
 import { getSortedPosts, getSortedLabs, tagSlug } from '../utils/posts';
 import { termBySlug } from '../data/securityTerms';
@@ -115,6 +116,20 @@ const statLink = css({ color: 'primary', display: 'inline-flex', alignItems: 'ce
 const legendRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1.25rem', mb: '1.75rem', fontSize: '0.78rem', color: 'textMuted' });
 const legendItem = css({ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' });
 const legendSwatch = css({ display: 'inline-block', w: '14px', h: '14px', bg: 'bgCard', border: '1px solid token(colors.border)', borderLeftWidth: '3px', borderLeftColor: 'accent', borderRadius: '2px', flexShrink: 0 });
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
 ---
 
 <BaseLayout
@@ -123,7 +138,7 @@ const legendSwatch = css({ display: 'inline-block', w: '14px', h: '14px', bg: 'b
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'MITRE ATT&CK Coverage Map' }]}
-    eyebrow="Coverage"
+    eyebrow="Frameworks"
     title="MITRE ATT&CK Coverage Map"
     description="The full Enterprise matrix, laid out by tactic. Each technique links to its official MITRE page and detail entry; many link straight to the glossary, and the ones I've written about are marked."
   />
@@ -142,7 +157,7 @@ const legendSwatch = css({ display: 'inline-block', w: '14px', h: '14px', bg: 'b
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
       <strong class={css({ color: 'text' })}>MITRE ATT&CK</strong> — short for <em>Adversarial Tactics,
       Techniques, and Common Knowledge</em> — is a free, openly maintained knowledge base of how real
-      attackers operate. <em>Tactics</em> are the adversary's goals (the <em>why</em>, e.g. Persistence);
+      attackers operate. <em>Tactics</em> are the adversary's goals (the <em>why</em>, e.g. Persistence);{' '}
       <em>techniques</em> are the specific methods used to reach them (the <em>how</em>, e.g. Process
       Injection). Mapping detections and writeups to it gives defenders a shared vocabulary for
       describing intrusions.
@@ -290,6 +305,24 @@ const legendSwatch = css({ display: 'inline-block', w: '14px', h: '14px', bg: 'b
   <p id="attack-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
     No techniques match.
   </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/drills/attack/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Practice recognizing techniques from real behavior, drawn from this same dataset.</p>
+    </div>
+    <div>
+      <a href="/threat-actors/" class={toolChip}>
+        <Icon name="user" size={13} /> Threat Actor / APT Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>See which real-world groups are documented using each technique.</p>
+    </div>
+  </div>
 
   <p class={css({ fontSize: '0.78rem', color: 'textMuted', mt: '2.5rem', pt: '1.5rem', borderTop: '1px solid token(colors.border)', lineHeight: 1.6 })}>
     ATT&CK® and MITRE ATT&CK® are registered trademarks of The MITRE Corporation. Technique names and

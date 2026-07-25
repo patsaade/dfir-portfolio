@@ -21,7 +21,7 @@
 // timestamp field is handed to ../utils/timestamps.ts's own "filetime"
 // TimestampFormat (parse: raw 100-ns-tick decimal string -> canonical ns
 // since the Unix epoch; format: canonical ns -> a human string) via
-// formatById(), the same tested code path the Timestamp Decoder tool uses.
+// formatById(), the same tested code path the Timestamp Converter tool uses.
 
 import { formatById, DEFAULT_CONTEXT } from './timestamps';
 

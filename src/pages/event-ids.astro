@@ -18,6 +18,7 @@ import TagCombobox from '../components/TagCombobox.astro';
 import FilterToggle from '../components/FilterToggle.astro';
 import ListFilter from '../components/ListFilter.astro';
 import GroupOverview from '../components/GroupOverview.astro';
+import { toolChip } from '../components/RelatedTools.astro';
 import { getSortedPosts, getSortedLabs } from '../utils/posts';
 import { EVENT_IDS, type EventIdEntry } from '../data/eventIds';
 
@@ -161,6 +162,20 @@ const categoryTag = `${tag({ tone: 'muted' })} ${css({ minW: 0, flexShrink: 1, m
 const attackBadge = `${tag({ tone: 'accent' })} ${css({ flexShrink: 0 })}`;
 
 const filterRow = css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' });
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
 ---
 
 <BaseLayout
@@ -173,6 +188,29 @@ const filterRow = css({ display: 'flex', alignItems: 'center', gap: '1rem', flex
     title="Windows Event ID / Sysmon Reference"
     description={`${totalCount} Windows Security auditing + Sysmon event IDs, each with what it records, why it matters for DFIR, common triggers, and MITRE ATT&CK cross-links where a mapping is well-established.`}
   />
+
+  {/* Cross-link to where the ATT&CK-mapped entries above actually lead */}
+  <a
+    href="/attack-map/"
+    class={css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      mb: '1.5rem',
+      p: '0.7rem 1rem',
+      borderRadius: 'md',
+      border: '1px solid token(colors.border)',
+      bg: 'bgCard',
+      fontSize: '0.9rem',
+      color: 'text',
+      transition: 'border-color 200ms ease, color 200ms ease',
+      _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+    })}
+  >
+    <Icon name="crosshair" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>See every technique an event ID here maps to — <strong class={css({ fontWeight: 700 })}>MITRE ATT&amp;CK Coverage Map</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
 
   {/* ── Browse by log (jump-to overview strip) ── */}
   <GroupOverview items={groupTiles} heading="Browse by log" />
@@ -261,6 +299,24 @@ const filterRow = css({ display: 'flex', alignItems: 'center', gap: '1rem', flex
   <p id="evt-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
     No event IDs match your search.
   </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/drills/event-ids/" class={toolChip}>
+        <Icon name="list" size={13} /> Windows Event ID Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Practice identifying Security/Sysmon events from real sample logs, drawn from this same reference.</p>
+    </div>
+    <div>
+      <a href="/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>See the full technique behind every ATT&amp;CK-mapped event ID above.</p>
+    </div>
+  </div>
 
   <ListFilter
     config={{

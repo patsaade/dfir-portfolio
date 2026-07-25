@@ -53,7 +53,7 @@ const CONDITION_NOTES: Record<string, string> = {
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Sigma Rule Tester' }]}
-    eyebrow="Detection Engineering"
+    eyebrow="Query Builders"
     title="Sigma Rule Tester & Builder"
     description="Build a Sigma detection rule field by field, or read its generated YAML, and test it live against sample log events — entirely local."
   />
@@ -70,10 +70,10 @@ const CONDITION_NOTES: Record<string, string> = {
     })}
   >
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
-      Everything here runs entirely in your browser — <strong class={css({ color: 'text' })}>no external APIs, no
-      upload, nothing you build or paste ever leaves your machine</strong>. This tool implements a defined subset of
+      This tool implements a defined subset of
       the <a href="https://github.com/SigmaHQ/sigma-specification" target="_blank" rel="noopener" class={css({ color: 'primary' })}>Sigma detection-rule spec</a> —
-      field-value matching and five ways selections can combine in a condition — not the full specification. The
+      field-value matching and five ways selections can combine in a condition — not the full specification,
+      evaluated entirely in your browser, so nothing you build or paste here ever leaves your machine. The
       YAML tab is a read-only, generated view of the builder's current state, not a general-purpose Sigma editor.
     </p>
   </aside>
@@ -170,7 +170,7 @@ const CONDITION_NOTES: Record<string, string> = {
   <div class={relatedList}>
     <div>
       <a href="/tools/deobfuscator/" class={toolChip}>
-        <Icon name="key" size={13} /> Deobfuscation Recipe Builder <Icon name="arrow-right" size={13} />
+        <Icon name="key" size={13} /> Codec Builder <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
         Building a detection for an obfuscated command line? Decode a sample first to see what you're actually
@@ -184,6 +184,17 @@ const CONDITION_NOTES: Record<string, string> = {
       <p class={relatedReason}>
         Validate a field pattern here before dropping it into a Sigma rule's |re modifier — both evaluate with
         JavaScript's own RegExp engine.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/regex-cheatsheet/" class={toolChip}>
+        <Icon name="list" size={13} /> Regex Syntax Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A token-by-token reference for exactly what JavaScript's regex engine supports — useful when a{' '}
+        <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>|re</code> field pattern
+        needs a construct you're not sure JavaScript has (it has no possessive quantifiers or atomic groups, for
+        instance).
       </p>
     </div>
   </div>

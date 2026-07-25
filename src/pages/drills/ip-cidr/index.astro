@@ -1,0 +1,149 @@
+---
+// Subnetting Drill — knowledge-check quiz over real CIDR arithmetic
+// (src/utils/cidr.ts) and real IANA-sourced special-use range data
+// (src/data/ipRanges.ts), via the shared DrillEngine.astro widget. Every
+// question/answer is computed from those real sources at generation time by
+// src/data/drills/ipCidr.ts — nothing here is a hand-invented fact. Static
+// page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import Icon from '../../../components/Icon.astro';
+import DrillEngine from '../../../components/DrillEngine.astro';
+import ExternalResources from '../../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
+import { CIDR_QUICK_REF } from '../../../data/ipRanges';
+import { toolChip } from '../../../components/RelatedTools.astro';
+import { getIpCidrQuestion } from '../../../data/drills/ipCidr';
+
+const TOTAL = 10;
+// Computed at build time so a no-JS visitor sees a real first question —
+// initDrill()'s own client-side nextQuestion(0) call reproduces this exact
+// value (the generator is a deterministic lookup, not Math.random()).
+const q0 = getIpCidrQuestion(0);
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const quickRefCard = css({ p: '1rem 1.25rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md', mb: '1.5rem' });
+const quickRefTableWrap = css({ maxH: '16rem', overflowY: 'auto', overflowX: 'auto', mt: '0.85rem', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const quickRefTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' });
+const qrTh = css({
+  position: 'sticky',
+  top: 0,
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.68rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  bg: 'bgCard',
+  p: '0.45rem 0.65rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const qrTd = css({ fontFamily: 'mono', fontSize: '0.82rem', color: 'text', p: '0.4rem 0.65rem', borderBottom: '1px solid token(colors.border)' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="Subnetting Drill"
+  description="A knowledge-check drill for subnet arithmetic and special-use IPv4/IPv6 range recognition — every question is computed live from this site's own CIDR utilities and IANA-sourced range data, not hand-written trivia."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'Subnetting' }]}
+    eyebrow="Practice"
+    title="Subnetting Drill"
+    description="Network/broadcast/usable-host math, special-use range recognition, and subnet sizing — ten questions computed live from the same CIDR arithmetic and IANA-sourced range data behind the CIDR & VLAN Calculator and IP & CIDR Reference."
+  />
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    This is a quick recall drill, not a certification exam — ten questions pulled from a small curated bank, each
+    graded against a value computed on the spot by this site's own <a href="/tools/cidr-calculator/" class={css({ color: 'primary', textDecoration: 'underline' })}>CIDR & VLAN Calculator</a> math
+    or read directly from the <a href="/ip-reference/" class={css({ color: 'primary', textDecoration: 'underline' })}>IP & CIDR Reference</a>'s IANA-sourced range data. Nothing here is
+    hand-typed trivia; every correct answer traces back to a real function or a real registry entry.
+  </p>
+
+  <div class={quickRefCard}>
+    <h2 class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 700, m: 0 })}>
+      <Icon name="grid" size={18} class={css({ color: 'primary' })} /> CIDR quick reference (IPv4)
+    </h2>
+    <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.7, mt: '0.6rem', mb: 0 })}>
+      Keep this open while you work through the drill below — the network/broadcast/usable-host questions all
+      reduce to this same prefix/netmask/host-count table.
+    </p>
+    <div class={quickRefTableWrap}>
+      <table class={quickRefTable}>
+        <thead>
+          <tr>
+            <th class={qrTh}>Prefix</th>
+            <th class={qrTh}>Netmask</th>
+            <th class={qrTh}>Total addresses</th>
+            <th class={qrTh}>Usable hosts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {CIDR_QUICK_REF.map((r) => (
+            <tr>
+              <td class={qrTd}>/{r.prefix}</td>
+              <td class={qrTd}>{r.netmask}</td>
+              <td class={qrTd}>{r.totalAddresses.toLocaleString()}</td>
+              <td class={qrTd}>{r.usableHosts.toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <DrillEngine
+    drill="ip-cidr"
+    heading="Subnetting Drill"
+    intro="Network and broadcast addresses, usable host counts, special-use range categories, and subnet sizing."
+    totalQuestions={TOTAL}
+    firstQuestion={q0}
+  />
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/cidr-calculator/" class={toolChip}>
+        <Icon name="grid" size={13} /> CIDR & VLAN Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Work through the same network/broadcast/host-count math interactively, including IPv6 and supernet mode.
+      </p>
+    </div>
+    <div>
+      <a href="/ip-reference/" class={toolChip}>
+        <Icon name="wifi" size={13} /> IP & CIDR Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Browse every special-use IPv4/IPv6 range this drill's category questions are drawn from, each cited back to
+        its IANA registry entry.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['ip-cidr']} />
+</BaseLayout>
+
+<script>
+  import { initDrill } from '../../../scripts/drillEngine';
+  import { getIpCidrQuestion } from '../../../data/drills/ipCidr';
+  const root = document.querySelector('[data-drill="ip-cidr"]');
+  if (root) initDrill({ root, totalQuestions: 10, nextQuestion: getIpCidrQuestion });
+</script>

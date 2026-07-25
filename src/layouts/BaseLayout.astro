@@ -95,6 +95,30 @@ const props = Astro.props;
         py: { base: '2rem', md: '3rem' },
         minH: '60vh',
         animation: 'fadeIn 400ms ease both',
+        // ToolSidebar (invariant 13) is `position: fixed, left: 0` at `md`+,
+        // 236px wide (its own `RAIL_W` — kept as a literal here too, not an
+        // import, since Panda needs a static string to generate a class;
+        // update both together if the rail's width ever changes). Plain
+        // `mx: 'auto'` centering computes each side's margin as
+        // `(viewport − 960) / 2`, which is only ≥ 236px once the viewport is
+        // ~1432px wide — below that (which includes ordinary 1280×800/
+        // 1366×768 laptop screens), the rail's fixed-position right edge
+        // physically overlapped this column's own left edge, truncating
+        // headings behind the panel. `max(...)` guarantees at least the
+        // rail's width in reserve at `md`+ without changing anything at
+        // wider viewports where the natural centered margin already clears
+        // it. `--sidebar-reserve` (read via `var()`, not a Panda condition —
+        // see CLAUDE.md's own "a Panda selector that should compile to a
+        // compound selector sometimes doesn't" gotcha) is kept in sync with
+        // the rail's actual hidden/shown state by ToolSidebar.astro's own
+        // `render()`, the same pattern that component already uses for
+        // `--sidebar-max-h`/`--rail-h`. The `236px` literal fallback inside
+        // `var()` is what a no-JS visitor gets — correct, since the rail's
+        // own server-rendered default is `data-view="shown"`.
+        md: {
+          marginLeft: 'max(var(--sidebar-reserve, 236px), calc((100% - 960px) / 2))',
+          marginRight: 'auto',
+        },
       })}
     >
       <slot />

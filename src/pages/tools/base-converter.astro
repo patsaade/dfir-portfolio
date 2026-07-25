@@ -1,0 +1,152 @@
+---
+// Number Base Converter — convert a value between binary, octal, decimal,
+// and hexadecimal live as you type, with an ASCII decode of the underlying
+// bytes. Pure positional-notation arithmetic (src/utils/baseConvert.ts) —
+// nothing here needs research or fact-checking, it's math. Same page shape
+// as the other interactive tools (intro aside -> tool -> reference notes).
+// IT-fundamentals content, not DFIR-specific — see consts.ts's IT_GROUPS
+// comment and CLAUDE.md's "Nav grouping" invariant for the framing rule this
+// page follows. Static page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import BaseConverter from '../../components/BaseConverter.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { NUMBER_BASES } from '../../utils/baseConvert';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+const refTd = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' });
+const refTdMuted = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'textMuted', fontSize: '0.8rem', verticalAlign: 'top' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.92em', color: 'primary' });
+---
+
+<BaseLayout
+  title="Number Base Converter"
+  description="Convert a value between binary, octal, decimal, and hexadecimal live as you type, with an ASCII decode of the underlying bytes — entirely in your browser."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Number Base Converter' }]}
+    eyebrow="Tools"
+    title="Number Base Converter"
+    description="Type a value into any base — binary, octal, decimal, or hexadecimal — and the other three update live, alongside an ASCII decode of the value's underlying bytes."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This is plain positional-notation arithmetic, computed with an arbitrary-precision integer type internally
+      rather than a regular JavaScript number — so a value larger than the normal safe-integer ceiling still
+      converts exactly, with no silent rounding. Nothing here is looked up or fact-checked, it's math, and it
+      all happens locally, so nothing you type ever leaves your machine.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    Binary, octal, decimal, and hexadecimal are just four different ways of writing the same number, and
+    switching between them by hand gets tedious fast — especially binary and hex, which is why they show up
+    everywhere in computing in the first place (a byte is exactly two hex digits, and hex is a lot easier to
+    read than a string of ones and zeros). This converter keeps all four in sync as you type into any one of
+    them, and decodes the value's raw bytes as ASCII alongside it, so you can see at a glance whether a number
+    is really just encoded text. That same skill — reading hex and binary fluently — comes up well beyond
+    general IT work too: it's exactly what you're doing when you're eyeballing a hex dump from a memory image or
+    picking a byte value out of raw packet capture.
+  </p>
+
+  <h2 id="calculator" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="hash" size={20} class={css({ color: 'primary' })} /> Calculator
+  </h2>
+  <BaseConverter />
+
+  <h2 id="reference" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Base reference
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Base</th>
+          <th class={refTh}>Radix</th>
+          <th class={refTh}>Digits</th>
+          <th class={refTh}>Prefix</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          NUMBER_BASES.map((b) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>{b.label}</strong>
+              </td>
+              <td class={refTd}>{b.radix}</td>
+              <td class={refTdMuted}>{b.digitRange}</td>
+              <td class={refTdMuted}>{b.prefix ? <code class={inlineCode}>{b.prefix}</code> : '— (none)'}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', mt: '1.5rem', lineHeight: 1.7 })}>
+    The ASCII decode reads the value's bytes from its hexadecimal form — every two hex digits is one byte — and
+    checks each one against the printable ASCII range: <code class={inlineCode}>0x20</code> (space) through{' '}
+    <code class={inlineCode}>0x7E</code> (<code class={inlineCode}>~</code>). A byte outside that range — a
+    control character, or anything above <code class={inlineCode}>0x7E</code>, which covers all of
+    extended/non-ASCII — means the value isn't really encoded text, at least not as plain ASCII, and the tool
+    says so explicitly instead of rendering it as garbled characters.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/hash-calculator/" class={toolChip}>
+        <Icon name="lock" size={13} /> Hash Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A computed hash is itself just a very large hex number — paste one in here to see its decimal or binary
+        form.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/cidr-calculator/" class={toolChip}>
+        <Icon name="globe" size={13} /> CIDR &amp; VLAN Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        An IPv4 address is a 32-bit number under the hood, and subnet/netmask math is bitwise arithmetic on
+        exactly that number — this tool converts the number, that one does the networking math with it.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['base-converter']} />
+</BaseLayout>

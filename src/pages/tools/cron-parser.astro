@@ -1,0 +1,276 @@
+---
+// Cron Expression Parser & Builder — decodes a standard 5-field crontab(5)
+// expression into a human-readable sentence live as you type, plus a
+// guided per-field builder for assembling one from scratch
+// (src/utils/cron.ts owns all parsing/description logic; see that file's
+// own header for the exact grammar and the authoritative sources it was
+// verified against). IT-fundamentals content: this page teaches cron
+// SYNTAX itself, with no attacker/defender framing — it deliberately does
+// NOT cover cron/scheduled-task persistence or abuse detection, which is a
+// different, DFIR-framed topic this site keeps separate (see consts.ts's
+// IT_GROUPS comment and CLAUDE.md's "Nav grouping" invariant for the
+// framing rule this page follows). Static page — prerender to HTML served
+// from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CronParser from '../../components/CronParser.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+const refTd = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' });
+const refTdMuted = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'textMuted', fontSize: '0.8rem', verticalAlign: 'top' });
+const refTdCode = css({ p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'primary', fontFamily: 'mono', fontSize: '0.8rem', verticalAlign: 'top' });
+const sectionText = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', mb: '1rem', '&:last-child': { mb: 0 } });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.92em', color: 'primary' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+
+interface FieldRefRow {
+  field: string;
+  range: string;
+  names: string;
+  notes: string;
+}
+const FIELD_REF: FieldRefRow[] = [
+  { field: 'Minute', range: '0–59', names: '—', notes: 'No named values.' },
+  { field: 'Hour', range: '0–23', names: '—', notes: '24-hour clock; no named values.' },
+  { field: 'Day of month', range: '1–31', names: '—', notes: 'Matched independently of Month — see the OR rule below.' },
+  { field: 'Month', range: '1–12', names: 'Jan–Dec', notes: 'First three letters, case-insensitive (e.g. jan, JAN, Jan all work).' },
+  { field: 'Day of week', range: '0–7', names: 'Sun–Sat', notes: '0 AND 7 both mean Sunday — a cronie/vixie-cron addition; POSIX allows only 0–6.' },
+];
+
+interface SyntaxRow {
+  syntax: string;
+  meaning: string;
+  example: string;
+}
+const SYNTAX_REF: SyntaxRow[] = [
+  { syntax: '*', meaning: 'Every valid value in this field.', example: '* (every minute)' },
+  { syntax: 'N', meaning: 'One specific value.', example: '5 (minute 5)' },
+  { syntax: 'N-M', meaning: 'An inclusive range. Descending ranges (e.g. 22-2) aren’t supported.', example: '9-17 (hours 9 through 17)' },
+  { syntax: 'N,M,...', meaning: 'A comma-separated list of values and/or ranges.', example: '1,3,5 or 1-5,10' },
+  { syntax: '*/N', meaning: 'A step: every Nth value across the whole field.', example: '*/15 (every 15 minutes)' },
+  { syntax: 'N-M/S', meaning: 'A step confined to a range.', example: '9-17/2 (every 2 hours, 9 through 17)' },
+];
+
+const NICKNAME_REF: { nickname: string; equivalent: string; meaning: string }[] = [
+  { nickname: '@yearly', equivalent: '0 0 1 1 *', meaning: 'Once a year, at midnight on January 1st.' },
+  { nickname: '@annually', equivalent: '0 0 1 1 *', meaning: 'Identical to @yearly — both spellings are documented.' },
+  { nickname: '@monthly', equivalent: '0 0 1 * *', meaning: 'Once a month, at midnight on the 1st.' },
+  { nickname: '@weekly', equivalent: '0 0 * * 0', meaning: 'Once a week, at midnight on Sunday.' },
+  { nickname: '@daily', equivalent: '0 0 * * *', meaning: 'Once a day, at midnight.' },
+  { nickname: '@hourly', equivalent: '0 * * * *', meaning: 'Once an hour, at minute 0.' },
+  { nickname: '@reboot', equivalent: '(none)', meaning: 'Once, when the cron daemon starts — no 5-field schedule produces this.' },
+];
+---
+
+<BaseLayout
+  title="Cron Expression Parser & Builder"
+  description="Decode a 5-field crontab(5) cron expression into a plain-English sentence live as you type, or assemble one with a guided per-field builder. Covers cronie/vixie-cron syntax vs. bare POSIX."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Cron Expression Parser & Builder' }]}
+    eyebrow="Tools"
+    title="Cron Expression Parser & Builder"
+    description="Type a standard 5-field cron expression and read exactly what it schedules, in plain English — or build one field-by-field with guided dropdowns."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This page covers cron <strong class={css({ color: 'text' })}>syntax</strong> — how the five fields work, what
+      each piece of punctuation means, and which parts are genuinely portable vs. an extension. It follows the
+      crontab(5) grammar documented by <strong class={css({ color: 'text' })}>cronie</strong>, the crond most Linux
+      distributions ship (itself a descendant of Paul Vixie's original cron) — a practical superset of the
+      narrower <strong class={css({ color: 'text' })}>POSIX</strong> crontab specification, which skips names and
+      step values entirely. Both were independently verified against their own authoritative documentation (see
+      "Other resources" below) before anything here was written; the differences are called out explicitly rather
+      than glossed over. This page is <strong class={css({ color: 'text' })}>not</strong> about cron as a
+      persistence mechanism or how to hunt for a malicious scheduled job — that's a different, investigation-
+      framed topic covered elsewhere on this site.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    A cron expression is five space-separated fields — <code class={inlineCode}>minute hour day-of-month month
+    day-of-week</code> — each one either a wildcard, a specific value, or some combination of lists, ranges,
+    and steps. Reading one back-to-front trips people up constantly: it's easy to misread which field is which, to
+    assume a comma means something it doesn't, or to miss that the day-of-month and day-of-week fields interact in
+    a genuinely non-obvious way when both are restricted at once. Paste (or build) an expression below and this
+    tool spells out exactly what it means, field by field.
+  </p>
+
+  <h2 id="parser" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="clock" size={20} class={css({ color: 'primary' })} /> Parser &amp; builder
+  </h2>
+  <CronParser />
+
+  <h2 id="fields" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> The five fields
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Field</th>
+          <th class={refTh}>Numeric range</th>
+          <th class={refTh}>Names</th>
+          <th class={refTh}>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          FIELD_REF.map((r) => (
+            <tr>
+              <td class={refTd}><strong class={css({ color: 'text' })}>{r.field}</strong></td>
+              <td class={refTdCode}>{r.range}</td>
+              <td class={refTdMuted}>{r.names}</td>
+              <td class={refTdMuted}>{r.notes}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="syntax" class={sectionH2}>
+    <Icon name="terminal" size={20} class={css({ color: 'primary' })} /> Syntax reference
+  </h2>
+  <p class={sectionText}>
+    Every one of these applies independently within each of the five fields — there's no cross-field syntax.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Syntax</th>
+          <th class={refTh}>Meaning</th>
+          <th class={refTh}>Example</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          SYNTAX_REF.map((r) => (
+            <tr>
+              <td class={refTdCode}>{r.syntax}</td>
+              <td class={refTdMuted}>{r.meaning}</td>
+              <td class={refTdCode}>{r.example}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '1rem', lineHeight: 1.7 })}>
+    A step value must follow a range or an asterisk (<code class={inlineCode}>*/5</code> or{' '}
+    <code class={inlineCode}>10-20/5</code>) — a bare number before the slash, like{' '}
+    <code class={inlineCode}>5/15</code>, isn't a documented form in either source this page cites, so this
+    tool rejects it rather than guessing at what it might mean.
+  </p>
+
+  <h2 id="dom-dow" class={sectionH2}>
+    <Icon name="gauge" size={20} class={css({ color: 'primary' })} /> The day-of-month / day-of-week trap
+  </h2>
+  <p class={sectionText}>
+    Day-of-month and day-of-week are always matched independently — cron never checks "is day 15 also a
+    Monday," it just evaluates each field against the current date on its own. That's invisible as long as at
+    least one of the two fields is a plain wildcard (<code class={inlineCode}>*</code>), which is the overwhelming
+    majority of real expressions. But when <strong class={css({ color: 'text' })}>both</strong> fields are
+    restricted at the same time (neither is <code class={inlineCode}>*</code>), the two are combined with{' '}
+    <strong class={css({ color: 'text' })}>OR, not AND</strong>: the job runs when either field matches, not only
+    when both do. <code class={inlineCode}>0 0 1 * 1</code> doesn't mean "the first of the month, if it's also a
+    Monday" — it means "midnight on day 1 of the month, <em>or</em> any Monday," which the parser above spells
+    out explicitly rather than leaving to guesswork.
+  </p>
+
+  <h2 id="nicknames" class={sectionH2}>
+    <Icon name="star" size={20} class={css({ color: 'primary' })} /> '@'-nickname shortcuts
+  </h2>
+  <p class={sectionText}>
+    Seven nicknames replace the whole 5-field block with a single <code class={inlineCode}>@word</code>. These are{' '}
+    <strong class={css({ color: 'text' })}>not part of POSIX crontab at all</strong>, and cronie's own
+    documentation lists them under a separate "EXTENSIONS" heading rather than as core grammar — they're
+    widely supported (most cron implementations you'll actually meet accept them), but treat them as a convenience
+    layer on top of the real syntax, not the syntax itself.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Nickname</th>
+          <th class={refTh}>5-field equivalent</th>
+          <th class={refTh}>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          NICKNAME_REF.map((r) => (
+            <tr>
+              <td class={refTdCode}>{r.nickname}</td>
+              <td class={refTdCode}>{r.equivalent}</td>
+              <td class={refTdMuted}>{r.meaning}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="scope" class={sectionH2}>
+    <Icon name="shield" size={20} class={css({ color: 'primary' })} /> What this tool doesn't cover
+  </h2>
+  <p class={sectionText}>
+    Deliberately out of scope, rather than silently unsupported: 6-field variants, like a system crontab's
+    (<code class={inlineCode}>/etc/crontab</code>) extra leading "user" field, or a scheduler such as Quartz's
+    extra leading "seconds" field — this parser always expects exactly the classic 5 fields. It also doesn't
+    compute next/previous run times; it explains what an expression <em>means</em>, not when it will next fire,
+    and it doesn't flag a calendar-impossible combination (e.g. <code class={inlineCode}>31 2 * *</code>, day 31
+    in a field that also allows February) as an error — real cron doesn't either, since day-of-month and month
+    are matched completely independently, so that combination is syntactically valid and simply never fires in a
+    February.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/timestamp-converter/" class={toolChip}>
+        <Icon name="clock" size={13} /> Timestamp Converter <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Cross-checking a scheduled job's expected run time against a log's actual timestamp? This converts between
+        every timestamp format you're likely to see that logged instant in.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['cron-parser']} />
+</BaseLayout>

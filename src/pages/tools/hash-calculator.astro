@@ -2,7 +2,7 @@
 // Hash Calculator & Verifier — compute MD5/SHA-1/SHA-256/SHA-384/SHA-512 for
 // pasted text or a local file, verify against an expected hash, and identify
 // a bare hash of unknown origin with a confidence-scored guess. Same page
-// shape as the IOC Extractor / Timestamp Decoder (intro aside -> interactive
+// shape as the IOC Extractor / Timestamp Converter (intro aside -> interactive
 // tool -> reference notes). Static page — prerender to HTML served from the CDN.
 export const prerender = true;
 import { css } from 'styled-system/css';
@@ -50,7 +50,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Hash Calculator' }]}
-    eyebrow="Triage & Correlation"
+    eyebrow="Converters"
     title="Hash Calculator & Verifier"
     description="Compute file/text hashes, verify against a known value, or identify a bare hash's likely algorithm — entirely local."
   />
@@ -67,11 +67,10 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     })}
   >
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
-      Everything here runs entirely in your browser — <strong class={css({ color: 'text' })}>no external APIs, no
-      upload, nothing you paste or select ever leaves your machine</strong>. The SHA family uses the browser's
-      native Web Crypto API; MD5 (which browsers don't implement natively) is computed with a from-scratch
-      implementation verified against the algorithm's own published test vectors. A file you choose is read
-      locally via the File API — never transmitted anywhere, and never touches a server.
+      The SHA family uses the browser's native Web Crypto API; MD5 (which browsers don't implement natively) is
+      computed with a from-scratch implementation verified against the algorithm's own published test vectors. A
+      file you choose is read locally via the File API — it all runs in your browser, so nothing you paste,
+      select, or open here ever leaves your machine.
     </p>
   </aside>
 
@@ -137,6 +136,15 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </a>
       <p class={relatedReason}>
         Hashing an EXE or DLL? Pull its DOS/COFF/Optional headers, import table, and imphash apart too.
+      </p>
+    </div>
+    <div>
+      <a href="/drills/hashing/" class={toolChip}>
+        <Icon name="hash" size={13} /> Hash Identification Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Practice recognizing an algorithm by format and context alone — the same skill behind the Identify
+        panel above.
       </p>
     </div>
   </div>

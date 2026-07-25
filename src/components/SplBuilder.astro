@@ -1,0 +1,822 @@
+---
+// Splunk SPL Query Builder — a guided composer for Splunk's Search Processing
+// Language. All query-assembly and validation logic lives in src/utils/spl.ts
+// (pure, DOM-free, unit-tested in test/spl.test.ts); this component is the UI
+// shell that reads the form, hands a spec to that module, and renders the
+// text it returns.
+//
+// It ASSEMBLES query text to copy — it never runs a search. There is no
+// connection to any Splunk instance, no API call, and nothing typed here
+// leaves the browser (see the page's own intro for the same statement in
+// plain sight).
+//
+// Shape: a fixed base-search block, then one card per supported pipe command.
+// Each card has its own enable checkbox and up/down buttons; the visual and
+// assembly order is driven by CSS `order` plus a JS index array, so a stage
+// can be moved without rebuilding any DOM. Only one card exists per command
+// kind — a deliberate simplification over a free-form "add any command any
+// number of times" pipeline, and the reason every preset in spl.ts uses each
+// command at most once.
+//
+// Same "Scratch-inspired workspace" visual language as DorkBuilder /
+// SigmaTester / HashCalculator, and the same JS-armed, no-JS-safe contract:
+// the workspace stays hidden until the script confirms it's running, since
+// there is no meaningful static version of a live query builder.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { SPL_AGG_FUNCTIONS, SPL_PRESETS, SPL_SEARCH_OPERATORS, SPL_WHERE_OPERATORS, buildSplQuery } from '../utils/spl';
+
+// The builder opens pre-filled with the first preset so the tool renders a
+// real, runnable query on first paint instead of an empty shell. These same
+// values become each field's defaultValue, which is what persistToolSession's
+// reset restores to.
+const starter = SPL_PRESETS[0];
+const starterQuery = buildSplQuery(starter.spec);
+const starterFilter = starter.spec.base.filters[0];
+const starterStats = starter.spec.commands.find((c) => c.kind === 'stats');
+const starterSort = starter.spec.commands.find((c) => c.kind === 'sort');
+const starterAggs = starterStats ? starterStats.aggregations : [];
+const starterSortFields = starterSort ? starterSort.fields : [];
+
+const FILTER_ROWS = [0, 1, 2, 3];
+const AGG_ROWS = [0, 1, 2];
+const EVAL_ROWS = [0, 1];
+const SORT_ROWS = [0, 1];
+
+// Canonical starting order of the pipeline stages. Reorderable at runtime;
+// this is only where they begin.
+const STAGES = [
+  { kind: 'where', label: 'where', icon: 'crosshair', syntax: 'where <expr>', blurb: 'Filter on a field — including against another field.' },
+  { kind: 'eval', label: 'eval', icon: 'hash', syntax: 'eval <field>=<expr>', blurb: 'Derive a new field from the ones you already have.' },
+  { kind: 'stats', label: 'stats', icon: 'activity', syntax: 'stats <agg> BY <fields>', blurb: 'Collapse events into aggregate rows.' },
+  { kind: 'sort', label: 'sort', icon: 'chevrons-up-down', syntax: 'sort [n] ±<field>', blurb: 'Order the results.' },
+  { kind: 'table', label: 'table', icon: 'columns', syntax: 'table <fields>', blurb: 'Keep only these fields, in this order.' },
+  { kind: 'head', label: 'head', icon: 'layers', syntax: 'head [n]', blurb: 'Keep only the first n results.' },
+] as const;
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.66rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.07em',
+  color: 'textMuted',
+});
+const textInput = css({
+  w: '100%',
+  minW: 0,
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.55rem',
+  py: '0.38rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.65 },
+});
+const selectInput = css({
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.45rem',
+  py: '0.38rem',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const sansSelect = css({
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.45rem',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+
+const field = css({ display: 'flex', flexDirection: 'column', gap: '0.28rem', minW: 0 });
+const cardBox = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.8rem 0.9rem',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.7rem',
+});
+const grid2 = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: '1fr 1fr' }, gap: '0.6rem' });
+const filterRow = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)', gap: '0.4rem', alignItems: 'center' });
+const aggRow = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: 'auto minmax(0, 1fr) minmax(0, 1fr)' }, gap: '0.4rem', alignItems: 'center' });
+const sortRow = css({ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '0.4rem', alignItems: 'center' });
+const whereRow = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: 'minmax(0, 1fr) auto minmax(0, 1fr) auto' }, gap: '0.4rem', alignItems: 'center' });
+
+// Pipeline stack. `order` is set inline per card and rewritten by the script
+// when a stage moves, so reordering never touches the DOM tree itself.
+const stageStack = css({ display: 'flex', flexDirection: 'column', gap: '0.55rem' });
+const stageCard = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.6rem 0.75rem',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.55rem',
+  transition: 'border-color 150ms ease, opacity 150ms ease',
+  // A disabled stage stays fully readable but visibly out of the pipeline.
+  '&:not([data-on])': { opacity: 0.55 },
+  '&[data-on]': { borderColor: 'primary' },
+});
+const stageHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' });
+const stageToggle = css({ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer', minW: 0 });
+const stageName = css({ fontFamily: 'mono', fontSize: '0.85rem', fontWeight: 700, color: 'primary' });
+const stageBlurb = css({ fontSize: '0.76rem', color: 'textMuted', m: 0, flex: '1 1 12rem', minW: 0 });
+const stageBody = css({ display: 'flex', flexDirection: 'column', gap: '0.45rem' });
+const moveGroup = css({ display: 'inline-flex', gap: '0.2rem', ml: 'auto' });
+const iconBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '1.6rem',
+  h: '1.6rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+  bg: 'bgSubtle',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'primary', borderColor: 'primary' },
+  '&:disabled': { opacity: 0.35, cursor: 'not-allowed', _hover: { color: 'textMuted', borderColor: 'border' } },
+});
+
+const stage = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem', position: { lg: 'sticky' }, top: { lg: '90px' } });
+// Scroll, don't grow — the site-wide rule for tool output boxes.
+const outputBox = css({
+  m: 0,
+  p: '0.75rem 0.9rem',
+  fontFamily: 'mono',
+  fontSize: '0.84rem',
+  lineHeight: 1.7,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  minH: '5.5rem',
+  maxH: '18rem',
+  overflowY: 'auto',
+});
+const issueList = css({ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.35rem', m: 0, p: 0 });
+const issueItem = css({
+  fontSize: '0.78rem',
+  lineHeight: 1.6,
+  color: 'textMuted',
+  bg: 'bgSubtle',
+  borderRadius: 'sm',
+  borderLeft: '3px solid token(colors.border)',
+  p: '0.4rem 0.6rem',
+  '&[data-severity="error"]': { borderLeftColor: 'primary' },
+  '&[data-severity="warning"]': { borderLeftColor: 'accent' },
+});
+const actionCol = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' });
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.4rem',
+  fontSize: '0.85rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.8rem',
+  py: '0.5rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const primaryBtnBase = {
+  bg: 'primary',
+  color: 'onPrimary',
+  borderColor: 'primary',
+  _hover: { opacity: 0.9, color: 'onPrimary' },
+} as const;
+const actionBtn = css(actionBtnBase);
+const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
+
+const workspaceGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', lg: 'minmax(0, 1fr) minmax(0, 24rem)' }, gap: '1.4rem', alignItems: 'start' });
+const topRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' });
+const presetField = css({ display: 'flex', flexDirection: 'column', gap: '0.3rem', flex: '1 1 18rem', minW: '14rem' });
+const note = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.6, m: 0 });
+---
+
+<WorkspaceShell
+  hook="data-spl-builder"
+  gap="1.25rem"
+  noJsMessage="The interactive SPL query builder needs JavaScript enabled. The command reference and worked examples below this tool are plain HTML and work either way."
+  attrs={{ 'data-spl-presets': JSON.stringify(SPL_PRESETS) }}
+>
+  <div class={topRow}>
+    <div class={presetField}>
+      <label class={fieldLabel} for="spl-preset">Start from a worked example</label>
+      <select id="spl-preset" class={sansSelect} data-spl-preset data-session-field="preset">
+        {SPL_PRESETS.map((p) => <option value={p.id}>{p.label}</option>)}
+      </select>
+    </div>
+    <p class={note} data-spl-preset-desc>{starter.description}</p>
+  </div>
+
+  <div class={workspaceGrid}>
+    <div class={css({ display: 'flex', flexDirection: 'column', gap: '1rem', minW: 0 })}>
+      <div>
+        <p class={paneLabel}>Base search</p>
+        <div class={cardBox}>
+          <div class={grid2}>
+            <div class={field}>
+              <label class={fieldLabel} for="spl-index">index</label>
+              <input id="spl-index" type="text" class={textInput} value={starter.spec.base.index} placeholder="wineventlog" data-spl-base="index" data-session-field="index" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class={field}>
+              <label class={fieldLabel} for="spl-sourcetype">sourcetype</label>
+              <input id="spl-sourcetype" type="text" class={textInput} value={starter.spec.base.sourcetype} placeholder="WinEventLog:Security" data-spl-base="sourcetype" data-session-field="sourcetype" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class={field}>
+              <label class={fieldLabel} for="spl-earliest">earliest</label>
+              <input id="spl-earliest" type="text" class={textInput} value={starter.spec.base.earliest} placeholder="-24h@h" data-spl-base="earliest" data-session-field="earliest" autocomplete="off" spellcheck="false" />
+            </div>
+            <div class={field}>
+              <label class={fieldLabel} for="spl-latest">latest</label>
+              <input id="spl-latest" type="text" class={textInput} value={starter.spec.base.latest} placeholder="now" data-spl-base="latest" data-session-field="latest" autocomplete="off" spellcheck="false" />
+            </div>
+          </div>
+
+          <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.4rem' })}>
+            <span class={fieldLabel} id="spl-filters-label">Field filters</span>
+            <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.4rem' })} role="group" aria-labelledby="spl-filters-label">
+              {
+                FILTER_ROWS.map((i) => (
+                  <div class={filterRow} data-spl-filter-row>
+                    <input
+                      type="text"
+                      class={textInput}
+                      value={i === 0 && starterFilter ? starterFilter.field : ''}
+                      placeholder="field"
+                      aria-label={`Filter ${i + 1} field name`}
+                      data-spl-filter="field"
+                      data-session-field={`filter${i}-field`}
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                    <select class={selectInput} aria-label={`Filter ${i + 1} comparison operator`} data-spl-filter="operator" data-session-field={`filter${i}-op`}>
+                      {SPL_SEARCH_OPERATORS.map((op) => (
+                        <option value={op.id} selected={i === 0 && starterFilter ? op.id === starterFilter.operator : op.id === '='} title={op.hint}>
+                          {op.id}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      class={textInput}
+                      value={i === 0 && starterFilter ? starterFilter.value : ''}
+                      placeholder="value"
+                      aria-label={`Filter ${i + 1} value`}
+                      data-spl-filter="value"
+                      data-session-field={`filter${i}-value`}
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                  </div>
+                ))
+              }
+            </div>
+            <p class={note}>
+              Type the literal value you want to match — quoting and backslash escaping are added for you. Wildcards (<code>*</code>) are passed straight through.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class={paneLabel}>Pipeline</p>
+        <div class={stageStack} data-spl-stages>
+          {
+            STAGES.map((s, i) => {
+              const on = s.kind === 'stats' || s.kind === 'sort';
+              return (
+                <div class={stageCard} style={`order: ${i}`} data-spl-stage={s.kind} {...(on ? { 'data-on': true } : {})}>
+                  <div class={stageHead}>
+                    <label class={stageToggle}>
+                      <input type="checkbox" checked={on} data-spl-stage-toggle data-session-field={`stage-${s.kind}`} aria-label={`Include the ${s.label} command in the pipeline`} />
+                      <Icon name={s.icon} size={15} class={css({ color: 'primary', flexShrink: 0 })} />
+                      <span class={stageName}>| {s.label}</span>
+                    </label>
+                    <p class={stageBlurb}>{s.blurb}</p>
+                    <span class={moveGroup}>
+                      <button type="button" class={iconBtn} data-spl-move="up" data-sound="tick" aria-label={`Move the ${s.label} stage earlier in the pipeline`} title="Move earlier">
+                        <Icon name="arrow-up" size={13} />
+                      </button>
+                      <button type="button" class={iconBtn} data-spl-move="down" data-sound="tick" aria-label={`Move the ${s.label} stage later in the pipeline`} title="Move later">
+                        <Icon name="arrow-down" size={13} />
+                      </button>
+                    </span>
+                  </div>
+
+                  <div class={stageBody}>
+                    {s.kind === 'where' && (
+                      <div class={whereRow}>
+                        <input type="text" class={textInput} placeholder="field" aria-label="where: field" data-spl-where="left" data-session-field="where-left" autocomplete="off" spellcheck="false" />
+                        <select class={selectInput} aria-label="where: operator" data-spl-where="operator" data-session-field="where-op">
+                          {SPL_WHERE_OPERATORS.map((op) => <option value={op}>{op}</option>)}
+                        </select>
+                        <input type="text" class={textInput} placeholder="value" aria-label="where: value" data-spl-where="right" data-session-field="where-right" autocomplete="off" spellcheck="false" />
+                        <select class={sansSelect} aria-label="where: how to read the right-hand value" data-spl-where="kind" data-session-field="where-kind">
+                          <option value="string">as text</option>
+                          <option value="number">as number</option>
+                          <option value="field">as field</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {s.kind === 'eval' &&
+                      EVAL_ROWS.map((i) => (
+                        <div class={css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: 'minmax(0, 1fr) minmax(0, 2fr)' }, gap: '0.4rem' })} data-spl-eval-row>
+                          <input type="text" class={textInput} placeholder="new_field" aria-label={`eval ${i + 1}: destination field`} data-spl-eval="field" data-session-field={`eval${i}-field`} autocomplete="off" spellcheck="false" />
+                          <input type="text" class={textInput} placeholder="bytes/1024" aria-label={`eval ${i + 1}: expression`} data-spl-eval="expression" data-session-field={`eval${i}-expr`} autocomplete="off" spellcheck="false" />
+                        </div>
+                      ))}
+
+                    {s.kind === 'stats' && (
+                      <>
+                        {AGG_ROWS.map((i) => (
+                          <div class={aggRow} data-spl-agg-row>
+                            <select class={selectInput} aria-label={`Aggregation ${i + 1}: function`} data-spl-agg="fn" data-session-field={`agg${i}-fn`}>
+                              {SPL_AGG_FUNCTIONS.map((f) => (
+                                <option value={f.id} selected={starterAggs[i] ? f.id === starterAggs[i].fn : false} title={f.hint}>
+                                  {f.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              class={textInput}
+                              value={starterAggs[i] ? starterAggs[i].field : ''}
+                              placeholder={i === 0 ? 'field (blank = count events)' : 'field'}
+                              aria-label={`Aggregation ${i + 1}: field`}
+                              data-spl-agg="field"
+                              data-session-field={`agg${i}-field`}
+                              autocomplete="off"
+                              spellcheck="false"
+                            />
+                            <input
+                              type="text"
+                              class={textInput}
+                              value={starterAggs[i] ? starterAggs[i].alias : ''}
+                              placeholder="AS name (optional)"
+                              aria-label={`Aggregation ${i + 1}: rename with AS`}
+                              data-spl-agg="alias"
+                              data-session-field={`agg${i}-alias`}
+                              autocomplete="off"
+                              spellcheck="false"
+                            />
+                          </div>
+                        ))}
+                        <div class={field}>
+                          <label class={fieldLabel} for="spl-stats-by">BY (group-by fields, comma-separated)</label>
+                          <input id="spl-stats-by" type="text" class={textInput} value={starterStats ? starterStats.by.join(', ') : ''} placeholder="src_ip, host" data-spl-stats="by" data-session-field="stats-by" autocomplete="off" spellcheck="false" />
+                        </div>
+                      </>
+                    )}
+
+                    {s.kind === 'sort' && (
+                      <>
+                        <div class={field}>
+                          <label class={fieldLabel} for="spl-sort-limit">Count (optional — 0 means every result)</label>
+                          <input id="spl-sort-limit" type="text" inputmode="numeric" class={textInput} value={starterSort ? starterSort.limit : ''} placeholder="20" data-spl-sort="limit" data-session-field="sort-limit" autocomplete="off" spellcheck="false" />
+                        </div>
+                        {SORT_ROWS.map((i) => (
+                          <div class={sortRow} data-spl-sort-row>
+                            <input
+                              type="text"
+                              class={textInput}
+                              value={starterSortFields[i] ? starterSortFields[i].field : ''}
+                              placeholder="field"
+                              aria-label={`Sort ${i + 1}: field`}
+                              data-spl-sort="field"
+                              data-session-field={`sort${i}-field`}
+                              autocomplete="off"
+                              spellcheck="false"
+                            />
+                            <select class={sansSelect} aria-label={`Sort ${i + 1}: direction`} data-spl-sort="direction" data-session-field={`sort${i}-dir`}>
+                              <option value="desc" selected={starterSortFields[i] ? starterSortFields[i].direction === 'desc' : true}>descending (−)</option>
+                              <option value="asc" selected={starterSortFields[i] ? starterSortFields[i].direction === 'asc' : false}>ascending (+)</option>
+                            </select>
+                          </div>
+                        ))}
+                      </>
+                    )}
+
+                    {s.kind === 'table' && (
+                      <div class={field}>
+                        <label class={fieldLabel} for="spl-table-fields">Fields to keep, comma-separated and in order</label>
+                        <input id="spl-table-fields" type="text" class={textInput} placeholder="_time, host, user" data-spl-table="fields" data-session-field="table-fields" autocomplete="off" spellcheck="false" />
+                      </div>
+                    )}
+
+                    {s.kind === 'head' && (
+                      <div class={field}>
+                        <label class={fieldLabel} for="spl-head-limit">Number of results (blank uses Splunk's default of 10)</label>
+                        <input id="spl-head-limit" type="text" inputmode="numeric" class={textInput} placeholder="100" data-spl-head="limit" data-session-field="head-limit" autocomplete="off" spellcheck="false" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          }
+        </div>
+      </div>
+    </div>
+
+    <div class={stage}>
+      <p class={paneLabel}>Assembled query</p>
+      <pre class={outputBox}><code data-spl-output>{starterQuery}</code></pre>
+      {/* data-item-class carries the Panda-generated class for the <li>s the
+          script creates — Panda only emits classes it can see at build, so a
+          runtime-built element has to be handed its class name this way. */}
+      <ul class={issueList} data-spl-issues data-item-class={issueItem} role="status" aria-live="polite" aria-label="Query notes"></ul>
+      <div class={actionCol}>
+        <button type="button" class={primaryActionBtn} data-spl-copy data-sound="copy" title="Copy the assembled query to the clipboard">
+          <Icon name="copy" size={15} /> Copy query
+        </button>
+        <button type="button" class={actionBtn} data-spl-clear data-sound="tick" title="Reset every field back to the starting example">
+          <Icon name="rotate-cw" size={15} /> Reset
+        </button>
+      </div>
+      <p class={note}>
+        This builder writes SPL — it doesn't run it. Paste the result into your own Splunk search bar. Nothing you type here is sent anywhere.
+      </p>
+    </div>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { buildSpl } from '../utils/spl';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    function init() {
+      var roots = document.querySelectorAll('[data-spl-builder]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var output = root.querySelector('[data-spl-output]');
+        var issuesEl = root.querySelector('[data-spl-issues]');
+        var copyBtn = root.querySelector('[data-spl-copy]');
+        var clearBtn = root.querySelector('[data-spl-clear]');
+        var presetSelect = root.querySelector('[data-spl-preset]');
+        var presetDesc = root.querySelector('[data-spl-preset-desc]');
+        if (!output || !issuesEl || !copyBtn || !clearBtn || !presetSelect) return;
+
+        var presets = [];
+        try { presets = JSON.parse(root.getAttribute('data-spl-presets') || '[]'); } catch (e) { presets = []; }
+
+        var baseInputs = {};
+        Array.prototype.forEach.call(root.querySelectorAll('[data-spl-base]'), function (el) {
+          baseInputs[el.getAttribute('data-spl-base')] = el;
+        });
+        var filterRows = Array.prototype.slice.call(root.querySelectorAll('[data-spl-filter-row]'));
+        var aggRows = Array.prototype.slice.call(root.querySelectorAll('[data-spl-agg-row]'));
+        var evalRows = Array.prototype.slice.call(root.querySelectorAll('[data-spl-eval-row]'));
+        var sortRows = Array.prototype.slice.call(root.querySelectorAll('[data-spl-sort-row]'));
+
+        // Pipeline stages, in their current order. The array IS the order —
+        // each card's CSS `order` is rewritten from its index here, so the
+        // DOM tree never has to move.
+        var stages = Array.prototype.slice.call(root.querySelectorAll('[data-spl-stage]')).map(function (el) {
+          return { el: el, kind: el.getAttribute('data-spl-stage'), toggle: el.querySelector('[data-spl-stage-toggle]') };
+        });
+        // The server-rendered order, captured once — what Reset returns to.
+        var canonicalOrder = stages.map(function (s) { return s.kind; });
+        var issueItemClass = issuesEl.getAttribute('data-item-class') || '';
+
+        // Reorder `stages` in place to match a list of kinds, parking any
+        // kind the list doesn't mention after the ones it does (Array#sort is
+        // stable, so those keep their relative order).
+        function orderStagesBy(kinds) {
+          stages.sort(function (a, b) {
+            var ai = kinds.indexOf(a.kind);
+            var bi = kinds.indexOf(b.kind);
+            if (ai === -1 && bi === -1) return 0;
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+          });
+        }
+
+        function q(scope, attr, value) {
+          return scope.querySelector('[' + attr + '="' + value + '"]');
+        }
+        function stageByKind(kind) {
+          for (var i = 0; i < stages.length; i++) if (stages[i].kind === kind) return stages[i];
+          return null;
+        }
+        function splitCsv(text) {
+          return String(text || '')
+            .split(',')
+            .map(function (t) { return t.trim(); })
+            .filter(Boolean);
+        }
+
+        // --- form -> spec -------------------------------------------------
+        function readStage(kind) {
+          var s = stageByKind(kind);
+          if (!s) return null;
+          if (kind === 'where') {
+            return {
+              kind: 'where',
+              left: q(s.el, 'data-spl-where', 'left').value,
+              operator: q(s.el, 'data-spl-where', 'operator').value,
+              right: q(s.el, 'data-spl-where', 'right').value,
+              rightKind: q(s.el, 'data-spl-where', 'kind').value,
+            };
+          }
+          if (kind === 'eval') {
+            return {
+              kind: 'eval',
+              assignments: evalRows.map(function (row) {
+                return { field: q(row, 'data-spl-eval', 'field').value, expression: q(row, 'data-spl-eval', 'expression').value };
+              }),
+            };
+          }
+          if (kind === 'stats') {
+            return {
+              kind: 'stats',
+              aggregations: aggRows.map(function (row) {
+                return {
+                  fn: q(row, 'data-spl-agg', 'fn').value,
+                  field: q(row, 'data-spl-agg', 'field').value,
+                  alias: q(row, 'data-spl-agg', 'alias').value,
+                };
+              }),
+              by: splitCsv(q(s.el, 'data-spl-stats', 'by').value),
+            };
+          }
+          if (kind === 'sort') {
+            return {
+              kind: 'sort',
+              limit: q(s.el, 'data-spl-sort', 'limit').value,
+              fields: sortRows.map(function (row) {
+                return { field: q(row, 'data-spl-sort', 'field').value, direction: q(row, 'data-spl-sort', 'direction').value };
+              }),
+            };
+          }
+          if (kind === 'table') return { kind: 'table', fields: splitCsv(q(s.el, 'data-spl-table', 'fields').value) };
+          if (kind === 'head') return { kind: 'head', limit: q(s.el, 'data-spl-head', 'limit').value };
+          return null;
+        }
+
+        function readSpec() {
+          var base = {
+            index: baseInputs.index.value,
+            sourcetype: baseInputs.sourcetype.value,
+            earliest: baseInputs.earliest.value,
+            latest: baseInputs.latest.value,
+            filters: filterRows.map(function (row) {
+              return {
+                field: q(row, 'data-spl-filter', 'field').value,
+                operator: q(row, 'data-spl-filter', 'operator').value,
+                value: q(row, 'data-spl-filter', 'value').value,
+              };
+            }),
+          };
+          var commands = [];
+          stages.forEach(function (s) {
+            if (!s.toggle.checked) return;
+            var cmd = readStage(s.kind);
+            if (cmd) commands.push(cmd);
+          });
+          return { base: base, commands: commands };
+        }
+
+        // --- render -------------------------------------------------------
+        function render() {
+          var result = buildSpl(readSpec());
+          // A non-breaking space keeps the <pre> from collapsing to nothing
+          // while the base search is still empty.
+          output.textContent = result.query || ' ';
+          issuesEl.replaceChildren();
+          result.issues.forEach(function (issue) {
+            var li = document.createElement('li');
+            li.className = issueItemClass;
+            li.setAttribute('data-severity', issue.severity);
+            li.textContent = issue.message;
+            issuesEl.appendChild(li);
+          });
+          stages.forEach(function (s) {
+            if (s.toggle.checked) s.el.setAttribute('data-on', '');
+            else s.el.removeAttribute('data-on');
+          });
+        }
+
+        function applyOrder() {
+          stages.forEach(function (s, i) {
+            s.el.style.order = String(i);
+          });
+          // Disable the arrow that can't do anything from this position, so
+          // the control's state matches what it will actually do.
+          stages.forEach(function (s, i) {
+            var up = s.el.querySelector('[data-spl-move="up"]');
+            var down = s.el.querySelector('[data-spl-move="down"]');
+            if (up) up.disabled = i === 0;
+            if (down) down.disabled = i === stages.length - 1;
+          });
+        }
+
+        function move(kind, delta) {
+          var from = -1;
+          for (var i = 0; i < stages.length; i++) if (stages[i].kind === kind) from = i;
+          var to = from + delta;
+          if (from === -1 || to < 0 || to >= stages.length) return;
+          var moved = stages.splice(from, 1)[0];
+          stages.splice(to, 0, moved);
+          applyOrder();
+          render();
+        }
+
+        // --- presets ------------------------------------------------------
+        function presetById(id) {
+          for (var i = 0; i < presets.length; i++) if (presets[i].id === id) return presets[i];
+          return null;
+        }
+
+        function setSelect(el, value) {
+          if (!el) return;
+          el.value = value;
+        }
+
+        function applyPreset(preset) {
+          if (!preset) return;
+          var spec = preset.spec;
+          baseInputs.index.value = spec.base.index;
+          baseInputs.sourcetype.value = spec.base.sourcetype;
+          baseInputs.earliest.value = spec.base.earliest;
+          baseInputs.latest.value = spec.base.latest;
+          filterRows.forEach(function (row, i) {
+            var f = spec.base.filters[i];
+            q(row, 'data-spl-filter', 'field').value = f ? f.field : '';
+            setSelect(q(row, 'data-spl-filter', 'operator'), f ? f.operator : '=');
+            q(row, 'data-spl-filter', 'value').value = f ? f.value : '';
+          });
+
+          // Every preset uses each command at most once (asserted in
+          // test/spl.test.ts), which is what lets a fixed one-card-per-command
+          // UI represent them faithfully.
+          var byKind = {};
+          spec.commands.forEach(function (c) { byKind[c.kind] = c; });
+
+          var whereCmd = byKind.where;
+          var whereStage = stageByKind('where');
+          if (whereStage) {
+            q(whereStage.el, 'data-spl-where', 'left').value = whereCmd ? whereCmd.left : '';
+            setSelect(q(whereStage.el, 'data-spl-where', 'operator'), whereCmd ? whereCmd.operator : '=');
+            q(whereStage.el, 'data-spl-where', 'right').value = whereCmd ? whereCmd.right : '';
+            setSelect(q(whereStage.el, 'data-spl-where', 'kind'), whereCmd ? whereCmd.rightKind : 'string');
+          }
+
+          var evalCmd = byKind.eval;
+          evalRows.forEach(function (row, i) {
+            var a = evalCmd ? evalCmd.assignments[i] : null;
+            q(row, 'data-spl-eval', 'field').value = a ? a.field : '';
+            q(row, 'data-spl-eval', 'expression').value = a ? a.expression : '';
+          });
+
+          var statsCmd = byKind.stats;
+          aggRows.forEach(function (row, i) {
+            var a = statsCmd ? statsCmd.aggregations[i] : null;
+            setSelect(q(row, 'data-spl-agg', 'fn'), a ? a.fn : 'count');
+            q(row, 'data-spl-agg', 'field').value = a ? a.field : '';
+            q(row, 'data-spl-agg', 'alias').value = a ? a.alias : '';
+          });
+          var statsStage = stageByKind('stats');
+          if (statsStage) q(statsStage.el, 'data-spl-stats', 'by').value = statsCmd ? statsCmd.by.join(', ') : '';
+
+          var sortCmd = byKind.sort;
+          var sortStage = stageByKind('sort');
+          if (sortStage) q(sortStage.el, 'data-spl-sort', 'limit').value = sortCmd ? sortCmd.limit : '';
+          sortRows.forEach(function (row, i) {
+            var f = sortCmd ? sortCmd.fields[i] : null;
+            q(row, 'data-spl-sort', 'field').value = f ? f.field : '';
+            setSelect(q(row, 'data-spl-sort', 'direction'), f ? f.direction : 'desc');
+          });
+
+          var tableCmd = byKind.table;
+          var tableStage = stageByKind('table');
+          if (tableStage) q(tableStage.el, 'data-spl-table', 'fields').value = tableCmd ? tableCmd.fields.join(', ') : '';
+
+          var headCmd = byKind.head;
+          var headStage = stageByKind('head');
+          if (headStage) q(headStage.el, 'data-spl-head', 'limit').value = headCmd ? headCmd.limit : '';
+
+          // Enable exactly the stages the preset uses, and put them in the
+          // order the preset itself declares — the pipeline order is part of
+          // what each example is teaching.
+          stages.forEach(function (s) { s.toggle.checked = !!byKind[s.kind]; });
+          orderStagesBy(spec.commands.map(function (c) { return c.kind; }));
+          applyOrder();
+          if (presetDesc) presetDesc.textContent = preset.description;
+          render();
+        }
+
+        // --- wiring -------------------------------------------------------
+        Array.prototype.forEach.call(root.querySelectorAll('input, select'), function (el) {
+          if (el === presetSelect) return;
+          el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', render);
+        });
+
+        Array.prototype.forEach.call(root.querySelectorAll('[data-spl-move]'), function (btn) {
+          btn.addEventListener('click', function () {
+            var card = btn.closest('[data-spl-stage]');
+            if (!card) return;
+            move(card.getAttribute('data-spl-stage'), btn.getAttribute('data-spl-move') === 'up' ? -1 : 1);
+          });
+        });
+
+        presetSelect.addEventListener('change', function () {
+          applyPreset(presetById(presetSelect.value));
+        });
+
+        var status = document.createElement('div');
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;';
+        document.body.appendChild(status);
+
+        copyBtn.addEventListener('click', function () {
+          var text = output.textContent || '';
+          if (!text.trim()) return;
+          navigator.clipboard
+            .writeText(text)
+            .then(function () {
+              pop(copyBtn);
+              status.textContent = 'SPL query copied to clipboard';
+              setTimeout(function () { status.textContent = ''; }, 1600);
+            })
+            .catch(function () {});
+        });
+
+        // Session persistence. Every field auto-binds via data-session-field;
+        // the pipeline ORDER isn't a field, so it rides along in the extra
+        // snapshot. The Reset button doubles as the session's reset control,
+        // so it clears storage and restores the server-rendered defaults
+        // rather than only blanking the visible inputs.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-spl-clear]',
+          serialize: function () {
+            return { order: stages.map(function (s) { return s.kind; }) };
+          },
+          restore: function (data) {
+            if (!data || !Array.isArray(data.order)) return;
+            orderStagesBy(data.order);
+          },
+          onReset: function () {
+            // Back to the canonical document order the server rendered.
+            orderStagesBy(canonicalOrder);
+            presetSelect.selectedIndex = 0;
+            if (presetDesc && presets[0]) presetDesc.textContent = presets[0].description;
+            applyOrder();
+            render();
+          },
+        });
+
+        applyOrder();
+        render();
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>

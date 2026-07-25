@@ -1,0 +1,595 @@
+---
+// Cron Expression Parser & Builder — a live text box that parses a 5-field
+// crontab(5) expression into a human-readable sentence as you type
+// (src/utils/cron.ts owns all parsing/description logic, unit-tested in
+// test/cron.test.ts), plus a guided Builder mode with one dropdown per
+// field for visitors who'd rather assemble an expression than write one
+// from scratch. Both modes share one source of truth — the raw expression
+// string — so the right-hand "stage" (the sentence + a field-by-field
+// breakdown) stays live regardless of which pane is being edited. See
+// cron.ts's own header for exactly which crontab syntax this covers and
+// which authoritative sources it was verified against.
+// Same "Scratch-inspired workspace" visual language as this site's other
+// builder tools. Genuinely requires JS (there's no meaningful static cron
+// parser), so the workspace stays hidden until the script confirms it's
+// running — same JS-armed, no-JS-safe philosophy as DorkBuilder/CidrCalculator.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { CRON_FIELD_ORDER, CRON_FIELD_LABELS, CRON_FIELD_RANGE_HINT, type CronFieldName } from '../utils/cron';
+
+// The expression the workspace loads with — also this page's own headline
+// worked example ("At 3:00 AM, only on Monday"), so the live tool and the
+// page's prose agree from the very first paint.
+const DEFAULT_EXPR = '0 3 * * 1';
+
+const QUICK_EXAMPLES: { label: string; expr: string }[] = [
+  { label: 'Every minute', expr: '* * * * *' },
+  { label: 'Every 5 minutes', expr: '*/5 * * * *' },
+  { label: 'Hourly', expr: '0 * * * *' },
+  { label: 'Daily at midnight', expr: '0 0 * * *' },
+  { label: 'Weekdays at 9 AM', expr: '0 9 * * 1-5' },
+  { label: 'Weekly on Sunday', expr: '0 0 * * 0' },
+  { label: 'Monthly on the 1st', expr: '0 0 1 * *' },
+  { label: 'Yearly on Jan 1', expr: '0 0 1 1 *' },
+  { label: 'Reboot only (@reboot)', expr: '@reboot' },
+];
+
+function hour12Label(h: number): string {
+  const period = h < 12 ? 'AM' : 'PM';
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return `${h12} ${period}`;
+}
+
+const MONTH_OPTIONS = [
+  ['jan', 'January'], ['feb', 'February'], ['mar', 'March'], ['apr', 'April'],
+  ['may', 'May'], ['jun', 'June'], ['jul', 'July'], ['aug', 'August'],
+  ['sep', 'September'], ['oct', 'October'], ['nov', 'November'], ['dec', 'December'],
+] as const;
+const DOW_OPTIONS = [
+  ['sun', 'Sunday'], ['mon', 'Monday'], ['tue', 'Tuesday'], ['wed', 'Wednesday'],
+  ['thu', 'Thursday'], ['fri', 'Friday'], ['sat', 'Saturday'],
+] as const;
+
+// One preset option list per field — a deliberately small, common-case
+// subset (not every one of the 60/24/31 possible single values), since
+// anything not listed here still round-trips losslessly through each
+// field's own "Custom…" option. See CronParser's client script for how a
+// field's current raw text is matched against these values on mode switch.
+const BUILDER_OPTIONS: Record<CronFieldName, { value: string; label: string }[]> = {
+  minute: [
+    { value: '*', label: 'Every minute' },
+    { value: '*/5', label: 'Every 5 minutes' },
+    { value: '*/10', label: 'Every 10 minutes' },
+    { value: '*/15', label: 'Every 15 minutes' },
+    { value: '*/20', label: 'Every 20 minutes' },
+    { value: '*/30', label: 'Every 30 minutes' },
+    { value: '0', label: 'At minute 0' },
+    { value: '15', label: 'At minute 15' },
+    { value: '30', label: 'At minute 30' },
+    { value: '45', label: 'At minute 45' },
+  ],
+  hour: [
+    { value: '*', label: 'Every hour' },
+    { value: '*/2', label: 'Every 2 hours' },
+    { value: '*/3', label: 'Every 3 hours' },
+    { value: '*/4', label: 'Every 4 hours' },
+    { value: '*/6', label: 'Every 6 hours' },
+    { value: '*/12', label: 'Every 12 hours' },
+    ...Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `At ${h} (${hour12Label(h)})` })),
+  ],
+  dayOfMonth: [
+    { value: '*', label: 'Every day' },
+    { value: '*/2', label: 'Every 2 days' },
+    { value: '*/7', label: 'Every 7 days' },
+    { value: '*/15', label: 'Every 15 days' },
+    ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: `On day ${i + 1}` })),
+  ],
+  month: [{ value: '*', label: 'Every month' }, ...MONTH_OPTIONS.map(([v, l]) => ({ value: v, label: l }))],
+  dayOfWeek: [
+    { value: '*', label: 'Every day' },
+    ...DOW_OPTIONS.map(([v, l]) => ({ value: v, label: l })),
+    { value: 'mon-fri', label: 'Weekdays (Mon–Fri)' },
+    { value: 'sat,sun', label: 'Weekend (Sat & Sun)' },
+  ],
+};
+const CUSTOM_VALUE = '__custom__';
+
+const paneLabel = css({ fontFamily: 'sans', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'textMuted', mb: '0.6rem' });
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted' });
+const rangeHintText = css({ fontWeight: 500, textTransform: 'none', letterSpacing: 'normal', color: 'textMuted', opacity: 0.8 });
+
+const modeRow = css({
+  position: 'relative', // containing block + stacking context for the animated switch thumb (see AnimatedSwitch)
+  zIndex: 0,
+  display: 'inline-flex',
+  gap: '0.15rem',
+  p: '0.2rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  mb: '1rem',
+});
+const modeBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  px: '0.8rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  borderRadius: 'sm',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'text' },
+  '&[data-active]': { bg: 'bgSubtle', color: 'primary', borderColor: 'border', boxShadow: 'card' },
+  // Once armed, this button's own bg/border/shadow is suppressed by motion.css's shared [data-switch-armed] rule.
+});
+
+const exprInputCss = css({
+  fontFamily: 'mono',
+  fontSize: '1rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.7rem 0.9rem',
+  w: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+  '&[data-invalid]': { borderColor: 'color-mix(in srgb, red 55%, token(colors.border))' },
+});
+const errorBox = css({ color: 'textMuted', fontSize: '0.85rem', p: '0.65rem 0.85rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md', mt: '0.6rem' });
+
+const chipRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', mt: '0.75rem' });
+const chip = css({
+  fontFamily: 'sans',
+  fontSize: '0.78rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  px: '0.7rem',
+  py: '0.3rem',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+const builderStack = css({ display: 'flex', flexDirection: 'column', gap: '0.9rem' });
+const builderRow = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.35rem',
+  p: '0.15rem',
+  borderRadius: 'sm',
+  '&[data-invalid]': { bg: 'color-mix(in srgb, red 8%, transparent)' },
+});
+const builderRowInputs = css({ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' });
+const selectInput = css({
+  flex: '1 1 220px',
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.45rem',
+  cursor: 'pointer',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const customInput = css({
+  flex: '1 1 140px',
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.45rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const builderMeaning = css({ color: 'textMuted', fontSize: '0.8rem', m: 0, minH: '1.2em', fontStyle: 'italic' });
+
+const workspaceGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', lg: 'minmax(0, 1fr) 320px' }, gap: '1.5rem', alignItems: 'start' });
+const stage = css({ display: 'flex', flexDirection: 'column', gap: '0.9rem', position: { lg: 'sticky' }, top: { lg: '90px' } });
+const stageBox = css({
+  m: 0,
+  p: '0.9rem 1rem',
+  fontFamily: 'sans',
+  fontSize: '1rem',
+  fontWeight: 700,
+  color: 'primary',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  lineHeight: 1.5,
+  minH: '3.4em',
+});
+const rawRow = css({ display: 'flex', alignItems: 'stretch', gap: '0.4rem' });
+const rawBox = css({
+  flex: 1,
+  minW: 0,
+  m: 0,
+  p: '0.55rem 0.75rem',
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  overflowX: 'auto',
+  whiteSpace: 'nowrap',
+});
+const copyBtn = css({
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '2rem',
+  h: '2rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+const breakdownList = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+const breakdownRow = css({ display: 'flex', flexDirection: 'column', gap: '0.1rem', p: '0.5rem 0.65rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const breakdownHead = css({ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'baseline' });
+const breakdownField = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'textMuted' });
+const breakdownRaw = css({ fontFamily: 'mono', fontSize: '0.78rem', color: 'accent' });
+const breakdownMeaning = css({ fontSize: '0.85rem', color: 'text', m: 0 });
+
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end', mb: '0.25rem' });
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const resetBtn = css(actionBtnBase);
+---
+
+<WorkspaceShell hook="data-cron-parser" noJsMessage="The interactive cron parser needs JavaScript enabled to validate an expression as you type.">
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-cron-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <div class={modeRow} role="radiogroup" aria-label="Editing mode" data-session-field="mode">
+    <button type="button" role="radio" aria-checked="true" data-active data-cron-mode="expression" data-sound="tick" class={modeBtn}>Expression</button>
+    <button type="button" role="radio" aria-checked="false" data-cron-mode="builder" data-sound="tick" class={modeBtn}>Builder</button>
+  </div>
+
+  <div class={workspaceGrid}>
+    <div>
+      <div data-cron-pane="expression">
+        <p class={paneLabel}>Cron expression</p>
+        <input
+          type="text"
+          id="cron-expr-input"
+          class={exprInputCss}
+          value={DEFAULT_EXPR}
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Cron expression"
+          data-cron-expr-input
+          data-session-field="expr"
+        />
+        <p class={errorBox} hidden data-cron-error role="alert"></p>
+        <div class={chipRow}>
+          {QUICK_EXAMPLES.map((q) => (
+            <button type="button" class={chip} data-cron-chip={q.expr} data-sound="tick">{q.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div data-cron-pane="builder" hidden>
+        <p class={paneLabel}>Field-by-field builder</p>
+        <div class={builderStack}>
+          {CRON_FIELD_ORDER.map((f) => (
+            <div class={builderRow} data-cron-builder-row={f}>
+              <label class={fieldLabel} for={`cron-builder-select-${f}`}>
+                {CRON_FIELD_LABELS[f]} <span class={rangeHintText}>({CRON_FIELD_RANGE_HINT[f]})</span>
+              </label>
+              <div class={builderRowInputs}>
+                <select id={`cron-builder-select-${f}`} class={selectInput} data-cron-builder-select={f}>
+                  {BUILDER_OPTIONS[f].map((o) => (
+                    <option value={o.value}>{o.label}</option>
+                  ))}
+                  <option value={CUSTOM_VALUE}>Custom…</option>
+                </select>
+                <input
+                  type="text"
+                  class={customInput}
+                  data-cron-builder-custom={f}
+                  placeholder={CRON_FIELD_RANGE_HINT[f]}
+                  aria-label={`Custom ${CRON_FIELD_LABELS[f]} value`}
+                  autocomplete="off"
+                  spellcheck="false"
+                  hidden
+                />
+              </div>
+              <p class={builderMeaning} data-cron-builder-meaning={f}></p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    <div class={stage}>
+      <p class={paneLabel}>What this means</p>
+      <p class={stageBox} data-cron-description aria-live="polite"></p>
+      <div class={rawRow}>
+        <pre class={rawBox} data-cron-raw-copy></pre>
+        <button type="button" class={copyBtn} data-cron-copy data-copy-pop data-sound="copy" aria-label="Copy expression" title="Copy expression">
+          <Icon name="copy" size={13} />
+        </button>
+      </div>
+      <div class={breakdownList} data-cron-breakdown></div>
+      <template data-cron-breakdown-row-template>
+        <div class={breakdownRow}>
+          <div class={breakdownHead}>
+            <span class={breakdownField} data-bd-field></span>
+            <span class={breakdownRaw} data-bd-raw></span>
+          </div>
+          <p class={breakdownMeaning} data-bd-meaning></p>
+        </div>
+      </template>
+    </div>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { parseCronExpression, describeCron, describeCronField, CRON_FIELD_ORDER, CRON_FIELD_LABELS } from '../utils/cron';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var CUSTOM_VALUE_JS = '__custom__'; // matches the frontmatter's CUSTOM_VALUE constant baked into each <option value>
+
+    function init() {
+      var roots = document.querySelectorAll('[data-cron-parser]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var exprInput = root.querySelector('[data-cron-expr-input]');
+        var errorBox = root.querySelector('[data-cron-error]');
+        var descriptionEl = root.querySelector('[data-cron-description]');
+        var rawCopyEl = root.querySelector('[data-cron-raw-copy]');
+        var copyBtn = root.querySelector('[data-cron-copy]');
+        var breakdownEl = root.querySelector('[data-cron-breakdown]');
+        var breakdownTemplate = root.querySelector('[data-cron-breakdown-row-template]');
+        var exprPane = root.querySelector('[data-cron-pane="expression"]');
+        var builderPane = root.querySelector('[data-cron-pane="builder"]');
+        var modeBtns = Array.prototype.slice.call(root.querySelectorAll('[data-cron-mode]'));
+        var builderRows = Array.prototype.slice.call(root.querySelectorAll('[data-cron-builder-row]'));
+        var builderSelects = {};
+        var builderCustoms = {};
+        var builderMeanings = {};
+        builderRows.forEach(function (row) {
+          var f = row.getAttribute('data-cron-builder-row');
+          builderSelects[f] = row.querySelector('[data-cron-builder-select]');
+          builderCustoms[f] = row.querySelector('[data-cron-builder-custom]');
+          builderMeanings[f] = row.querySelector('[data-cron-builder-meaning]');
+        });
+        if (!exprInput || !descriptionEl) return;
+
+        var session = null; // assigned once persistToolSession() runs, below
+
+        function currentMode() {
+          var active = modeBtns.filter(function (b) { return b.hasAttribute('data-active'); })[0];
+          return active ? active.getAttribute('data-cron-mode') : 'expression';
+        }
+
+        function showPaneForMode() {
+          var m = currentMode();
+          if (exprPane) exprPane.hidden = m !== 'expression';
+          if (builderPane) builderPane.hidden = m !== 'builder';
+        }
+
+        // Month/day-of-week presets are listed by NAME ("Monday"), but a raw
+        // field can just as validly be numeric ("1") — both mean the same
+        // thing. These map a purely-numeric raw value to its name-option
+        // equivalent before matching, so e.g. this tool's own default
+        // expression (dayOfWeek "1") still lands on the "Monday" option
+        // instead of falling back to Custom for no real reason.
+        var MONTH_NUM_TO_NAME = { '1': 'jan', '2': 'feb', '3': 'mar', '4': 'apr', '5': 'may', '6': 'jun', '7': 'jul', '8': 'aug', '9': 'sep', '10': 'oct', '11': 'nov', '12': 'dec' };
+        var DOW_NUM_TO_NAME = { '0': 'sun', '1': 'mon', '2': 'tue', '3': 'wed', '4': 'thu', '5': 'fri', '6': 'sat', '7': 'sun' };
+
+        // Re-derives every builder field's select+custom-input state from the
+        // CURRENT raw expression text — called once at init and again whenever
+        // the visitor switches INTO Builder mode (never on every keystroke;
+        // see this file's own header for why that would fight in-progress
+        // typing in a field's own custom input).
+        function updateBuilderFromExpression(expr) {
+          var parts = expr.trim().split(/\s+/).filter(Boolean);
+          if (parts.length !== 5) return; // e.g. a nickname or malformed text — leave the builder as-is
+          CRON_FIELD_ORDER.forEach(function (f, i) {
+            var raw = parts[i];
+            var select = builderSelects[f];
+            var customInputEl = builderCustoms[f];
+            if (!select || !customInputEl) return;
+            var candidate = raw.toLowerCase();
+            if (f === 'month' && MONTH_NUM_TO_NAME[candidate]) candidate = MONTH_NUM_TO_NAME[candidate];
+            else if (f === 'dayOfWeek' && DOW_NUM_TO_NAME[candidate]) candidate = DOW_NUM_TO_NAME[candidate];
+            var matched = Array.prototype.slice.call(select.options).some(function (o) {
+              return o.value !== CUSTOM_VALUE_JS && o.value.toLowerCase() === candidate;
+            });
+            if (matched) {
+              select.value = candidate;
+              customInputEl.hidden = true;
+              customInputEl.value = '';
+            } else {
+              select.value = CUSTOM_VALUE_JS;
+              customInputEl.hidden = false;
+              customInputEl.value = raw;
+            }
+          });
+        }
+
+        function composeFromBuilder() {
+          return CRON_FIELD_ORDER.map(function (f) {
+            var select = builderSelects[f];
+            var customInputEl = builderCustoms[f];
+            if (!select) return '*';
+            if (select.value === CUSTOM_VALUE_JS) {
+              var v = customInputEl && customInputEl.value.trim();
+              return v || '*';
+            }
+            return select.value;
+          }).join(' ');
+        }
+
+        function setExpression(expr) {
+          if (exprInput.value === expr) return;
+          exprInput.value = expr;
+          exprInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // Also refreshes each builder field's own one-line "meaning" text on
+        // every call (independent of which pane is visible), so Builder mode
+        // is already correct the instant the visitor switches to it.
+        function render() {
+          var raw = exprInput.value;
+          var result = parseCronExpression(raw);
+          rawCopyEl.textContent = raw.trim();
+          builderRows.forEach(function (row) { row.removeAttribute('data-invalid'); });
+
+          if (result.error) {
+            exprInput.setAttribute('data-invalid', '');
+            errorBox.hidden = false;
+            errorBox.textContent = result.error.message;
+            descriptionEl.textContent = 'Fix the error below to see a description.';
+            breakdownEl.innerHTML = '';
+            CRON_FIELD_ORDER.forEach(function (f) {
+              if (builderMeanings[f]) builderMeanings[f].textContent = '';
+            });
+            if (result.error.field) {
+              var badRow = builderRows.filter(function (r) { return r.getAttribute('data-cron-builder-row') === result.error.field; })[0];
+              if (badRow) badRow.setAttribute('data-invalid', '');
+            }
+            return;
+          }
+
+          exprInput.removeAttribute('data-invalid');
+          errorBox.hidden = true;
+          errorBox.textContent = '';
+          var cron = result.cron;
+          descriptionEl.textContent = describeCron(cron);
+
+          breakdownEl.innerHTML = '';
+          CRON_FIELD_ORDER.forEach(function (f) {
+            if (cron.kind !== 'schedule') {
+              if (builderMeanings[f]) builderMeanings[f].textContent = '';
+              return;
+            }
+            var field = cron[f];
+            if (breakdownTemplate) {
+              var row = breakdownTemplate.content.firstElementChild.cloneNode(true);
+              row.querySelector('[data-bd-field]').textContent = CRON_FIELD_LABELS[f];
+              row.querySelector('[data-bd-raw]').textContent = field.raw;
+              row.querySelector('[data-bd-meaning]').textContent = describeCronField(f, field.shape);
+              breakdownEl.appendChild(row);
+            }
+            if (builderMeanings[f]) builderMeanings[f].textContent = describeCronField(f, field.shape);
+          });
+        }
+
+        exprInput.addEventListener('input', render);
+
+        modeBtns.forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            modeBtns.forEach(function (b) {
+              var active = b === btn;
+              if (active) b.setAttribute('data-active', ''); else b.removeAttribute('data-active');
+              b.setAttribute('aria-checked', String(active));
+            });
+            showPaneForMode();
+            if (btn.getAttribute('data-cron-mode') === 'builder') updateBuilderFromExpression(exprInput.value);
+          });
+        });
+
+        CRON_FIELD_ORDER.forEach(function (f) {
+          var select = builderSelects[f];
+          var customInputEl = builderCustoms[f];
+          if (select) {
+            select.addEventListener('change', function () {
+              if (customInputEl) customInputEl.hidden = select.value !== CUSTOM_VALUE_JS;
+              setExpression(composeFromBuilder());
+            });
+          }
+          if (customInputEl) {
+            customInputEl.addEventListener('input', function () {
+              setExpression(composeFromBuilder());
+            });
+          }
+        });
+
+        Array.prototype.forEach.call(root.querySelectorAll('[data-cron-chip]'), function (btn) {
+          btn.addEventListener('click', function () {
+            setExpression(btn.getAttribute('data-cron-chip'));
+            if (session) session.save();
+          });
+        });
+
+        if (copyBtn) {
+          copyBtn.addEventListener('click', function () {
+            var text = rawCopyEl.textContent;
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(function () { pop(copyBtn); }).catch(function () {});
+          });
+        }
+
+        session = persistToolSession({
+          root: root,
+          resetButton: '[data-cron-reset]',
+          onReset: function () {
+            render();
+            showPaneForMode();
+            updateBuilderFromExpression(exprInput.value);
+          },
+        });
+
+        // Final sync pass — runs after persistToolSession has already
+        // hydrated both the expression text and the mode switch from
+        // storage (or left them at their server-rendered defaults), so this
+        // always reflects the true final state regardless of which of the
+        // two session fields happens to sit first in the DOM.
+        render();
+        showPaneForMode();
+        updateBuilderFromExpression(exprInput.value);
+
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>

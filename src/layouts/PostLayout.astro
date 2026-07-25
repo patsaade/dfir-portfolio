@@ -249,6 +249,7 @@ const crumbs = [{ label: 'Home', href: '/' }, section, { label: title }];
         btn.className = 'copy-btn';
         btn.textContent = 'Copy';
         btn.setAttribute('aria-label', 'Copy code to clipboard');
+        btn.title = 'Copy code to clipboard';
         btn.addEventListener('click', function () {
           navigator.clipboard.writeText(code.textContent || '').then(function () {
             btn.textContent = 'Copied';

@@ -1,0 +1,501 @@
+---
+// JWT Decoder — paste a JWT's compact serialization and get its header,
+// payload, and registered claims (src/utils/jwt.ts), decoded entirely
+// client-side: split on '.', base64url-decode the header/payload segments
+// into JSON, read the declared "alg"/"typ" out of the header, and surface
+// every RFC 7519 §4.1 Registered Claim Name present in the payload —
+// including a live "is this token currently expired" verdict for exp/nbf.
+//
+// THIS NEVER VERIFIES THE SIGNATURE. That requires the signing secret (HMAC)
+// or the issuer's public key (RSA/ECDSA/EdDSA), which a client-side decoder
+// never has — see the disclaimer rendered both here and on the host page.
+// The signature segment is shown only as an opaque, undecoded string.
+//
+// Same "Scratch-inspired workspace" shell + live-decode-as-you-type shape as
+// the site's other paste-box builder tools (Email Header Analyzer, IOC
+// Extractor). A JWT either decodes cleanly or it's structurally broken (no
+// meaningful partial result, unlike best-effort header parsing), so errors
+// use PE Header Explorer's single-banner pattern rather than per-pane empty
+// states.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+
+// A hand-built, clearly FABRICATED demo token — fake issuer/audience
+// domains, a fake user id, a fake (non-cryptographic) signature segment.
+// Never a real captured token (see CLAUDE.md's Content accuracy section).
+// iat/nbf = 2020-01-01T00:00:00Z, exp = 2020-01-01T01:00:00Z — permanently
+// in the past, so the "Expired" verdict below always has something real to
+// demonstrate on load. Kept byte-for-byte in sync with test/jwt.test.ts's
+// own DEMO_TOKEN fixture, which decodes this exact string and asserts every
+// field below — so this worked example can't silently drift from reality.
+const FABRICATED_EXAMPLE =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2F1dGguZXhhbXBsZS5jb20iLCJzdWIiOiJ1c2VyOjkwMDEiLCJhdWQiOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSIsImlhdCI6MTU3NzgzNjgwMCwibmJmIjoxNTc3ODM2ODAwLCJleHAiOjE1Nzc4NDA0MDAsImp0aSI6IjAxOGYxYjZiLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDAwMCJ9.bm90LWEtcmVhbC1zaWduYXR1cmUtdGhpcy1pcy1hLWZhYnJpY2F0ZWQtZGVtbw';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', mb: '0.3rem', display: 'block' });
+const caption = css({ color: 'textMuted', fontSize: '0.85rem', m: 0, lineHeight: 1.5 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.76rem', color: 'primary' });
+
+const textarea = css({
+  width: '100%',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  lineHeight: 1.5,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.75rem',
+  py: '0.6rem',
+  minH: '7rem',
+  maxH: '16rem',
+  resize: 'vertical',
+  overflowY: 'auto',
+  overflowX: 'auto',
+  whiteSpace: 'pre',
+  wordBreak: 'break-all',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const exampleNote = css({ color: 'textMuted', fontSize: '0.78rem', lineHeight: 1.5, mt: '0.4rem', m: 0 });
+
+const actionRow = css({ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', mt: '0.6rem' });
+// Kept as a plain object (not a pre-atomized css() call) so a variant can be
+// built as css(actionBtnBase, variant) — a deep object merge that
+// deterministically overrides actionBtnBase's own _hover, unlike
+// concatenating two independently-atomized class strings (see
+// STYLE_GUIDE.md "Buttons" for the exact failure mode this avoids).
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.82rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const actionBtn = css(actionBtnBase);
+
+const errorBanner = css({
+  display: 'none',
+  alignItems: 'flex-start',
+  gap: '0.6rem',
+  color: 'text',
+  fontSize: '0.88rem',
+  lineHeight: 1.6,
+  bg: 'color-mix(in srgb, red 10%, token(colors.bgSubtle))',
+  border: '1px solid color-mix(in srgb, red 30%, transparent)',
+  borderRadius: 'md',
+  p: '0.75rem 0.9rem',
+  m: 0,
+  '&[data-visible]': { display: 'flex' },
+});
+
+const disclaimer = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.6rem',
+  color: 'text',
+  fontSize: '0.85rem',
+  lineHeight: 1.6,
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'accent',
+  borderRadius: 'md',
+  p: '0.7rem 0.9rem',
+  m: 0,
+});
+
+// ── Header (alg / typ) ───────────────────────────────────────────────────
+const headerGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: 'repeat(2, 1fr)' }, gap: '0.6rem' });
+const headerCard = css({ display: 'flex', flexDirection: 'column', gap: '0.3rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md', p: '0.65rem 0.8rem' });
+const headerCardHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' });
+const headerCardKey = css({ fontFamily: 'mono', fontSize: '0.72rem', fontWeight: 700, color: 'textMuted', textTransform: 'uppercase', letterSpacing: '0.06em' });
+const headerCardValue = css({ fontFamily: 'mono', fontSize: '0.92rem', fontWeight: 700, color: 'text', wordBreak: 'break-word' });
+const headerCardDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5, m: 0 });
+const unsecuredFlag = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  color: 'color-mix(in srgb, red 65%, token(colors.text))',
+  bg: 'color-mix(in srgb, red 12%, transparent)',
+  border: '1px solid color-mix(in srgb, red 30%, transparent)',
+  borderRadius: 'sm',
+  px: '0.4rem',
+  py: '0.1rem',
+});
+
+// ── Registered claims ────────────────────────────────────────────────────
+const claimList = css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', maxH: '24rem', overflowY: 'auto', overflowX: 'hidden' });
+const claimRow = css({ bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md', p: '0.65rem 0.8rem' });
+const claimHead = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' });
+const claimCode = css({ fontFamily: 'mono', fontSize: '0.76rem', fontWeight: 700, color: 'primary' });
+const claimLabel = css({ fontFamily: 'sans', fontSize: '0.82rem', fontWeight: 700, color: 'text' });
+const claimVerdictBase = { fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', borderRadius: 'sm', px: '0.4rem', py: '0.1rem', ml: 'auto' } as const;
+const claimVerdict = css(claimVerdictBase);
+const claimValue = css({ fontFamily: 'mono', fontSize: '0.82rem', color: 'text', wordBreak: 'break-word', mt: '0.3rem' });
+const claimDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5, mt: '0.25rem', m: '0.25rem 0 0' });
+
+// ── Raw decoded JSON / signature ─────────────────────────────────────────
+const jsonGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', lg: 'repeat(2, 1fr)' }, gap: '0.85rem' });
+const jsonPane = css({ display: 'flex', flexDirection: 'column', gap: '0.4rem' });
+const jsonPaneHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' });
+const jsonBox = css({
+  m: 0,
+  fontFamily: 'mono',
+  fontSize: '0.76rem',
+  lineHeight: 1.55,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.7rem 0.85rem',
+  maxH: '16rem',
+  overflowY: 'auto',
+  overflowX: 'auto',
+  whiteSpace: 'pre',
+});
+const sigBox = css(
+  {
+    m: 0,
+    fontFamily: 'mono',
+    fontSize: '0.78rem',
+    lineHeight: 1.6,
+    color: 'textMuted',
+    bg: 'bgCard',
+    border: '1px solid token(colors.border)',
+    borderRadius: 'md',
+    p: '0.7rem 0.85rem',
+    maxH: '8rem',
+    overflowY: 'auto',
+    overflowX: 'auto',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-all',
+  }
+);
+const rowCopyBtn = css({
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '1.9rem',
+  h: '1.9rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+---
+
+<WorkspaceShell hook="data-jwt-decoder" noJsMessage="The JWT decoder needs JavaScript enabled." gap="1.25rem">
+    {/* Paste box */}
+    <div>
+      <label class={fieldLabel} for="jwt-input">Paste a JWT — its compact serialization (header.payload.signature)</label>
+      <textarea id="jwt-input" class={textarea} spellcheck="false" autocomplete="off" data-jwt-input data-session-field="input">{FABRICATED_EXAMPLE}</textarea>
+      <p class={exampleNote}>
+        The token above is a <strong class={css({ color: 'text' })}>fabricated demo</strong> — fake{' '}
+        <code class={inlineCode}>example.com</code> issuer/audience URLs and a fake user ID, never a real captured
+        token, and its signature segment is just placeholder bytes (this tool never checks a signature anyway — see
+        below). Its <code class={inlineCode}>exp</code> claim is fixed in January 2020 so the "Expired" verdict
+        below always has something real to show. Replace it with your own token to decode it; nothing you paste
+        here is ever transmitted anywhere.
+      </p>
+      <div class={actionRow}>
+        <button type="button" class={actionBtn} data-jwt-clear data-sound="tick">
+          <Icon name="x" size={14} /> Clear
+        </button>
+        <button type="button" class={actionBtn} data-jwt-reset data-sound="tick">
+          <Icon name="rotate-cw" size={14} /> Reload example
+        </button>
+      </div>
+    </div>
+
+    <p class={errorBanner} data-jwt-error role="status" aria-live="polite">
+      <Icon name="alert-triangle" size={16} class={css({ color: 'primary', flexShrink: 0, mt: '0.1rem' })} />
+      <span data-jwt-error-text></span>
+    </p>
+
+    <div
+      data-jwt-ok
+      class={css({
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.25rem',
+        // showError() sets this element's `hidden` attribute — needs an
+        // explicit override, since this element's own unconditional
+        // `display: flex` otherwise beats the UA `[hidden]{display:none}`
+        // rule regardless of specificity. See CLAUDE.md's `[hidden]`
+        // cascade gotcha.
+        '&[hidden]': { display: 'none' },
+      })}
+    >
+      {/* Signature disclaimer — repeated here, next to the actual signature output, not just once up top */}
+      <p class={disclaimer}>
+        <Icon name="shield" size={16} class={css({ color: 'accent', flexShrink: 0, mt: '0.1rem' })} />
+        <span>
+          <strong class={css({ color: 'text' })}>This decodes the token's contents; it does not and cannot verify
+          the signature.</strong> Checking a JWS signature requires the signing secret (HMAC algorithms) or the
+          issuer's private/public key pair (RSA/ECDSA/EdDSA) — neither of which a client-side tool like this one
+          is ever given. A token that decodes cleanly here proves nothing about whether it's genuine; treat every
+          claim below as <em>unverified, attacker-editable data</em> unless you separately check the signature
+          against the real key.
+        </span>
+      </p>
+
+      {/* Header */}
+      <div>
+        <p class={paneLabel}>Header — algorithm &amp; type</p>
+        <div class={headerGrid}>
+          <div class={headerCard}>
+            <div class={headerCardHead}>
+              <span class={headerCardKey}>alg</span>
+              <span class={unsecuredFlag} data-jwt-unsecured-flag hidden>Unsecured — no signature</span>
+            </div>
+            <span class={headerCardValue} data-jwt-alg>—</span>
+            <p class={headerCardDesc} data-jwt-alg-desc></p>
+          </div>
+          <div class={headerCard}>
+            <span class={headerCardKey}>typ</span>
+            <span class={headerCardValue} data-jwt-typ>—</span>
+            <p class={headerCardDesc}>The declared media type of the token — conventionally "JWT" (RFC 7519 §5.1), though this field is informational only and not required for a token to be valid.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Registered claims */}
+      <div>
+        <p class={paneLabel}>Registered claims (RFC 7519 §4.1) — present in this token's payload</p>
+        <p class={caption} data-jwt-claims-empty hidden>No RFC 7519 registered claim names were found in the payload — every field here is a private/public claim this decoder doesn't have special-cased handling for (see the raw payload JSON below).</p>
+        <ul class={claimList} data-jwt-claims-list></ul>
+        <template data-jwt-claim-template>
+          <li class={claimRow}>
+            <div class={claimHead}>
+              <code class={claimCode} data-claim-code></code>
+              <span class={claimLabel} data-claim-label></span>
+              <span class={claimVerdict} data-claim-verdict hidden></span>
+            </div>
+            <div class={claimValue} data-claim-value></div>
+            <p class={claimDesc} data-claim-desc></p>
+          </li>
+        </template>
+      </div>
+
+      {/* Raw JSON */}
+      <div>
+        <p class={paneLabel}>Decoded JSON</p>
+        <div class={jsonGrid}>
+          <div class={jsonPane}>
+            <div class={jsonPaneHead}>
+              <span class={css({ fontFamily: 'sans', fontSize: '0.78rem', fontWeight: 700, color: 'text' })}>Header</span>
+              <button type="button" class={rowCopyBtn} data-jwt-copy="header" data-copy-pop data-sound="copy" aria-label="Copy header JSON" title="Copy">
+                <Icon name="copy" size={13} />
+              </button>
+            </div>
+            <pre class={jsonBox} data-jwt-header-json>&nbsp;</pre>
+          </div>
+          <div class={jsonPane}>
+            <div class={jsonPaneHead}>
+              <span class={css({ fontFamily: 'sans', fontSize: '0.78rem', fontWeight: 700, color: 'text' })}>Payload</span>
+              <button type="button" class={rowCopyBtn} data-jwt-copy="payload" data-copy-pop data-sound="copy" aria-label="Copy payload JSON" title="Copy">
+                <Icon name="copy" size={13} />
+              </button>
+            </div>
+            <pre class={jsonBox} data-jwt-payload-json>&nbsp;</pre>
+          </div>
+        </div>
+      </div>
+
+      {/* Signature — raw only, never decoded/checked */}
+      <div>
+        <div class={jsonPaneHead}>
+          <p class={paneLabel}>Signature — raw, undecoded, unverified</p>
+          <button type="button" class={rowCopyBtn} data-jwt-copy="signature" data-copy-pop data-sound="copy" aria-label="Copy signature segment" title="Copy">
+            <Icon name="copy" size={13} />
+          </button>
+        </div>
+        <pre class={sigBox} data-jwt-signature>&nbsp;</pre>
+      </div>
+    </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { decodeJwt } from '../utils/jwt';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    function init() {
+      var roots = document.querySelectorAll('[data-jwt-decoder]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var input = root.querySelector('[data-jwt-input]');
+        var clearBtn = root.querySelector('[data-jwt-clear]');
+        var resetBtn = root.querySelector('[data-jwt-reset]');
+        if (!input) return;
+        var initialValue = input.value;
+
+        var errorBox = root.querySelector('[data-jwt-error]');
+        var errorTextEl = root.querySelector('[data-jwt-error-text]');
+        var okBox = root.querySelector('[data-jwt-ok]');
+
+        var algEl = root.querySelector('[data-jwt-alg]');
+        var algDescEl = root.querySelector('[data-jwt-alg-desc]');
+        var unsecuredFlagEl = root.querySelector('[data-jwt-unsecured-flag]');
+        var typEl = root.querySelector('[data-jwt-typ]');
+
+        var claimsListEl = root.querySelector('[data-jwt-claims-list]');
+        var claimsEmptyEl = root.querySelector('[data-jwt-claims-empty]');
+        var claimTemplate = root.querySelector('[data-jwt-claim-template]');
+
+        var headerJsonEl = root.querySelector('[data-jwt-header-json]');
+        var payloadJsonEl = root.querySelector('[data-jwt-payload-json]');
+        var signatureEl = root.querySelector('[data-jwt-signature]');
+
+        var current = { headerJson: '', payloadJson: '', signature: '' };
+
+        function setVerdict(el, state, label) {
+          el.hidden = false;
+          el.textContent = label;
+          el.setAttribute('data-state', state);
+        }
+
+        function claimVerdictFor(claim, result) {
+          if (claim === 'exp' && result.isExpired !== null) {
+            return result.isExpired ? ['expired', 'Expired'] : ['valid', 'Not expired'];
+          }
+          if (claim === 'nbf' && result.isNotYetValid !== null) {
+            return result.isNotYetValid ? ['not-yet-valid', 'Not yet valid'] : ['valid', 'Active'];
+          }
+          return null;
+        }
+
+        function showError(message) {
+          errorTextEl.textContent = message;
+          errorBox.setAttribute('data-visible', '');
+          okBox.hidden = true;
+          current = { headerJson: '', payloadJson: '', signature: '' };
+        }
+
+        function render() {
+          var text = input.value;
+          if (!text.trim()) {
+            showError('Paste a token above to decode it.');
+            return;
+          }
+          var result = decodeJwt(text, Date.now());
+          if (!result.ok) {
+            showError(result.error);
+            return;
+          }
+
+          errorBox.removeAttribute('data-visible');
+          okBox.hidden = false;
+
+          algEl.textContent = result.algorithm || '(no alg present)';
+          algDescEl.textContent = result.algorithmDescription || (result.algorithm ? 'Not a standard IANA JOSE "alg" value this reference table recognizes.' : 'No algorithm was declared.');
+          unsecuredFlagEl.hidden = !result.isUnsecured;
+          typEl.textContent = result.type || '(no typ present)';
+
+          claimsListEl.innerHTML = '';
+          claimsEmptyEl.hidden = result.registeredClaims.length > 0;
+          result.registeredClaims.forEach(function (c) {
+            var li = claimTemplate.content.firstElementChild.cloneNode(true);
+            li.querySelector('[data-claim-code]').textContent = c.claim;
+            li.querySelector('[data-claim-label]').textContent = c.label;
+            li.querySelector('[data-claim-value]').textContent = c.display;
+            li.querySelector('[data-claim-desc]').textContent = c.description;
+            var verdictEl = li.querySelector('[data-claim-verdict]');
+            var verdict = claimVerdictFor(c.claim, result);
+            if (verdict) setVerdict(verdictEl, verdict[0], verdict[1]);
+            else verdictEl.hidden = true;
+            claimsListEl.appendChild(li);
+          });
+
+          headerJsonEl.textContent = result.headerJson;
+          payloadJsonEl.textContent = result.payloadJson;
+          signatureEl.textContent = result.signature || '(empty signature segment — alg: none)';
+          current = { headerJson: result.headerJson, payloadJson: result.payloadJson, signature: result.signature };
+        }
+
+        input.addEventListener('input', render);
+
+        if (clearBtn) {
+          clearBtn.addEventListener('click', function () {
+            input.value = '';
+            render();
+            input.focus();
+          });
+        }
+        if (resetBtn) {
+          resetBtn.addEventListener('click', function () {
+            input.value = initialValue;
+            render();
+            input.focus();
+          });
+        }
+
+        // Copy buttons (header/payload JSON, raw signature)
+        Array.prototype.forEach.call(root.querySelectorAll('[data-jwt-copy]'), function (btn) {
+          btn.addEventListener('click', function () {
+            var which = btn.getAttribute('data-jwt-copy');
+            var text = which === 'header' ? current.headerJson : which === 'payload' ? current.payloadJson : current.signature;
+            if (!text) return;
+            navigator.clipboard.writeText(text).then(function () { pop(btn); }).catch(function () {});
+          });
+        });
+
+        // Session persistence: auto-saves the pasted token and restores it
+        // on the next visit. "Reload example" restores the true
+        // server-rendered default (the fabricated demo token), doubling as
+        // this tool's reset button — clicking it also flushes the saved
+        // session.
+        persistToolSession({
+          root: root,
+          resetButton: '[data-jwt-reset]',
+        });
+
+        render();
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<style>
+  [data-claim-verdict][data-state='expired'],
+  [data-claim-verdict][data-state='not-yet-valid'] {
+    color: color-mix(in srgb, red 65%, var(--colors-text));
+    background: color-mix(in srgb, red 12%, transparent);
+    border: 1px solid color-mix(in srgb, red 30%, transparent);
+  }
+  [data-claim-verdict][data-state='valid'] {
+    color: var(--colors-primary);
+    background: color-mix(in srgb, var(--colors-primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--colors-primary) 30%, transparent);
+  }
+</style>

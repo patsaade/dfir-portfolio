@@ -1,4 +1,4 @@
-// Reference data for the Timestamp Decoder's operator/format table — every
+// Reference data for the Timestamp Converter's operator/format table — every
 // format the research pass covered, not just the ones wired into the live
 // converter (src/utils/timestamps.ts). Where a format is numerically
 // identical (or a simple relabeling) of one already in the live converter,

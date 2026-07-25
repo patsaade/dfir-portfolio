@@ -1,0 +1,448 @@
+---
+// CVSS Score Calculator — pick the eight CVSS v3.1 Base metrics (or paste a
+// Base vector string) and get the Base Score, severity band, and canonical
+// vector back, computed entirely client-side by src/utils/cvss.ts. Same page
+// shape as the other Converters (intro aside -> interactive tool -> reference
+// notes). Static page — prerender to HTML served from the CDN.
+//
+// SCOPE: this implements the CVSS v3.1 *Base* metric group only — not the
+// Temporal or Environmental groups, and not CVSS v2 or v4.0. That limit is
+// stated plainly in the page copy below (the "Where a Base Score stops" and
+// "Metric groups" sections), not buried, because a Base Score presented as
+// though it were a complete risk rating is the single most common way this
+// standard gets misused.
+//
+// Every reference value printed on this page is COMPUTED AT BUILD TIME from
+// the same pure functions the calculator uses — the worked-example scores
+// below come out of computeCvssV31BaseScore(), and the severity band labels
+// out of cvssSeverityRating(). Nothing here is a hand-typed number that
+// could silently drift from the implementation, and every one of these
+// vectors is additionally asserted against FIRST.org's own published answer
+// in test/cvss.test.ts.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CvssCalculator from '../../components/CvssCalculator.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { CVSS_METRICS, computeCvssV31BaseScore, cvssSeverityRating, parseCvssV31VectorString } from '../../utils/cvss';
+
+// Worked examples published by FIRST at https://www.first.org/cvss/v3-1/examples —
+// each vector below is one of the 31 real-CVE examples on that page, and each
+// is asserted against FIRST's own published Base Score in test/cvss.test.ts.
+// The score/severity SHOWN in the table is not transcribed: it's whatever
+// computeCvssV31BaseScore() returns here at build time, so the page cannot
+// print a number the implementation doesn't actually produce.
+const EXAMPLE_VECTORS: { cve: string; name: string; why: string; vector: string }[] = [
+  {
+    cve: 'CVE-2014-3566',
+    name: 'SSLv3 POODLE',
+    why: 'High Attack Complexity plus required user interaction and only partial confidentiality loss — the low end of the scale.',
+    vector: 'CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N',
+  },
+  {
+    cve: 'CVE-2009-0783',
+    name: 'Apache Tomcat XML parser',
+    why: 'Local access and high privileges already required, with only partial impact across all three of C/I/A.',
+    vector: 'CVSS:3.1/AV:L/AC:L/PR:H/UI:N/S:U/C:L/I:L/A:L',
+  },
+  {
+    cve: 'CVE-2014-2005',
+    name: 'Sophos login screen bypass',
+    why: 'Total impact to all three of C/I/A, but Physical attack vector — the vector metric alone drags a would-be 9.8 down to a Medium.',
+    vector: 'CVSS:3.1/AV:P/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+  },
+  {
+    cve: 'CVE-2014-0160',
+    name: 'OpenSSL Heartbleed',
+    why: 'Remote, no privileges, no user interaction — but confidentiality-only impact, which is what keeps it below the 9.0 Critical line.',
+    vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N',
+  },
+  {
+    cve: 'CVE-2014-6271',
+    name: 'GNU Bash Shellshock',
+    why: 'The textbook 9.8: remote, low complexity, unauthenticated, no user interaction, total impact to all three of C/I/A.',
+    vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+  },
+  {
+    cve: 'CVE-2012-1516',
+    name: 'VMware guest-to-host escape',
+    why: 'Scope: Changed — the exploited component (the guest VM) and the impacted component (the host) sit under different security authorities. One of a couple of factors (the vector also differs on Privileges Required) behind this scoring higher than Shellshock.',
+    vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H',
+  },
+];
+
+const WORKED_EXAMPLES = EXAMPLE_VECTORS.map((ex) => {
+  const parsed = parseCvssV31VectorString(ex.vector);
+  // A build-time throw is the right failure here: a malformed example vector
+  // must never render as a page with a missing or wrong score.
+  if (!parsed.ok) throw new Error(`cvss-calculator.astro: invalid example vector "${ex.vector}" — ${parsed.error}`);
+  return { ...ex, result: computeCvssV31BaseScore(parsed.metrics) };
+});
+
+// Rating bands from the CVSS v3.1 Specification Document, Section 5. The
+// label in each row is derived by calling cvssSeverityRating() on a real
+// score inside the band, so the table can't disagree with the calculator.
+const SEVERITY_BANDS: { range: string; probe: number; note: string }[] = [
+  { range: '0.0', probe: 0, note: 'No impact to confidentiality, integrity, or availability at all — the formula short-circuits to zero.' },
+  { range: '0.1 – 3.9', probe: 3.9, note: 'Real but narrow: heavy preconditions, partial impact, or both.' },
+  { range: '4.0 – 6.9', probe: 4.0, note: 'The broad middle — most vulnerabilities that need some access, some interaction, or cause partial impact.' },
+  { range: '7.0 – 8.9', probe: 7.0, note: 'Serious intrinsic severity; typically remote or total-impact, but not both without qualification.' },
+  { range: '9.0 – 10.0', probe: 9.0, note: 'Remote, unauthenticated, no interaction, total impact. Anything above 9.8 additionally requires a Scope change — 9.8 is the arithmetic ceiling while Scope stays Unchanged.' },
+];
+
+// Metric-group summary — CVSS v3.1 Specification Document, Section 1.1.
+// Paraphrased, not quoted; the "Implemented here" column is this tool's own
+// honest scope statement, not something the spec says.
+const METRIC_GROUPS: { group: string; measures: string; implemented: string }[] = [
+  {
+    group: 'Base',
+    measures: "The vulnerability's intrinsic qualities — the ones the spec describes as constant over time and across every user environment. Split into Exploitability metrics and Impact metrics.",
+    implemented: 'Yes — all 8 metrics.',
+  },
+  {
+    group: 'Temporal',
+    measures: 'The characteristics that change over the life of a vulnerability: how mature and available working exploit code is, whether an official fix exists yet, and how confident anyone is in the report itself.',
+    implemented: 'No.',
+  },
+  {
+    group: 'Environmental',
+    measures: "The characteristics unique to one organization's deployment — how much that org's own confidentiality, integrity, and availability requirements matter for the affected asset, plus per-metric overrides for how the vulnerability actually presents in that environment.",
+    implemented: 'No.',
+  },
+];
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+// Kept as a plain object (not a pre-atomized css() call) so refTdCode below
+// can css(refTdBase, ...) — a deep object merge that deterministically
+// overrides refTdBase's own color, unlike concatenating two independently-
+// atomized class strings (see STYLE_GUIDE.md "Buttons" for that failure mode).
+const refTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' } as const;
+const refTd = css(refTdBase);
+const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' });
+const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary', whiteSpace: 'nowrap' });
+const refTdScore = css(refTdBase, { fontFamily: 'mono', fontSize: '0.95rem', fontWeight: 700, whiteSpace: 'nowrap' });
+
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' });
+const strongText = css({ color: 'text' });
+const optionList = css({ listStyle: 'none', p: 0, m: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem' });
+const optionValue = css({ fontFamily: 'mono', fontSize: '0.78rem', color: 'primary', fontWeight: 700 });
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="CVSS Score Calculator"
+  description="Pick the eight CVSS v3.1 Base metrics — or paste a Base vector string — and get the Base Score, severity band, and canonical vector back instantly, computed entirely in your browser."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'CVSS Score Calculator' }]}
+    eyebrow="Converters"
+    title="CVSS Score Calculator"
+    description="Set the eight CVSS v3.1 Base metrics — or paste a Base vector string — and get the score, severity band, and the Impact/Exploitability terms behind it, computed locally."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This implements the <strong class={strongText}>CVSS v3.1 Base metric group only</strong> — the eight metrics
+      that describe a vulnerability's intrinsic severity. It does{' '}
+      <strong class={strongText}>not</strong> implement the Temporal or Environmental metric groups, and it will
+      reject a <code class={inlineCode}>CVSS:4.0</code> or <code class={inlineCode}>CVSS:3.0</code> vector string
+      rather than guess at a score for a version it doesn't implement. The arithmetic runs in your browser from a
+      direct implementation of the published formula — nothing you select or paste here is transmitted anywhere.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    <Term slug="common-vulnerability-scoring-system">CVSS</Term> is the open standard, maintained by FIRST, for
+    putting a 0.0–10.0 number on how severe a vulnerability is. In practice you meet it as the score attached to a{' '}
+    <Term slug="common-vulnerabilities-and-exposures">CVE</Term> in a vendor advisory, a{' '}
+    <Term slug="vulnerability-scanning">vulnerability scan</Term> report, or a patch-Tuesday summary — usually
+    alongside a vector string like <code class={inlineCode}>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</code>,
+    which is the full, reproducible record of how that number was reached. The score is the lossy part; the vector
+    is the part you can actually argue with. This calculator works in both directions: build a vector by choosing
+    metrics, or paste an existing one and see exactly which choices produced the number.
+  </p>
+
+  <h2 id="calculator" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="gauge" size={20} class={css({ color: 'primary' })} /> Calculator
+  </h2>
+  <CvssCalculator />
+
+  <h2 id="metric-groups" class={sectionH2}>
+    <Icon name="layers" size={20} class={css({ color: 'primary' })} /> The three metric groups
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    CVSS v3.1 defines three metric groups (Specification Document, Section 1.1). Only the first is mandatory, and
+    only the first is what almost everyone means when they say "the CVSS score" — which is exactly where the
+    trouble starts, because the other two are where a generic severity number turns into something specific to
+    your organization and this moment in time.
+  </p>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Group</th>
+          <th class={refTh}>What it measures</th>
+          <th class={refTh}>Implemented here</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          METRIC_GROUPS.map((g) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={strongText}>{g.group}</strong>
+              </td>
+              <td class={refTdMuted}>{g.measures}</td>
+              <td class={refTd}>{g.implemented}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="severity" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> Qualitative severity bands
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    The spec pairs the numeric score with a five-band qualitative rating (Section 5) so a score can be dropped into
+    a ticket queue or a policy without everyone having to remember what 7.3 means. The labels below are generated
+    by calling this tool's own rating function on a score inside each band, so the table and the calculator can
+    never disagree.
+  </p>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Rating</th>
+          <th class={refTh}>Score range</th>
+          <th class={refTh}>Typically means</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          SEVERITY_BANDS.map((b) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={strongText}>{cvssSeverityRating(b.probe)}</strong>
+              </td>
+              <td class={refTdCode}>{b.range}</td>
+              <td class={refTdMuted}>{b.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.7 })}>
+    Note that these bands are the spec's own, and are not the same thing as an organization's{' '}
+    <Term slug="incident-severity">incident severity</Term> scale or a vendor's in-house rating. Red Hat, for one,
+    documents that it deliberately does not use the CVSS qualitative scale to rate severity — it publishes its own
+    four-point Low/Moderate/Important/Critical classification instead — so "Critical" in a vendor advisory and
+    "Critical" here are not automatically the same claim.
+  </p>
+
+  <h2 id="metrics" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Base metric reference
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    The eight Base metrics, in the order they appear in a vector string. Each description below is a short
+    paraphrase of the spec's own definition — for the full scoring rubrics (including the decision diagrams and
+    the guidance on vulnerability chaining, firewalled components, and library vulnerabilities), FIRST's User
+    Guide is the document to read, linked at the bottom of this page. The calculator above is driven by this
+    exact same table, so the two can't drift apart.
+  </p>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Metric</th>
+          <th class={refTh}>Captures</th>
+          <th class={refTh}>Values</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          CVSS_METRICS.map((m) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={strongText}>{m.name}</strong>
+                <br />
+                <span class={optionValue}>{m.id}</span>
+              </td>
+              <td class={refTdMuted}>{m.hint}</td>
+              <td class={refTdMuted}>
+                <ul class={optionList}>
+                  {m.options.map((o) => (
+                    <li>
+                      <span class={optionValue}>{o.value}</span> <strong class={strongText}>{o.label}</strong> —{' '}
+                      {o.hint}
+                    </li>
+                  ))}
+                </ul>
+              </td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.7 })}>
+    <strong class={strongText}>Scope is the metric people get wrong most often.</strong> It isn't asking "how bad
+    is this" — it's asking whether the component the attacker exploits and the component that actually suffers
+    the impact are governed by the same security authority. When they aren't (a guest VM escaping to its
+    hypervisor, a browser sandbox escape, a proxy that can be made to attack something behind it), Scope is
+    Changed, the whole Base Score gets a 1.08 multiplier, and the Privileges Required metric switches to a second,
+    more generous weight table. That's part of why the VMware example below scores higher than Shellshock, even
+    though the two vectors also differ on Privileges Required.
+  </p>
+
+  <h2 id="examples" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Worked examples
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    Six real CVEs from FIRST's own published set of worked v3.1 examples, ordered by score. The Base Score and
+    severity in each row are computed at build time by the same function the calculator above calls — and every
+    one of these vectors is additionally checked against FIRST's own published answer in this site's test suite,
+    so a wrong number here would fail the build rather than ship.
+  </p>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Vulnerability</th>
+          <th class={refTh}>Vector</th>
+          <th class={refTh}>Score</th>
+          <th class={refTh}>Why it lands there</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          WORKED_EXAMPLES.sort((a, b) => a.result.baseScore - b.result.baseScore).map((ex) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={strongText}>{ex.name}</strong>
+                <br />
+                <span class={css({ fontFamily: 'mono', fontSize: '0.75rem', color: 'textMuted' })}>{ex.cve}</span>
+              </td>
+              <td class={refTdCode}>{ex.vector}</td>
+              <td class={refTdScore}>
+                {ex.result.baseScore.toFixed(1)}
+                <br />
+                <span class={css({ fontFamily: 'sans', fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'textMuted' })}>
+                  {ex.result.severity}
+                </span>
+              </td>
+              <td class={refTdMuted}>{ex.why}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="limits" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> Where a Base Score stops
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '0.95rem', mb: '1rem' })}>
+    A Base Score is a measure of <strong class={strongText}>intrinsic severity, not risk</strong>, and the spec is
+    explicit about that: the Base group deliberately holds constant over time and across environments, which is
+    precisely what makes it useless as a standalone answer to "should we drop everything and patch this?" Three
+    things it does not and cannot tell you:
+  </p>
+  <ul class={css({ color: 'text', lineHeight: 1.8, fontSize: '0.95rem', pl: '1.2rem', mb: '1rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' })}>
+    <li>
+      <strong class={strongText}>Whether anyone is actually exploiting it.</strong> That's what the Temporal group
+      (exploit maturity, remediation level, report confidence) exists for — and this calculator doesn't implement
+      it. Outside CVSS entirely, <Term slug="exploit-prediction-scoring-system">EPSS</Term> models the probability
+      that a given CVE gets exploited in the next 30 days, and{' '}
+      <Term slug="known-exploited-vulnerabilities">KEV</Term> catalogs list CVEs with evidence of exploitation
+      already observed in the wild. A 9.8 nobody has ever exploited and a 7.5 being used in{' '}
+      <Term slug="zero-day">zero-day</Term> attacks right now carry the same weight to a Base Score and very
+      different weight to an on-call analyst.
+    </li>
+    <li>
+      <strong class={strongText}>Whether it matters in your environment.</strong> That's the Environmental group —
+      your own confidentiality/integrity/availability requirements for the affected asset, plus per-metric
+      overrides for how the vulnerability actually presents once your compensating controls, network segmentation,
+      and deployment choices are accounted for. Also not implemented here.
+    </li>
+    <li>
+      <strong class={strongText}>Anything about business consequence.</strong> The spec puts this outside CVSS's
+      scope outright — customer counts, monetary loss, regulatory exposure, safety. No version of CVSS attempts it.
+    </li>
+  </ul>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    FIRST's own guidance is that consumers of CVSS should supplement the Base Score with the Temporal and
+    Environmental scores rather than treat Base alone as the answer. Since this tool implements only the Base
+    group, the honest framing for anything it produces is "this is how severe the flaw is in the abstract" — the
+    remaining two-thirds of a real prioritization decision has to come from somewhere else. FIRST's own calculator
+    (linked below) covers all three groups if you need them.
+  </p>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7 })}>
+    One more scope note: <strong class={strongText}>CVSS v4.0 is the current major version</strong> of the
+    standard, and it is a genuinely different scoring system — it renames the groups, adds an Attack Requirements
+    metric, splits the old "Required" User Interaction value into Passive and Active (None is unchanged), splits impact into vulnerable-system
+    and subsequent-system halves, adds an optional Supplemental group, and abandons v3.1's closed-form equation
+    for a lookup-based approach. None of that is implemented here, which is why the vector parser above rejects a{' '}
+    <code class={inlineCode}>CVSS:4.0</code> string instead of trying to score it. v3.1 remains the version behind
+    an enormous volume of existing advisories and CVE records, and it is what this tool is scoped to.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/ioc-extractor/" class={toolChip}>
+        <Icon name="alert-triangle" size={15} /> IOC Extractor <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A vulnerability report or ticket usually arrives as prose. Paste it in there first to pull out the CVE IDs
+        (alongside every hash, domain, and IP it mentions), then score them here.
+      </p>
+    </div>
+    <div>
+      <a href="/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={15} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A score says how severe a flaw is; ATT&amp;CK says what an adversary actually does with one. Useful for the
+        step this calculator can't do — reasoning about how a given vulnerability would be reached and what
+        follows once it is.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['cvss-calculator']} />
+</BaseLayout>

@@ -52,7 +52,7 @@ const REFERENCE_ROWS: { field: string; note: string }[] = [
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'LNK Parser' }]}
-    eyebrow="Host Forensics"
+    eyebrow="Artifact Parsers"
     title="LNK (Shell Link) Forensic Parser"
     description="Upload a .lnk shortcut file to decode its target path, timestamps, volume info, and embedded shell item breadcrumb — entirely local."
   />
@@ -69,11 +69,9 @@ const REFERENCE_ROWS: { field: string; note: string }[] = [
     })}
   >
     <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
-      Everything here runs entirely in your browser — <strong class={css({ color: 'text' })}>no external APIs, no
-      upload, the .lnk file you choose never leaves your machine</strong>. It's read locally via the File API and
-      parsed byte-by-byte against the public <a href="https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/16cb4ca1-9339-4d0c-a68d-bf1d6cc0f943" target="_blank" rel="noopener" class={css({ color: 'primary' })}>[MS-SHLLINK]</a> spec.
-      A file that doesn't validate against the format's fixed header signature fails with a specific message rather
-      than guessing at a result.
+      It's read locally via the File API and parsed byte-by-byte against the public <a href="https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-shllink/16cb4ca1-9339-4d0c-a68d-bf1d6cc0f943" target="_blank" rel="noopener" class={css({ color: 'primary' })}>[MS-SHLLINK]</a> spec,
+      entirely in your browser — the .lnk file you choose never leaves your machine. A file that doesn't validate
+      against the format's fixed header signature fails with a specific message rather than guessing at a result.
     </p>
   </aside>
 
@@ -111,8 +109,8 @@ const REFERENCE_ROWS: { field: string; note: string }[] = [
   <p class={css({ color: 'textMuted', fontSize: '0.88rem', mt: '1.5rem', lineHeight: 1.7 })}>
     <strong class={css({ color: 'text' })}>Why LNK files matter in DFIR:</strong> Windows creates{' '}
     <Term slug="lnk-files">shortcut files</Term> automatically for recently-opened documents (
-    <Term slug="jump-lists">Jump Lists</Term> and the Recent Items folder), so a system's
-    <code class={css({ fontFamily: 'mono', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'sm', px: '0.3rem' })}>.lnk</code>
+    <Term slug="jump-lists">Jump Lists</Term> and the Recent Items folder), so a system's{' '}
+    <code class={css({ fontFamily: 'mono', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'sm', px: '0.3rem' })}>.lnk</code>{' '}
     files are a durable record of files a user opened — including files on removable media or network shares
     that may no longer be present. Because the embedded volume serial number and target timestamps are written
     at shortcut-creation time, they can outlive the original file or device, making LNK parsing a standard step

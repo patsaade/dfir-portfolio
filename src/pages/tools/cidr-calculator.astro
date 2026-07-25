@@ -1,0 +1,113 @@
+---
+// CIDR & VLAN Calculator — compute network/broadcast address, netmask,
+// wildcard mask, and usable host range from CIDR notation, plus a
+// same-subnet check for two addresses and a subnet/VLAN planner (equal
+// split or VLSM custom sizing, RFC 1878). Pure IPv4 arithmetic (src/utils/
+// cidr.ts) — nothing to research or fact-check here, it's RFC 4632/1878
+// math. Same page shape as the other interactive tools (intro aside ->
+// tool -> reference notes). Static page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CidrCalculator from '../../components/CidrCalculator.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="CIDR & VLAN Calculator"
+  description="Compute network/broadcast address, netmask, wildcard mask, and usable host range from CIDR notation, check whether two addresses share a subnet, and plan out multiple subnets or VLANs (VLSM) — entirely in your browser."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'CIDR & VLAN Calculator' }]}
+    eyebrow="Tools"
+    title="CIDR & VLAN Calculator"
+    description="Enter a CIDR block and get its network/broadcast address, netmask, wildcard mask, and usable host range — then plan multiple subnets or VLANs against a base network, live as you type."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This is plain IPv4 CIDR arithmetic (RFC 4632), computed with bitwise operations as you type — nothing here
+      is looked up or fact-checked, it's math, and it all happens locally, so nothing you type ever leaves your
+      machine.
+    </p>
+  </aside>
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    Scoping an alert to a subnet, checking whether a beaconing host shares a /24 with a domain controller, or just
+    working out how many addresses a firewall rule actually covers — CIDR math comes up constantly in triage, and
+    it's easy to get an off-by-one wrong doing it by hand. This calculator handles the two edge cases that trip up
+    a naive implementation: a /31 has no broadcast/network split at all (RFC 3021 repurposes it as a two-address
+    point-to-point link), and a /32 is a single host with no usable-host range in the ordinary sense. The planner
+    further down handles the opposite direction of that same problem — carving a base network into several
+    right-sized subnets or VLANs — which comes up just as often when documenting an environment's segmentation
+    during an engagement or planning containment VLANs to isolate a compromised segment.
+  </p>
+
+  <h2 id="calculator" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="globe" size={20} class={css({ color: 'primary' })} /> Calculator
+  </h2>
+  <CidrCalculator />
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/ioc-extractor/" class={toolChip}>
+        <Icon name="search" size={13} /> IOC Extractor <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Pull every IP address out of a log or report first, then check which ones share a subnet here.
+      </p>
+    </div>
+    <div>
+      <a href="/ip-reference/" class={toolChip}>
+        <Icon name="map-pin" size={13} /> IP &amp; CIDR Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Trying to recognize a range rather than compute one — is this address private, CGNAT, loopback, or a
+        documentation example? That reference (plus a CIDR prefix/netmask/host-count table) lives there.
+      </p>
+    </div>
+    <div>
+      <a href="/drills/ip-cidr/" class={toolChip}>
+        <Icon name="wifi" size={13} /> Subnetting Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Practice the arithmetic by hand — network/broadcast/host-range math and special-use range recognition,
+        graded against this same logic.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['cidr-calculator']} />
+</BaseLayout>

@@ -1,0 +1,352 @@
+---
+// YARA Rule Tester — build a YARA rule string by string, or paste one, and
+// scan it live against a sample. Same page shape as the other interactive
+// tools (intro aside -> interactive tool -> reference notes). Static page —
+// prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import YaraTester from '../../components/YaraTester.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { YARA_TEXT_MODIFIERS, YARA_CONDITION_UI_TYPES, UNSUPPORTED_YARA_FEATURES } from '../../utils/yara';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+const refTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' } as const;
+const refTd = css(refTdBase);
+const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' });
+const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary', whiteSpace: 'nowrap' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' });
+const bodyP = css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' });
+const noteP = css({ color: 'textMuted', fontSize: '0.88rem', mt: '1rem', lineHeight: 1.7 });
+
+// The three rows below are the tool's own starter rule scanned against its own
+// starter sample. Every offset is asserted against the real scanner output in
+// test/yara.test.ts ("matches land at the offsets the page quotes"), so a
+// change to the starter content fails the suite rather than silently leaving a
+// wrong number printed here.
+const WORKED_EXAMPLE: { source: string; kind: string; result: string }[] = [
+  {
+    source: '$api1 = "CreateRemoteThread" ascii wide',
+    kind: 'Text, searched in both the single-byte and the zero-interleaved form',
+    result: 'Found at 0x0029, as the ascii form — the sample holds no UTF-16LE copy, so the wide form finds nothing',
+  },
+  {
+    source: '$api2 = "virtualallocex" nocase',
+    kind: 'Text, case-insensitive across A–Z / a–z',
+    result: 'Found at 0x001A — the sample spells it VirtualAllocEx, so this only matches because of nocase',
+  },
+  {
+    source: '$dll = { 4B 45 52 4E 45 4C ?? ?? 2E 64 6C 6C }',
+    kind: 'Hex bytes, with two wildcard bytes in the middle',
+    result: 'Found at 0x000D, covering KERNEL32.dll — the wildcards stand in for the version digits',
+  },
+];
+---
+
+<BaseLayout
+  title="YARA Rule Tester"
+  description="Build a YARA rule string by string — text strings with ascii/wide/nocase, hex patterns with wildcards — and scan it live against a pasted sample. Real byte-level matching, entirely in your browser."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'YARA Rule Tester' }]}
+    eyebrow="Query Builders"
+    title="YARA Rule Tester"
+    description="Build a YARA rule string by string, or paste one in, and scan it live against a sample — real byte-level matching, entirely local."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This tool implements a defined subset of{' '}
+      <a href="https://yara.readthedocs.io/en/stable/writingrules.html" target="_blank" rel="noopener" class={css({ color: 'primary' })}>the YARA rule language</a> —
+      text and hex strings plus five condition shapes — not the full language. The scan is real: your sample is
+      searched byte by byte in your own browser, and every offset shown is where the bytes were actually found.
+      Nothing you build or paste here leaves your machine, and no result on this page is canned. The tables further
+      down list exactly what the subset covers and what it deliberately leaves out.
+    </p>
+  </aside>
+
+  <p class={bodyP}>
+    <Term slug="yara">YARA</Term> is the pattern-matching language malware analysts use to describe what a family of
+    files <em>looks like</em> rather than what one specific file <em>is</em>. Where a hash pins down a single
+    artifact exactly, a YARA rule names a handful of byte sequences and printable strings that a whole{' '}
+    <Term slug="malware-family">malware family</Term> tends to carry — an unusual API name, a hardcoded mutex, a
+    stub of code the packer always emits — and then says how many of them have to be present. That makes it the
+    workhorse of <Term slug="static-analysis">static analysis</Term> triage and of retro-hunting across a corpus:
+    write the rule once, run it over a directory, a memory image, or a threat-intel feed.
+  </p>
+  <p class={bodyP}>
+    The two halves of a rule are what this tester exercises. The <code class={inlineCode}>strings:</code> section
+    declares what to look for — a quoted text string, or a run of hex bytes where any byte you're unsure of becomes
+    a wildcard. The <code class={inlineCode}>condition:</code> section decides what counts as a hit: all of the
+    strings, any one of them, at least N of them, or a specific combination. Getting that condition wrong is the
+    usual reason a rule either misses everything or lights up on half the estate, so it's worth checking against a
+    known sample before the rule goes anywhere near a fleet-wide scan.
+  </p>
+
+  <h2 id="tester" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Rule tester
+  </h2>
+  <YaraTester />
+
+  <h2 id="strings" class={sectionH2}>
+    <Icon name="file-text" size={20} class={css({ color: 'primary' })} /> The two string kinds
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Kind</th>
+          <th class={refTh}>Syntax</th>
+          <th class={refTh}>What it matches</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class={refTd}><strong class={css({ color: 'text' })}>Text string</strong></td>
+          <td class={refTdCode}>{'$a = "text"'}</td>
+          <td class={refTdMuted}>
+            The literal bytes of the text. Case-sensitive and single-byte by default; the modifiers below change
+            that. Escape sequences understood here are{' '}
+            <code class={inlineCode}>{'\\" \\\\ \\n \\r \\t'}</code> and{' '}
+            <code class={inlineCode}>{'\\xHH'}</code> — anything else is reported as an error rather than guessed at.
+          </td>
+        </tr>
+        <tr>
+          <td class={refTd}><strong class={css({ color: 'text' })}>Hex string</strong></td>
+          <td class={refTdCode}>{'$h = { E8 ?? ?? ?? ?? }'}</td>
+          <td class={refTdMuted}>
+            A run of raw bytes written as hex pairs. Wildcards are nibble-wise, so{' '}
+            <code class={inlineCode}>??</code> leaves a whole byte unknown while{' '}
+            <code class={inlineCode}>A?</code> or <code class={inlineCode}>?A</code> pins down just one half of it.
+            The example is the classic one: <code class={inlineCode}>E8</code> is the x86 opcode for a{' '}
+            <a href="https://www.felixcloutier.com/x86/call" target="_blank" rel="noopener" class={css({ color: 'primary' })}>near call</a>,
+            and the four wildcarded bytes are its relative displacement — which changes with every build, so you
+            match the instruction without matching the address.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="modifiers" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Supported text-string modifiers
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Modifier</th>
+          <th class={refTh}>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          YARA_TEXT_MODIFIERS.map((m) => (
+            <tr>
+              <td class={refTdCode}>{m.id}</td>
+              <td class={refTdMuted}>{m.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={noteP}>
+    The combination worth knowing is <code class={inlineCode}>ascii wide</code>: the same text is searched for in
+    both forms at once, which is how you catch a string that a Windows binary stores as UTF-16LE in one place and
+    as plain bytes in another. <code class={inlineCode}>nocase</code> layers on top of either form. Modifiers apply
+    only to text strings — a hex pattern is already an exact byte specification.
+  </p>
+
+  <h2 id="conditions" class={sectionH2}>
+    <Icon name="link" size={20} class={css({ color: 'primary' })} /> Supported condition forms
+  </h2>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Form</th>
+          <th class={refTh}>Syntax</th>
+          <th class={refTh}>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          YARA_CONDITION_UI_TYPES.map((t) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>{t.label}</strong>
+              </td>
+              <td class={refTdCode}>{t.syntax}</td>
+              <td class={refTdMuted}>{t.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={noteP}>
+    Mixing <code class={inlineCode}>and</code> and <code class={inlineCode}>or</code> in a single condition is
+    reported as an error rather than resolved by guessing at operator precedence — build the rule around one or the
+    other instead. YARA keywords are lowercase and case-sensitive, so a wrong-case keyword is called out by name
+    too rather than quietly accepted.
+  </p>
+
+  <h2 id="worked-example" class={sectionH2}>
+    <Icon name="target" size={20} class={css({ color: 'primary' })} /> Worked example
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.9rem', mb: '1rem', lineHeight: 1.7 })}>
+    This is the rule and sample the tester loads by default — a fabricated illustration, not a real detection or
+    captured data. Scanning it produces the three results below, and because the condition is{' '}
+    <code class={inlineCode}>all of them</code>, the rule matches. The offsets are taken from the same scanner the
+    tool itself runs and are checked by this project's test suite, so they can't drift out of date.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>String</th>
+          <th class={refTh}>Kind</th>
+          <th class={refTh}>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          WORKED_EXAMPLE.map((row) => (
+            <tr>
+              <td class={refTdCode}>{row.source}</td>
+              <td class={refTdMuted}>{row.kind}</td>
+              <td class={refTdMuted}>{row.result}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={noteP}>
+    Two of those rows are the reason modifiers matter in practice. Drop <code class={inlineCode}>nocase</code> from{' '}
+    <code class={inlineCode}>$api2</code> and it stops matching entirely, because the sample capitalises the API
+    name. Replace the two wildcard bytes in <code class={inlineCode}>$dll</code> with literal bytes and it stops
+    matching too, because the version digits are exactly the part you don't want to pin down.
+  </p>
+
+  <h2 id="scope" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> Outside this tool's scope
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.9rem', mb: '1rem', lineHeight: 1.7 })}>
+    These are deliberate cuts, not gaps I'm hoping you won't notice. Everything listed here is detected and
+    reported by name when a pasted rule uses it — the tool will tell you what it can't handle instead of loading a
+    partial rule and producing a confidently wrong result. For any of it, use YARA itself.
+  </p>
+  <div class={css({ overflowX: 'auto' })}>
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Not supported</th>
+          <th class={refTh}>Example</th>
+          <th class={refTh}>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          UNSUPPORTED_YARA_FEATURES.map((f) => (
+            <tr>
+              <td class={refTd}>
+                <strong class={css({ color: 'text' })}>{f.feature}</strong>
+              </td>
+              <td class={refTdCode}>{f.example}</td>
+              <td class={refTdMuted}>{f.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={noteP}>
+    Worth calling out one of those specifically, because it's the single biggest thing real rules do that this
+    tester can't: the <code class={inlineCode}>pe</code> module. A large share of published rules gate on
+    structural facts about the file — the number of sections, an import name, the rich header, whether it's a DLL —
+    and none of that is reachable without parsing the executable format. If you need it, the
+    <a href="/tools/pe-explorer/" class={css({ color: 'primary' })}> PE Header Explorer</a> on this site will at
+    least show you the values you'd be writing the condition against.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="target" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The log-side counterpart. YARA describes files and memory; Sigma describes events. Most real detection
+        coverage needs both, and a <Term slug="detection-rule">detection rule</Term> in either language lives or
+        dies on the same thing — whether its combination logic is actually what you meant.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/pe-explorer/" class={toolChip}>
+        <Icon name="layers" size={13} /> PE Header Explorer <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Section names, imports and header values pulled straight out of a Windows executable — the raw material for
+        picking byte patterns worth writing a rule around, and the values a real rule's{' '}
+        <code class={inlineCode}>pe</code> module conditions would test.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/hash-calculator/" class={toolChip}>
+        <Icon name="hash" size={13} /> Hash Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The exact-match end of the same spectrum. A hash is an{' '}
+        <Term slug="indicator-of-compromise">indicator of compromise</Term> for one file and nothing else; a YARA
+        rule generalises across a family. Knowing which one a situation calls for is most of{' '}
+        <Term slug="signature-based-detection">signature-based detection</Term>.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/ioc-extractor/" class={toolChip}>
+        <Icon name="search" size={13} /> IOC Extractor <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Pull domains, IPs and URLs out of a report or a strings dump first — the distinctive ones are often exactly
+        the text strings a rule should be built on, which is where a lot of{' '}
+        <Term slug="threat-hunting">threat hunting</Term> work starts.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['yara-tester']} />
+</BaseLayout>

@@ -1,0 +1,881 @@
+---
+// CIDR/Subnet Calculator — IPv4 (src/utils/cidr.ts) and IPv6 (src/utils/
+// cidr6.ts) CIDR arithmetic, entirely client-side. An "IP version" toggle
+// switches the whole top calculator + same-subnet check between families —
+// IPv6 has no netmask/broadcast/usable-host-count concept the way IPv4
+// does (see cidr6.ts's own header), so it gets its own field set rather than
+// forcing IPv4 concepts onto it. A third panel is a subnet/VLAN planner
+// (IPv4 only): given a base network, either split it into N equal subnets,
+// lay out a list of custom-sized subnets (VLSM, RFC 1878) packed with zero
+// fragmentation, or run the reverse operation — supernetting several
+// existing subnets into the smallest block that contains them all. A VLAN
+// ID is just an operator-chosen label here; nothing is computed from it —
+// the math is purely the IP block sizing underneath. See /ip-reference/ for
+// a cheat sheet of special-use ranges (private, CGNAT, loopback, etc.) this
+// tool doesn't itself catalog.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.6rem',
+});
+const fieldLabel = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', mb: '0.3rem', display: 'block' });
+const input = css({
+  fontFamily: 'mono',
+  fontSize: '0.92rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.6rem 0.85rem',
+  w: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const resultGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: '1fr 1fr' }, gap: '0.6rem', mt: '1rem' });
+const resultCell = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.5rem',
+  p: '0.6rem 0.8rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const resultLabel = css({ fontFamily: 'sans', fontSize: '0.72rem', color: 'textMuted', flexShrink: 0 });
+const resultValue = css({ fontFamily: 'mono', fontSize: '0.9rem', color: 'primary', wordBreak: 'break-all' });
+const copyBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '26px',
+  h: '26px',
+  color: 'textMuted',
+  bg: 'transparent',
+  border: 'none',
+  borderRadius: 'sm',
+  cursor: 'pointer',
+  transition: 'color 150ms ease',
+  _hover: { color: 'primary' },
+});
+const errorBox = css({ color: 'textMuted', fontSize: '0.88rem', p: '0.75rem 1rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md', mt: '1rem' });
+const twoUp = css({ display: 'grid', gridTemplateColumns: { base: '1fr', sm: '1fr 1fr' }, gap: '0.6rem' });
+const checkResultBase = css({ mt: '0.75rem', fontSize: '0.9rem', fontWeight: 600 });
+const checkResultSame = css({ mt: '0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'primary' });
+const checkResultDiff = css({ mt: '0.75rem', fontSize: '0.9rem', fontWeight: 600, color: 'textMuted' });
+
+// Top action row — matches HashCalculator.astro's own reset-button pattern.
+const actionRow = css({ display: 'flex', justifyContent: 'flex-end' });
+const resetBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+
+// ── Subnet & VLAN planner ────────────────────────────────────────────────
+const modeRow = css({
+  position: 'relative', // containing block + stacking context for the animated switch thumb (see AnimatedSwitch)
+  zIndex: 0,
+  display: 'inline-flex',
+  gap: '0.15rem',
+  p: '0.2rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const modeBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  px: '0.8rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  borderRadius: 'sm',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'text' },
+  '&[data-active]': { bg: 'bgSubtle', color: 'primary', borderColor: 'border', boxShadow: 'card' },
+  // Once armed, suppressed/re-colored by motion.css's shared [data-switch-armed] rule.
+});
+const vlsmRowsWrap = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+const vlsmRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' });
+const vlsmLabelField = css({ flex: '2 1 200px', minW: '160px' });
+const vlsmHostsField = css({ flex: '1 1 120px', minW: '100px' });
+const removeRowBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '2.1rem',
+  h: '2.1rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'color-mix(in srgb, red 55%, transparent)', color: 'color-mix(in srgb, red 65%, token(colors.text))' },
+});
+const addRowBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  alignSelf: 'flex-start',
+  px: '0.75rem',
+  py: '0.45rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'transparent',
+  border: '1px dashed token(colors.border)',
+  borderRadius: 'md',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'primary', borderColor: 'primary' },
+});
+const summaryText = css({ color: 'textMuted', fontSize: '0.85rem', m: 0, mb: '0.6rem' });
+const tableWrap = css({ maxH: '18rem', overflowY: 'auto', overflowX: 'auto', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const vlsmTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' });
+const vlsmTh = css({
+  position: 'sticky',
+  top: 0,
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.68rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  bg: 'bgCard',
+  p: '0.45rem 0.65rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const vlsmTd = css({
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  color: 'text',
+  p: '0.4rem 0.65rem',
+  borderBottom: '1px solid token(colors.border)',
+  verticalAlign: 'top',
+  wordBreak: 'break-word',
+});
+const freeWrap = css({ mt: '0.85rem' });
+const freeList = css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', mt: '0.4rem' });
+const freeChip = css({
+  fontFamily: 'mono',
+  fontSize: '0.75rem',
+  color: 'textMuted',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.5rem',
+  py: '0.2rem',
+});
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.82rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.7rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
+const planCopyBtn = css(actionBtnBase, primaryBtnBase);
+const planTextarea = css({
+  fontFamily: 'mono',
+  fontSize: '0.88rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.6rem 0.85rem',
+  w: '100%',
+  minH: '5.5rem',
+  resize: 'vertical',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+---
+
+<WorkspaceShell hook="data-cidr-calc" noJsMessage="This calculator requires JavaScript to compute subnet values live as you type." gap="1.25rem">
+  <div class={actionRow}>
+    <button type="button" class={resetBtn} data-cidr-reset data-sound="tick" title="Reset to defaults" aria-label="Reset to defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <div>
+    <p class={paneLabel}>CIDR input</p>
+    <div class={css({ mb: '0.75rem' })}>
+      <div class={modeRow} role="radiogroup" aria-label="IP version" data-session-field="family">
+        <button type="button" role="radio" aria-checked="true" data-active data-cidr-family="4" data-sound="tick" class={modeBtn}>IPv4</button>
+        <button type="button" role="radio" aria-checked="false" data-cidr-family="6" data-sound="tick" class={modeBtn}>IPv6</button>
+      </div>
+    </div>
+    <input type="text" id="cidr-input" class={input} placeholder="e.g. 192.168.1.10/24" value="192.168.1.10/24" autocomplete="off" spellcheck="false" aria-label="CIDR notation input" data-cidr-input data-session-field="cidr-input" />
+    <p id="cidr-error" hidden class={errorBox} data-cidr-error>Enter a valid CIDR block, e.g. 10.0.0.0/24 or 192.168.1.10/30.</p>
+    <div id="cidr-results" class={resultGrid} data-cidr-results></div>
+    <template id="cidr-cell-template">
+      <div class={resultCell}>
+        <span class={resultLabel} data-label></span>
+        <span class={css({ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+          <span class={resultValue} data-value></span>
+          <button type="button" class={copyBtn} data-copy-btn title="Copy" aria-label="Copy value">
+            <Icon name="copy" size={13} />
+          </button>
+        </span>
+      </div>
+    </template>
+  </div>
+
+  <div>
+    <p class={paneLabel}>Same-subnet check</p>
+    <div class={twoUp}>
+      <input type="text" id="cidr-ip-a" class={input} placeholder="10.0.0.5" autocomplete="off" spellcheck="false" aria-label="First IP address" data-cidr-ip-a data-session-field="ip-a" />
+      <input type="text" id="cidr-ip-b" class={input} placeholder="10.0.0.240" autocomplete="off" spellcheck="false" aria-label="Second IP address" data-cidr-ip-b data-session-field="ip-b" />
+    </div>
+    <p id="cidr-check-result" class={checkResultBase} data-same-class={checkResultSame} data-diff-class={checkResultDiff}></p>
+  </div>
+
+  <div>
+    <p class={paneLabel}>Subnet &amp; VLAN planner (VLSM)</p>
+    <p class={css({ color: 'textMuted', fontSize: '0.85rem', m: 0, mb: '0.75rem', lineHeight: 1.6 })}>
+      Lay out several subnets inside one base network — either an equal split, or custom sizes packed by
+      Variable Length Subnet Masking (VLSM, RFC 1878) — or run it in reverse and combine several existing subnets
+      into the smallest block that contains them all (supernetting). A VLAN ID is just a label you choose here;
+      this tool computes IP block sizes, not VLAN numbering. IPv4 only — the calculator above also supports IPv6.
+    </p>
+
+    <label class={fieldLabel} for="vlsm-base" data-vlsm-base-label>Base network</label>
+    <input type="text" id="vlsm-base" class={input} value="10.0.0.0/16" autocomplete="off" spellcheck="false" aria-label="Base network for subnet planning" data-vlsm-base data-session-field="vlsm-base" />
+
+    <div class={css({ mt: '0.75rem' })}>
+      <div class={modeRow} role="radiogroup" aria-label="Planning mode" data-session-field="vlsm-mode">
+        <button type="button" role="radio" aria-checked="true" data-active data-vlsm-mode="equal" data-sound="tick" class={modeBtn}>Equal split</button>
+        <button type="button" role="radio" aria-checked="false" data-vlsm-mode="custom" data-sound="tick" class={modeBtn}>Custom sizes (VLSM)</button>
+        <button type="button" role="radio" aria-checked="false" data-vlsm-mode="supernet" data-sound="tick" class={modeBtn}>Supernet (combine)</button>
+      </div>
+    </div>
+
+    <div class={css({ mt: '0.85rem' })} data-vlsm-equal-panel>
+      <label class={fieldLabel} for="vlsm-equal-count">Number of subnets needed</label>
+      <input type="number" id="vlsm-equal-count" class={input} value="4" min="1" step="1" data-vlsm-equal-count data-session-field="vlsm-equal-count" aria-label="Number of equal subnets needed" />
+    </div>
+
+    <div class={css({ mt: '0.85rem' })} data-vlsm-custom-panel hidden>
+      <label class={fieldLabel}>Subnets needed</label>
+      <div class={vlsmRowsWrap} data-vlsm-rows>
+        <div class={vlsmRow} data-vlsm-request-row>
+          <input type="text" class={`${input} ${vlsmLabelField}`} placeholder="Label, e.g. VLAN 10 – Servers" value="Engineering" data-vlsm-label aria-label="Subnet label 1" />
+          <input type="number" class={`${input} ${vlsmHostsField}`} placeholder="Hosts needed" min="1" step="1" value="120" data-vlsm-hosts aria-label="Hosts needed 1" />
+          <button type="button" class={removeRowBtn} data-vlsm-row-remove data-sound="tick" aria-label="Remove subnet 1" title="Remove this subnet" hidden>
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+        <div class={vlsmRow} data-vlsm-request-row>
+          <input type="text" class={`${input} ${vlsmLabelField}`} placeholder="Label, e.g. VLAN 10 – Servers" value="Guest Wi-Fi" data-vlsm-label aria-label="Subnet label 2" />
+          <input type="number" class={`${input} ${vlsmHostsField}`} placeholder="Hosts needed" min="1" step="1" value="30" data-vlsm-hosts aria-label="Hosts needed 2" />
+          <button type="button" class={removeRowBtn} data-vlsm-row-remove data-sound="tick" aria-label="Remove subnet 2" title="Remove this subnet">
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      </div>
+      <button type="button" class={`${addRowBtn} ${css({ mt: '0.5rem' })}`} data-vlsm-add-row data-sound="tick">+ Add subnet</button>
+    </div>
+
+    <div class={css({ mt: '0.85rem' })} data-vlsm-supernet-panel hidden>
+      <label class={fieldLabel} for="vlsm-supernet-input">CIDR blocks to combine (one per line)</label>
+      <textarea id="vlsm-supernet-input" class={planTextarea} rows={4} placeholder={'10.0.0.0/25\n10.0.0.128/25'} spellcheck="false" data-vlsm-supernet-input data-session-field="vlsm-supernet"></textarea>
+    </div>
+
+    <p hidden class={errorBox} data-vlsm-error></p>
+
+    <div class={css({ mt: '1rem' })} data-vlsm-results-wrap hidden>
+      <p class={summaryText} data-vlsm-summary role="status" aria-live="polite"></p>
+      <div class={tableWrap}>
+        <table class={vlsmTable}>
+          <thead>
+            <tr>
+              <th class={vlsmTh}>Label</th>
+              <th class={vlsmTh}>CIDR</th>
+              <th class={vlsmTh}>Usable range</th>
+              <th class={vlsmTh}>Hosts</th>
+            </tr>
+          </thead>
+          <tbody data-vlsm-results-body></tbody>
+        </table>
+      </div>
+      <div class={freeWrap} data-vlsm-free-wrap hidden>
+        <p class={fieldLabel}>Remaining free space</p>
+        <div class={freeList} data-vlsm-free-list></div>
+      </div>
+      <button type="button" class={`${planCopyBtn} ${css({ mt: '0.85rem' })}`} data-vlsm-copy-plan data-copy-pop data-sound="copy">
+        <Icon name="copy" size={14} /> Copy plan as text
+      </button>
+    </div>
+
+    <div class={css({ mt: '1rem' })} data-vlsm-supernet-results hidden>
+      <p class={summaryText} data-vlsm-supernet-summary role="status" aria-live="polite"></p>
+      <div id="supernet-results" class={resultGrid} data-supernet-results></div>
+      <button type="button" class={`${planCopyBtn} ${css({ mt: '0.85rem' })}`} data-supernet-copy data-copy-pop data-sound="copy">
+        <Icon name="copy" size={14} /> Copy plan as text
+      </button>
+    </div>
+
+    <template data-vlsm-request-row-template>
+      <div class={vlsmRow} data-vlsm-request-row>
+        <input type="text" class={`${input} ${vlsmLabelField}`} placeholder="Label, e.g. VLAN 10 – Servers" data-vlsm-label aria-label="Subnet label" />
+        <input type="number" class={`${input} ${vlsmHostsField}`} placeholder="Hosts needed" min="1" step="1" data-vlsm-hosts aria-label="Hosts needed" />
+        <button type="button" class={removeRowBtn} data-vlsm-row-remove data-sound="tick" aria-label="Remove this subnet" title="Remove this subnet">
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+    </template>
+    <template data-vlsm-result-row-template>
+      <tr data-vlsm-result-row>
+        <td class={vlsmTd} data-vlsm-r-label></td>
+        <td class={vlsmTd} data-vlsm-r-cidr></td>
+        <td class={vlsmTd} data-vlsm-r-range></td>
+        <td class={vlsmTd} data-vlsm-r-hosts></td>
+      </tr>
+    </template>
+    <template data-vlsm-free-chip-template><span class={freeChip} data-vlsm-free-chip></span></template>
+  </div>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { parseCidr, isSameSubnet, splitEqual, planVlsm, supernetFor } from '../utils/cidr';
+  import { parseCidr6, isSameSubnet6 } from '../utils/cidr6';
+  import { pop } from '../scripts/copyPop';
+  import { persistToolSession } from '../scripts/toolSession';
+
+  (function () {
+    var root = document.querySelector('[data-cidr-calc]:not([data-ready])');
+    if (!root) return;
+
+    // ── single CIDR analysis (IPv4 + IPv6) ────────────────────────────────
+    var cidrInput = root.querySelector('[data-cidr-input]');
+    var errorEl = root.querySelector('[data-cidr-error]');
+    var resultsEl = root.querySelector('[data-cidr-results]');
+    var cellTemplate = document.getElementById('cidr-cell-template');
+    var ipA = root.querySelector('[data-cidr-ip-a]');
+    var ipB = root.querySelector('[data-cidr-ip-b]');
+    var checkResultEl = document.getElementById('cidr-check-result');
+    var familyBtns = Array.prototype.slice.call(root.querySelectorAll('[data-cidr-family]'));
+
+    var FIELDS_V4 = [
+      ['Network address', 'network'],
+      ['Broadcast address', 'broadcast'],
+      ['Netmask', 'netmask'],
+      ['Wildcard mask', 'wildcard'],
+      ['First usable host', 'firstHost'],
+      ['Last usable host', 'lastHost'],
+      ['Total addresses', 'totalHosts'],
+      ['Usable hosts', 'usableHosts'],
+    ];
+    // IPv6 has no netmask/broadcast/usable-host split (see cidr6.ts's own
+    // header) — a different, honest field set, not IPv4's forced onto it.
+    var FIELDS_V6 = [
+      ['Address', 'ip'],
+      ['Address (expanded)', 'ipExpanded'],
+      ['Network', 'network'],
+      ['Network (expanded)', 'networkExpanded'],
+      ['Last address', 'lastAddress'],
+      ['Total addresses', 'totalAddressesLabel'],
+    ];
+    var DEFAULT_V4 = '192.168.1.10/24';
+    var DEFAULT_V6 = '2001:db8::1/64';
+    var ERROR_V4 = 'Enter a valid CIDR block, e.g. 10.0.0.0/24 or 192.168.1.10/30.';
+    var ERROR_V6 = 'Enter a valid IPv6 CIDR block, e.g. 2001:db8::/32 or fe80::1/64.';
+
+    var family = '4';
+
+    // Renders one CidrResult/Cidr6Result-shaped object into a result-grid
+    // container using the shared cell template — used both by the analysis
+    // pane above and the supernet planner result further down.
+    function renderFieldGrid(containerEl, fields, result) {
+      containerEl.innerHTML = '';
+      fields.forEach(function (f) {
+        var label = f[0];
+        var key = f[1];
+        var value = result[key];
+        var text = value === null || value === undefined ? '—' : String(value);
+        var node = cellTemplate.content.cloneNode(true);
+        var labelEl = node.querySelector('[data-label]');
+        var valueEl = node.querySelector('[data-value]');
+        var btn = node.querySelector('[data-copy-btn]');
+        labelEl.textContent = label;
+        valueEl.textContent = text;
+        btn.setAttribute('aria-label', 'Copy ' + label);
+        if (value === null || value === undefined) {
+          btn.style.visibility = 'hidden';
+        } else {
+          btn.addEventListener('click', function () {
+            navigator.clipboard.writeText(text).then(function () { pop(btn); }).catch(function () {});
+          });
+        }
+        containerEl.appendChild(node);
+      });
+    }
+
+    function render() {
+      var value = cidrInput.value;
+      var result = family === '4' ? parseCidr(value) : parseCidr6(value);
+      if (!result) {
+        resultsEl.innerHTML = '';
+        errorEl.hidden = value.trim() === '';
+        errorEl.textContent = family === '4' ? ERROR_V4 : ERROR_V6;
+        return;
+      }
+      errorEl.hidden = true;
+      renderFieldGrid(resultsEl, family === '4' ? FIELDS_V4 : FIELDS_V6, result);
+    }
+
+    var sameClass = checkResultEl.getAttribute('data-same-class');
+    var diffClass = checkResultEl.getAttribute('data-diff-class');
+    var baseClass = checkResultEl.className;
+
+    function renderCheck() {
+      var result = family === '4' ? parseCidr(cidrInput.value) : parseCidr6(cidrInput.value);
+      if (!result || !ipA.value.trim() || !ipB.value.trim()) {
+        checkResultEl.textContent = '';
+        checkResultEl.className = baseClass;
+        return;
+      }
+      var same = family === '4'
+        ? isSameSubnet(ipA.value, ipB.value, result.prefix)
+        : isSameSubnet6(ipA.value, ipB.value, result.prefix);
+      checkResultEl.textContent = same
+        ? 'Same /' + result.prefix + ' subnet'
+        : 'Different /' + result.prefix + ' subnets (per the CIDR entered above)';
+      checkResultEl.className = same ? sameClass : diffClass;
+    }
+
+    function setFamily(next) {
+      family = next;
+      familyBtns.forEach(function (b) {
+        var active = b.getAttribute('data-cidr-family') === next;
+        if (active) b.setAttribute('data-active', ''); else b.removeAttribute('data-active');
+        b.setAttribute('aria-checked', String(active));
+      });
+      cidrInput.value = next === '4' ? DEFAULT_V4 : DEFAULT_V6;
+      cidrInput.placeholder = next === '4' ? 'e.g. 192.168.1.10/24' : 'e.g. 2001:db8::1/64';
+      ipA.placeholder = next === '4' ? '10.0.0.5' : '2001:db8::5';
+      ipB.placeholder = next === '4' ? '10.0.0.240' : '2001:db8::240';
+      render();
+      renderCheck();
+    }
+
+    if (cidrInput && resultsEl && cellTemplate) {
+      cidrInput.addEventListener('input', function () { render(); renderCheck(); });
+      ipA.addEventListener('input', renderCheck);
+      ipB.addEventListener('input', renderCheck);
+      familyBtns.forEach(function (b) {
+        b.addEventListener('click', function () { setFamily(b.getAttribute('data-cidr-family')); });
+      });
+      render();
+      renderCheck();
+    }
+
+    // ── subnet & VLAN planner (IPv4 only — see the panel's own note) ──────
+    var vlsmBaseInput = root.querySelector('[data-vlsm-base]');
+    var vlsmBaseLabel = root.querySelector('[data-vlsm-base-label]');
+    var modeBtns = Array.prototype.slice.call(root.querySelectorAll('[data-vlsm-mode]'));
+    var equalPanel = root.querySelector('[data-vlsm-equal-panel]');
+    var customPanel = root.querySelector('[data-vlsm-custom-panel]');
+    var equalCountInput = root.querySelector('[data-vlsm-equal-count]');
+    var rowsContainer = root.querySelector('[data-vlsm-rows]');
+    var addRowBtn = root.querySelector('[data-vlsm-add-row]');
+    var rowTemplate = root.querySelector('[data-vlsm-request-row-template]');
+    var vlsmError = root.querySelector('[data-vlsm-error]');
+    var resultsWrap = root.querySelector('[data-vlsm-results-wrap]');
+    var summaryEl = root.querySelector('[data-vlsm-summary]');
+    var resultsBody = root.querySelector('[data-vlsm-results-body]');
+    var resultRowTemplate = root.querySelector('[data-vlsm-result-row-template]');
+    var freeWrapEl = root.querySelector('[data-vlsm-free-wrap]');
+    var freeListEl = root.querySelector('[data-vlsm-free-list]');
+    var freeChipTemplate = root.querySelector('[data-vlsm-free-chip-template]');
+    var copyPlanBtn = root.querySelector('[data-vlsm-copy-plan]');
+    var supernetPanel = root.querySelector('[data-vlsm-supernet-panel]');
+    var supernetInput = root.querySelector('[data-vlsm-supernet-input]');
+    var supernetResultsWrap = root.querySelector('[data-vlsm-supernet-results]');
+    var supernetSummaryEl = root.querySelector('[data-vlsm-supernet-summary]');
+    var supernetResultsEl = root.querySelector('[data-supernet-results]');
+    var supernetCopyBtn = root.querySelector('[data-supernet-copy]');
+
+    if (vlsmBaseInput && rowsContainer && rowTemplate && resultsBody && resultRowTemplate) {
+      var mode = 'equal';
+      var lastPlanText = '';
+      var lastSupernetText = '';
+
+      function computeSupernet() {
+        var lines = supernetInput.value
+          .split('\n')
+          .map(function (l) { return l.trim(); })
+          .filter(Boolean);
+        if (!lines.length) {
+          vlsmError.hidden = true;
+          supernetResultsWrap.hidden = true;
+          return;
+        }
+        var valid = [];
+        var invalidLines = [];
+        lines.forEach(function (line) {
+          var c = parseCidr(line);
+          if (c) valid.push(c); else invalidLines.push(line);
+        });
+        if (!valid.length) {
+          vlsmError.hidden = false;
+          vlsmError.textContent = 'None of the entered lines are a valid IPv4 CIDR block.';
+          supernetResultsWrap.hidden = true;
+          return;
+        }
+        vlsmError.hidden = true;
+        var supernet = supernetFor(valid);
+        renderFieldGrid(supernetResultsEl, FIELDS_V4, supernet);
+        var note = invalidLines.length
+          ? ' (' + invalidLines.length + ' line(s) couldn’t be parsed and were skipped: ' + invalidLines.join(', ') + ')'
+          : '';
+        supernetSummaryEl.textContent =
+          'Combined ' + valid.length + ' block(s) into ' + supernet.network + '/' + supernet.prefix +
+          ' — covers ' + supernet.totalHosts + ' addresses.' + note;
+        supernetResultsWrap.hidden = false;
+
+        var textLines = ['Supernet combining:', ''];
+        valid.forEach(function (c) { textLines.push('  ' + c.network + '/' + c.prefix); });
+        textLines.push('');
+        textLines.push('Result: ' + supernet.network + '/' + supernet.prefix + ' (' + supernet.totalHosts + ' addresses)');
+        if (invalidLines.length) {
+          textLines.push('');
+          textLines.push('Skipped (unparseable): ' + invalidLines.join(', '));
+        }
+        lastSupernetText = textLines.join('\n');
+      }
+
+      function vlsmRows() {
+        return Array.prototype.slice.call(rowsContainer.querySelectorAll('[data-vlsm-request-row]'));
+      }
+
+      function updateRowChrome() {
+        var list = vlsmRows();
+        list.forEach(function (row, i) {
+          var labelInput = row.querySelector('[data-vlsm-label]');
+          var hostsInput = row.querySelector('[data-vlsm-hosts]');
+          var removeBtn = row.querySelector('[data-vlsm-row-remove]');
+          if (labelInput) labelInput.setAttribute('aria-label', 'Subnet label ' + (i + 1));
+          if (hostsInput) hostsInput.setAttribute('aria-label', 'Hosts needed ' + (i + 1));
+          if (removeBtn) {
+            removeBtn.hidden = list.length <= 1;
+            removeBtn.setAttribute('aria-label', 'Remove subnet ' + (i + 1));
+          }
+        });
+      }
+
+      function wireRow(row) {
+        var labelInput = row.querySelector('[data-vlsm-label]');
+        var hostsInput = row.querySelector('[data-vlsm-hosts]');
+        var removeBtn = row.querySelector('[data-vlsm-row-remove]');
+        labelInput.addEventListener('input', scheduleCompute);
+        hostsInput.addEventListener('input', scheduleCompute);
+        if (removeBtn) {
+          removeBtn.addEventListener('click', function () {
+            if (vlsmRows().length <= 1) return; // always keep at least one row
+            row.remove();
+            updateRowChrome();
+            compute();
+          });
+        }
+      }
+
+      function addRow(label, hosts) {
+        var frag = rowTemplate.content.cloneNode(true);
+        var row = frag.querySelector('[data-vlsm-request-row]');
+        if (label) row.querySelector('[data-vlsm-label]').value = label;
+        if (hosts) row.querySelector('[data-vlsm-hosts]').value = hosts;
+        wireRow(row);
+        rowsContainer.appendChild(row);
+        updateRowChrome();
+        return row;
+      }
+
+      // The custom VLSM request rows are added/removed at runtime (a
+      // <template>-cloned list, not a fixed data-session-field element), so
+      // toolSession.ts's auto-binding can't cover them — this snapshot/
+      // restore pair is passed in as config.serialize/config.restore instead,
+      // reusing addRow() (this tool's own row-creation function) to rebuild
+      // the list rather than duplicating that logic.
+      function vlsmRowsSnapshot() {
+        return vlsmRows().map(function (row) {
+          return {
+            label: row.querySelector('[data-vlsm-label]').value,
+            hosts: row.querySelector('[data-vlsm-hosts]').value,
+          };
+        });
+      }
+
+      function restoreVlsmRows(data) {
+        if (!Array.isArray(data) || !data.length) return;
+        rowsContainer.innerHTML = '';
+        data.forEach(function (r) {
+          addRow(r && r.label, r && r.hosts);
+        });
+        compute();
+      }
+
+      function collectCustomRequests() {
+        return vlsmRows()
+          .map(function (row, i) {
+            var label = row.querySelector('[data-vlsm-label]').value.trim() || 'Subnet ' + (i + 1);
+            var hosts = parseInt(row.querySelector('[data-vlsm-hosts]').value, 10);
+            return { id: String(i), label: label, hosts: hosts };
+          })
+          .filter(function (r) { return !isNaN(r.hosts) && r.hosts > 0; });
+      }
+
+      // r: { label, hostsRequested: number|null, cidr: CidrResult|null, fits }
+      function renderRows(normalizedRows) {
+        resultsBody.innerHTML = '';
+        normalizedRows.forEach(function (r) {
+          var frag = resultRowTemplate.content.cloneNode(true);
+          var tr = frag.querySelector('[data-vlsm-result-row]');
+          frag.querySelector('[data-vlsm-r-label]').textContent = r.label;
+          frag.querySelector('[data-vlsm-r-cidr]').textContent = r.cidr ? r.cidr.network + '/' + r.cidr.prefix : '— doesn’t fit';
+          frag.querySelector('[data-vlsm-r-range]').textContent = r.cidr && r.cidr.firstHost && r.cidr.lastHost ? r.cidr.firstHost + ' – ' + r.cidr.lastHost : '—';
+          var hostsCell = frag.querySelector('[data-vlsm-r-hosts]');
+          if (r.hostsRequested !== null) {
+            hostsCell.textContent = r.hostsRequested + ' → ' + (r.cidr ? r.cidr.usableHosts : '—');
+          } else {
+            hostsCell.textContent = r.cidr ? String(r.cidr.usableHosts) : '—';
+          }
+          if (!r.fits) tr.setAttribute('data-state', 'overflow');
+          resultsBody.appendChild(tr);
+        });
+      }
+
+      function renderFree(freeBlocks) {
+        freeListEl.innerHTML = '';
+        if (!freeBlocks.length) {
+          freeWrapEl.hidden = true;
+          return;
+        }
+        freeWrapEl.hidden = false;
+        freeBlocks.forEach(function (b) {
+          var frag = freeChipTemplate.content.cloneNode(true);
+          frag.querySelector('[data-vlsm-free-chip]').textContent = b;
+          freeListEl.appendChild(frag);
+        });
+      }
+
+      function buildPlanText(baseStr, normalizedRows, freeBlocks) {
+        var lines = ['Subnet plan for ' + baseStr, '', 'Label\tCIDR\tUsable range\tHosts'];
+        normalizedRows.forEach(function (r) {
+          var cidrStr = r.cidr ? r.cidr.network + '/' + r.cidr.prefix : 'does not fit';
+          var rangeStr = r.cidr && r.cidr.firstHost && r.cidr.lastHost ? r.cidr.firstHost + ' - ' + r.cidr.lastHost : '-';
+          var hostsStr = r.hostsRequested !== null ? r.hostsRequested + ' -> ' + (r.cidr ? r.cidr.usableHosts : '-') : r.cidr ? String(r.cidr.usableHosts) : '-';
+          lines.push(r.label + '\t' + cidrStr + '\t' + rangeStr + '\t' + hostsStr);
+        });
+        if (freeBlocks.length) {
+          lines.push('');
+          lines.push('Free: ' + freeBlocks.join(', '));
+        }
+        return lines.join('\n');
+      }
+
+      function compute() {
+        if (mode === 'supernet') {
+          computeSupernet();
+          return;
+        }
+        var baseStr = vlsmBaseInput.value.trim();
+        var base = parseCidr(baseStr);
+        if (!base) {
+          vlsmError.hidden = baseStr === '';
+          if (!vlsmError.hidden) vlsmError.textContent = 'Enter a valid base network, e.g. 10.0.0.0/16.';
+          resultsWrap.hidden = true;
+          return;
+        }
+
+        if (mode === 'equal') {
+          var countRaw = parseInt(equalCountInput.value, 10);
+          if (isNaN(countRaw) || countRaw < 1) {
+            vlsmError.hidden = true;
+            resultsWrap.hidden = true;
+            return;
+          }
+          var equalResult = splitEqual(baseStr, countRaw);
+          if (!equalResult) {
+            vlsmError.hidden = false;
+            vlsmError.textContent = countRaw + ' equal subnets don’t fit inside ' + baseStr + ' — try a larger base network or fewer subnets.';
+            resultsWrap.hidden = true;
+            return;
+          }
+          vlsmError.hidden = true;
+          var normalizedEqual = equalResult.subnets.map(function (s, i) {
+            return { label: 'Subnet ' + (i + 1), hostsRequested: null, cidr: s, fits: true };
+          });
+          renderRows(normalizedEqual);
+          renderFree([]); // an equal split always uses the entire base network
+          var roundedNote = equalResult.count !== equalResult.requestedCount
+            ? ' (rounded up from ' + equalResult.requestedCount + ' — subnet counts must be a power of two)'
+            : '';
+          summaryEl.textContent = equalResult.count + ' equal subnets of /' + equalResult.subnetPrefix + roundedNote + ', ' + equalResult.subnets[0].usableHosts + ' usable hosts each.';
+          resultsWrap.hidden = false;
+          lastPlanText = buildPlanText(baseStr, normalizedEqual, []);
+        } else {
+          var requests = collectCustomRequests();
+          if (!requests.length) {
+            vlsmError.hidden = true;
+            resultsWrap.hidden = true;
+            return;
+          }
+          var plan = planVlsm(baseStr, requests);
+          if (!plan) {
+            resultsWrap.hidden = true;
+            return;
+          }
+          vlsmError.hidden = true;
+          var normalizedCustom = plan.allocations.map(function (a) {
+            return { label: a.label, hostsRequested: a.hosts, cidr: a.cidr, fits: a.fits };
+          });
+          renderRows(normalizedCustom);
+          renderFree(plan.freeBlocks);
+          if (plan.overflow) {
+            var failedCount = normalizedCustom.filter(function (r) { return !r.fits; }).length;
+            summaryEl.textContent = '⚠ ' + failedCount + ' of ' + normalizedCustom.length + ' subnet(s) didn’t fit inside ' + baseStr + ' — try a larger base network or smaller host counts.';
+          } else {
+            var pct = plan.totalAddresses ? Math.round((plan.usedAddresses / plan.totalAddresses) * 1000) / 10 : 0;
+            summaryEl.textContent = normalizedCustom.length + ' of ' + normalizedCustom.length + ' subnets allocated — ' + plan.usedAddresses + ' of ' + plan.totalAddresses + ' addresses used (' + pct + '%), ' + (plan.totalAddresses - plan.usedAddresses) + ' free.';
+          }
+          resultsWrap.hidden = false;
+          lastPlanText = buildPlanText(baseStr, normalizedCustom, plan.freeBlocks);
+        }
+      }
+
+      var vlsmDebounce = null;
+      function scheduleCompute() {
+        clearTimeout(vlsmDebounce);
+        vlsmDebounce = setTimeout(compute, 200);
+      }
+
+      function setMode(next) {
+        mode = next;
+        modeBtns.forEach(function (b) {
+          var active = b.getAttribute('data-vlsm-mode') === next;
+          if (active) b.setAttribute('data-active', ''); else b.removeAttribute('data-active');
+          b.setAttribute('aria-checked', String(active));
+        });
+        equalPanel.hidden = next !== 'equal';
+        customPanel.hidden = next !== 'custom';
+        supernetPanel.hidden = next !== 'supernet';
+        var showBase = next !== 'supernet'; // supernetting combines subnets — there's no single "base network" to enter
+        vlsmBaseInput.hidden = !showBase;
+        if (vlsmBaseLabel) vlsmBaseLabel.hidden = !showBase;
+        resultsWrap.hidden = true;
+        supernetResultsWrap.hidden = true;
+        vlsmError.hidden = true;
+        compute();
+      }
+
+      vlsmBaseInput.addEventListener('input', scheduleCompute);
+      equalCountInput.addEventListener('input', scheduleCompute);
+      if (supernetInput) supernetInput.addEventListener('input', scheduleCompute);
+
+      // Captured now, before any interaction — the two server-rendered rows
+      // are still the true defaults at this point — so the Reset button can
+      // restore them exactly rather than leaving the row list blank.
+      var defaultRowsData = vlsmRowsSnapshot();
+
+      vlsmRows().forEach(wireRow);
+      updateRowChrome();
+
+      addRowBtn.addEventListener('click', function () {
+        var row = addRow('', '');
+        compute();
+        var labelInput = row.querySelector('[data-vlsm-label]');
+        if (labelInput) labelInput.focus();
+      });
+
+      modeBtns.forEach(function (b) {
+        b.addEventListener('click', function () { setMode(b.getAttribute('data-vlsm-mode')); });
+      });
+
+      if (copyPlanBtn) {
+        copyPlanBtn.addEventListener('click', function () {
+          navigator.clipboard.writeText(lastPlanText).then(function () { pop(copyPlanBtn); }).catch(function () {});
+        });
+      }
+      if (supernetCopyBtn) {
+        supernetCopyBtn.addEventListener('click', function () {
+          navigator.clipboard.writeText(lastSupernetText).then(function () { pop(supernetCopyBtn); }).catch(function () {});
+        });
+      }
+
+      compute();
+
+      persistToolSession({
+        root: root,
+        resetButton: '[data-cidr-reset]',
+        serialize: vlsmRowsSnapshot,
+        restore: restoreVlsmRows,
+        onReset: function () {
+          // Plain data-session-field fields are handled by toolSession.ts
+          // itself; this only has to rebuild the custom VLSM row list back
+          // to its true server-rendered defaults (Engineering/120, Guest
+          // Wi-Fi/30), which live outside that auto-binding (see
+          // vlsmRowsSnapshot/restoreVlsmRows above).
+          rowsContainer.innerHTML = '';
+          defaultRowsData.forEach(function (r) {
+            addRow(r.label, r.hosts);
+          });
+          compute();
+        },
+      });
+    }
+
+    root.setAttribute('data-ready', '');
+  })();
+</script>
+
+<style>
+  [data-vlsm-result-row][data-state='overflow'] {
+    color: color-mix(in srgb, red 60%, var(--colors-text));
+  }
+</style>

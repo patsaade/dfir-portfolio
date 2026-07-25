@@ -22,6 +22,17 @@ const labs = await getSortedLabs();
 const sources = [...new Set(labs.map((l) => l.data.source))];
 const sourceChips = sources.map((s) => ({ value: s, label: s }));
 
+// Suggested viewing order — a mechanical sort by the existing `difficulty`
+// enum (Beginner -> Intermediate -> Advanced -> Hard), oldest-first within a
+// tier, not an editorial curation. Only worth showing once there's an actual
+// progression to suggest (2+ writeups); it activates automatically as real
+// labs are published, same as the rest of this page's empty-state handling.
+const DIFFICULTY_ORDER = ['Beginner', 'Intermediate', 'Advanced', 'Hard'] as const;
+const suggestedPath = [...labs].sort((a, b) => {
+  const diff = DIFFICULTY_ORDER.indexOf(a.data.difficulty) - DIFFICULTY_ORDER.indexOf(b.data.difficulty);
+  return diff !== 0 ? diff : a.data.date.valueOf() - b.data.date.valueOf();
+});
+
 // Tag facet for the search combobox (a lab can carry several tags → AND filter).
 const labTagCounts: Record<string, { label: string; n: number }> = {};
 for (const l of labs) for (const t of l.data.tags) {
@@ -40,6 +51,65 @@ const labTagOptions = Object.entries(labTagCounts)
     title="Hands-On Challenges, Solved"
     description="Full walkthroughs of forensics challenges — approach, key findings, extracted IOCs, and lessons learned."
   />
+
+  {
+    suggestedPath.length > 1 && (
+      <details
+        class={css({
+          mb: '1.75rem',
+          bg: 'bgCard',
+          border: '1px solid token(colors.border)',
+          borderRadius: 'lg',
+          p: '1rem 1.25rem',
+        })}
+      >
+        <summary
+          class={css({
+            cursor: 'pointer',
+            listStyle: 'none',
+            userSelect: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontWeight: 700,
+            fontSize: '0.95rem',
+            '&::-webkit-details-marker': { display: 'none' },
+            '&::marker': { display: 'none' },
+          })}
+        >
+          <Icon name="arrow-right" size={16} class={css({ color: 'primary' })} />
+          Suggested viewing order
+        </summary>
+        <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.6rem', mb: '0.85rem', lineHeight: 1.6 })}>
+          Sorted by difficulty (Beginner → Hard), oldest first within a tier — a mechanical ordering, not a curated
+          path.
+        </p>
+        <ol class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' })}>
+          {suggestedPath.map((lab, i) => (
+            <li>
+              <a
+                href={`/labs/${lab.id}/`}
+                class={css({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  fontSize: '0.9rem',
+                  color: 'text',
+                  py: '0.2rem',
+                  transition: 'color 150ms ease',
+                  _hover: { color: 'primary' },
+                })}
+              >
+                <span class={css({ fontFamily: 'mono', color: 'textMuted', fontSize: '0.8rem', flexShrink: 0, w: '1.4rem' })}>{i + 1}.</span>
+                <Badge variant="difficulty">{lab.data.difficulty}</Badge>
+                <span>{lab.data.title}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+      </details>
+    )
+  }
 
   {
     labs.length > 0 && (

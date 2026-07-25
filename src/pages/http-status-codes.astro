@@ -1,0 +1,288 @@
+---
+// HTTP Status Code Reference — every currently-assigned code in IANA's HTTP
+// Status Code Registry, grouped by class (1xx-5xx). Pure IT-fundamentals
+// framing: this page teaches the HTTP spec itself, not how an analyst uses a
+// status code during an investigation — no DFIR lens. Same "grouped,
+// searchable list" shape as the IP & CIDR Reference and the Network Port
+// Reference, one level deep (class -> table) since every entry here is small
+// enough for a table row rather than a card. Static page — prerender to
+// static HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag } from 'styled-system/recipes';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHeader from '../components/PageHeader.astro';
+import Icon from '../components/Icon.astro';
+import Term from '../components/Term.astro';
+import CollapseAll from '../components/CollapseAll.astro';
+import TagCombobox from '../components/TagCombobox.astro';
+import ListFilter from '../components/ListFilter.astro';
+import GroupOverview from '../components/GroupOverview.astro';
+import ExternalResources from '../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../data/externalResources';
+import { HTTP_STATUS_CODES, type HttpStatusEntry, type HttpStatusClass } from '../data/httpStatusCodes';
+import { toolChip } from '../components/RelatedTools.astro';
+
+const GROUPS: { id: HttpStatusClass; title: string; icon: 'activity' | 'check' | 'arrow-right' | 'alert-triangle' | 'server'; blurb: string }[] = [
+  { id: '1xx', title: '1xx Informational', icon: 'activity', blurb: 'The request was received and understood, and processing continues — an interim response, never the final word on a request.' },
+  { id: '2xx', title: '2xx Success', icon: 'check', blurb: 'The request was successfully received, understood, and accepted.' },
+  { id: '3xx', title: '3xx Redirection', icon: 'arrow-right', blurb: 'Further action is needed to complete the request — almost always by fetching a different URI.' },
+  { id: '4xx', title: '4xx Client Error', icon: 'alert-triangle', blurb: "The request contains bad syntax or otherwise can't be fulfilled, with the fault understood to be the client's." },
+  { id: '5xx', title: '5xx Server Error', icon: 'server', blurb: "The server failed to fulfill an apparently valid request, with the fault understood to be the server's." },
+];
+const byClass = (id: HttpStatusClass) => HTTP_STATUS_CODES.filter((e) => e.statusClass === id).sort((a, b) => a.code - b.code);
+const totalCount = HTTP_STATUS_CODES.length;
+const reservedCount = HTTP_STATUS_CODES.filter((e) => e.reserved).length;
+
+const groupTiles = GROUPS.map((g) => ({ id: `hsc-${g.id}`, icon: g.icon, title: g.title, blurb: g.blurb, count: byClass(g.id).length }));
+
+// Spec-family facet — cuts across all five classes (WebDAV extends every
+// class from 1xx-5xx except 4xx isn't the only place it shows up either).
+const specLabel: Record<string, string> = {
+  core: 'Core HTTP (RFC 9110)',
+  webdav: 'WebDAV extension',
+  extension: 'Other extension RFC',
+};
+const specCounts: Record<string, number> = {};
+for (const e of HTTP_STATUS_CODES) specCounts[e.spec] = (specCounts[e.spec] ?? 0) + 1;
+const specOptions = Object.keys(specCounts).map((s) => ({ value: s, label: specLabel[s] ?? s, count: specCounts[s] }));
+
+const searchText = (e: HttpStatusEntry) => `${e.code} ${e.phrase} ${e.description}`.toLowerCase();
+
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer', listStyle: 'none', userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' }, '&::marker': { display: 'none' },
+  _hover: { '& .hsc-grp-title': { color: 'primary' } },
+});
+const groupHead = css({ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', m: 0, fontSize: '1.25rem', fontWeight: 700 });
+const chevCls = css({
+  color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease',
+  'details[open] > summary &': { transform: 'rotate(90deg)' },
+});
+const grpCount = css({
+  fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle',
+  border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem',
+});
+const grpBlurb = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.5rem', mb: 0 });
+
+const tableWrap = css({ mt: '1rem', overflowX: 'auto', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const table = css({ width: '100%', minW: '620px', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const th = css({
+  textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.68rem',
+  textTransform: 'uppercase', letterSpacing: '0.06em', bg: 'bgCard', p: '0.55rem 0.75rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const tr = css({ '&:not(:last-child)': { borderBottom: '1px solid token(colors.border)' }, _hover: { bg: 'bgSubtle' } });
+const tdCode = css({ fontFamily: 'mono', fontWeight: 700, color: 'primary', p: '0.6rem 0.75rem', verticalAlign: 'top', whiteSpace: 'nowrap' });
+const tdPhrase = css({ fontFamily: 'sans', fontWeight: 700, color: 'text', p: '0.6rem 0.75rem', verticalAlign: 'top', whiteSpace: 'nowrap' });
+const tdDesc = css({ color: 'textMuted', lineHeight: 1.65, p: '0.6rem 0.75rem', verticalAlign: 'top' });
+const inlineTag = `${tag({ tone: 'muted' })} ${css({ ml: '0.4rem', verticalAlign: 'middle' })}`;
+const refLink = css({
+  display: 'inline-flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.78rem', color: 'textMuted',
+  whiteSpace: 'nowrap', _hover: { color: 'primary' },
+});
+
+const filterRow = css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' });
+
+const calloutCard = css({ p: '1rem 1.25rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md', mb: '1.5rem' });
+const classGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(5, 1fr)' }, gap: '0.7rem', mt: '0.85rem' });
+const classCell = css({ p: '0.7rem 0.8rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const classCellTitle = css({ fontFamily: 'mono', fontWeight: 700, fontSize: '0.82rem', color: 'primary', display: 'block' });
+const classCellDesc = css({ color: 'textMuted', fontSize: '0.8rem', lineHeight: 1.55, mt: '0.3rem' });
+const specRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', mt: '0.75rem' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const sectionH2 = css({
+  display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700,
+  mt: '2.5rem', mb: '1rem', pt: '1.5rem', borderTop: '1px solid token(colors.border)', scrollMarginTop: '90px',
+});
+---
+
+<BaseLayout
+  title="HTTP Status Code Reference"
+  description="Every currently-assigned HTTP status code from IANA's registry, grouped by class (1xx-5xx), with the exact reason phrase and a plain-English description of when a server returns it — verified against RFC 9110."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'HTTP Status Code Reference' }]}
+    eyebrow="Reference"
+    title="HTTP Status Code Reference"
+    description={`${totalCount} currently-assigned HTTP status codes, grouped by class, each with its exact reason phrase and a plain-English description of when a server returns it — verified against RFC 9110 and IANA's own registry.`}
+  />
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    A status code is a three-digit number a server sends at the start of every HTTP response, and the reason phrase
+    next to it (like "Not Found") is only a human-readable label — the number is what software actually branches on.
+    Every entry below comes straight from{' '}
+    <a href="https://www.rfc-editor.org/rfc/rfc9110.html" target="_blank" rel="noopener" class={css({ color: 'primary', textDecoration: 'underline' })}>RFC 9110</a>
+    {' '}(HTTP Semantics — the current core spec, obsoleting RFC 7231) for the codes it defines, and each code's own
+    registering RFC for the rest (WebDAV's RFC 4918/RFC 5842, plus a handful of smaller extension RFCs). This is a
+    pure protocol reference — no investigation framing here, just what the spec itself says.
+  </p>
+
+  <div class={calloutCard}>
+    <h2 class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 700, m: 0 })}>
+      <Icon name="list" size={18} class={css({ color: 'primary' })} /> Understanding the five classes
+    </h2>
+    <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.7, mt: '0.6rem', mb: 0 })}>
+      The first digit of a status code sets its class; the other two digits don't carry any classification meaning
+      of their own. That grouping is what makes the code namespace usable even when a client doesn't recognize a
+      specific one: RFC 9110 requires a client to understand at least the class of any status code, and says an
+      unrecognized code should be treated the same as the <code class={css({ fontFamily: 'mono', fontSize: '0.85em', bg: 'codeBg', px: '0.3rem', borderRadius: 'sm' })}>x00</code>{' '}
+      code of that class — an unfamiliar 4xx code, for instance, falls back to behaving like a plain 400.
+    </p>
+    <div class={classGrid}>
+      {GROUPS.map((g) => (
+        <div class={classCell}>
+          <span class={classCellTitle}>{g.title}</span>
+          <p class={classCellDesc}>{g.blurb}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  <div class={css({ mt: '1.25rem', mb: '0.6rem' })}>
+    <p class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 700, color: 'text', m: 0 })}>
+      <Icon name="tag" size={15} class={css({ color: 'primary' })} /> Spec families
+    </p>
+    <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mt: '0.4rem', mb: 0 })}>
+      Most codes come from core HTTP itself; a smaller set is layered on by WebDAV or another narrowly-scoped
+      extension RFC. Search below filters across all five classes by spec family too.
+    </p>
+    <div class={specRow}>
+      <span class={tag({ tone: 'primary' })}>Core HTTP</span>
+      <span class={css({ color: 'textMuted', fontSize: '0.82rem' })}>Defined directly in RFC 9110, the current HTTP Semantics spec ({specCounts.core} codes).</span>
+    </div>
+    <div class={specRow}>
+      <span class={tag({ tone: 'accent' })}>WebDAV extension</span>
+      <span class={css({ color: 'textMuted', fontSize: '0.82rem' })}>From WebDAV's own RFC 4918 or RFC 5842 — collaborative authoring/versioning over HTTP ({specCounts.webdav} codes).</span>
+    </div>
+    <div class={specRow}>
+      <span class={tag({ tone: 'muted' })}>Other extension</span>
+      <span class={css({ color: 'textMuted', fontSize: '0.82rem' })}>A smaller, narrowly-scoped RFC — rate limiting, TLS early data, content negotiation, and similar ({specCounts.extension} codes).</span>
+    </div>
+  </div>
+
+  <GroupOverview items={groupTiles} heading="Browse by class" />
+
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="hsc-cb"
+      options={specOptions}
+      placeholder={`Search ${totalCount} status codes, or type a spec family…`}
+      label="Search status codes or filter by spec family"
+    />
+  </div>
+
+  <div class={filterRow}>
+    <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.6rem', color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span><span id="hsc-result-count">{totalCount}</span> status codes across {GROUPS.length} classes</span>
+      <span aria-hidden="true">·</span>
+      <span>{reservedCount} reserved/unused</span>
+    </p>
+    <div class={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', ml: { sm: 'auto' } })}>
+      <CollapseAll target="[data-hsc-group]" />
+    </div>
+  </div>
+
+  <div class={css({ display: 'flex', flexDirection: 'column' })}>
+    {
+      GROUPS.map((g) => {
+        const items = byClass(g.id);
+        return (
+          <details id={`hsc-${g.id}`} data-hsc-group open class={groupDetails}>
+            <summary class={groupSummary}>
+              <h2 class={groupHead}>
+                <Icon name="chevron-right" size={18} class={chevCls} />
+                <Icon name={g.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class="hsc-grp-title">{g.title}</span>
+                <span class={grpCount}>{items.length}</span>
+              </h2>
+            </summary>
+            <p class={grpBlurb}>{g.blurb}</p>
+            <div class={tableWrap}>
+              <table class={table}>
+                <thead>
+                  <tr>
+                    <th class={th}>Code</th>
+                    <th class={th}>Reason phrase</th>
+                    <th class={th}>What it means</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((e) => (
+                    <tr class={tr} data-hsc-row={searchText(e)} data-spec={e.spec}>
+                      <td class={tdCode}>{e.code}</td>
+                      <td class={tdPhrase}>
+                        {e.phrase}
+                        {e.reserved && <span class={inlineTag}>Reserved</span>}
+                        {e.spec === 'webdav' && <span class={inlineTag}>WebDAV</span>}
+                      </td>
+                      <td class={tdDesc}>
+                        {e.description}{' '}
+                        <a href={e.reference.url} target="_blank" rel="noopener" class={refLink}>
+                          <Icon name="external-link" size={10} /> {e.reference.name}
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        );
+      })
+    }
+  </div>
+
+  <p id="hsc-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No status codes match your search.
+  </p>
+
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mt: '1.5rem' })}>
+    A handful of codes carry extra context worth knowing: 413 and 422 were both renamed by RFC 9110 (from "Payload
+    Too Large" and "Unprocessable Entity" respectively — implementations and error messages using the old phrases
+    are still extremely common), 429 is the standard code for{' '}
+    <Term slug="rate-limiting">rate limiting</Term>, and 425 exists specifically to guard against replaying a{' '}
+    <Term slug="tls-handshake">TLS handshake</Term>'s "early data."
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/osi-model/" class={toolChip}>
+        <Icon name="layers" size={13} /> OSI &amp; TCP/IP Model Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Status codes are an application-layer (HTTP) concept — see where HTTP itself sits in the layered model this
+        reference lays out.
+      </p>
+    </div>
+    <div>
+      <a href="/ip-reference/" class={toolChip}>
+        <Icon name="wifi" size={13} /> IP &amp; CIDR Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The other half of "what's actually in this request" — special-use IPv4/IPv6 address blocks, sourced from
+        IANA the same way this page's codes are.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['http-status-codes'] ?? []} />
+
+  <ListFilter
+    config={{
+      comboboxId: 'hsc-cb',
+      cardSelector: '[data-hsc-row]',
+      searchAttr: 'data-hsc-row',
+      groupSelector: '[data-hsc-group]',
+      countId: 'hsc-result-count',
+      emptyId: 'hsc-empty',
+      facetAttr: 'data-spec',
+      urlSync: { queryParam: 'q', facetParam: 'spec' },
+    }}
+  />
+</BaseLayout>

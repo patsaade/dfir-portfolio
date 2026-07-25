@@ -1,0 +1,270 @@
+---
+// Interactive terminal-drill UI shell shared by the three native-shell
+// tracks at /drills/commands/{bash,cmd,powershell}/ — the terminal-emulator
+// successor to DrillEngine.astro's single-text-input quiz shell (DrillEngine
+// still powers the other 5 /drills/* modules; this is a deliberately
+// separate component since "type a real command into a live simulated
+// terminal, get realistic output back" isn't expressible through
+// DrillEngine's answerType union). Mirrors DrillEngine's own established
+// conventions closely: SSR-real first-challenge content (no-JS contract —
+// a visitor without JS still sees the first challenge's goal/hint text and
+// a real input box, even though grading genuinely requires JS), plain
+// data-* attribute wiring (never a Panda-generated class name) for
+// src/scripts/terminalDrill.ts to query, a "Show hint" toggle, and a
+// "Next challenge →" button that reveals rather than auto-advances so the
+// learner can keep exploring before moving on — see that script's own
+// header comment for the one deliberate deviation from DrillEngine's own
+// "single render path" rule (the terminal's scrollback is an append-only
+// transcript, not a re-derived "current state").
+//
+// Every dynamically-appended terminal line is cloned from one of the two
+// <template>s below (never document.createElement + a hardcoded class
+// string) — same convention as DrillEngine's own <template>-cloning and
+// IocExtractor.astro's `data-ioc-item-template`.
+import { css } from 'styled-system/css';
+import type { TerminalChallenge } from '../data/drills/terminalChallenges';
+import { PROMPTS, SHELL_DISPLAY_NAMES, type ShellId } from '../data/terminalEnvironments';
+
+interface Props {
+  /** data-terminal-drill value — the client script's `config.root` selector target, e.g. "bash". */
+  os: ShellId;
+  /** Widget heading, e.g. "Bash Terminal Drill". */
+  heading: string;
+  /** Optional one/two-sentence blurb under the heading. */
+  intro?: string;
+  /** This track's full challenge bank (see src/data/drills/terminalChallenges.ts) — challenges[0] renders server-side for the no-JS contract. */
+  challenges: TerminalChallenge[];
+}
+
+const { os, heading, intro, challenges } = Astro.props;
+const totalChallenges = challenges.length;
+const firstChallenge = challenges[0];
+const promptText = PROMPTS[os];
+const shellName = SHELL_DISPLAY_NAMES[os];
+// Kept byte-identical to terminalDrill.ts's own `welcomeText` constant (see
+// that file's restart handler) — both are pure functions of `os`/`shell`
+// alone, so there's nothing to thread through config to keep them in sync.
+const welcomeText = `Simulated ${shellName} — type "help" to see available commands.`;
+
+const rootCss = css({ display: 'flex', flexDirection: 'column' });
+const headCss = css({ mb: '1.25rem' });
+const headingCss = css({ fontSize: '1.4rem', fontWeight: 700, color: 'text', m: 0 });
+const introCss = css({ color: 'textMuted', fontSize: '0.95rem', mt: '0.4rem', mb: 0, maxW: '620px' });
+const progressCss = css({ fontFamily: 'sans', fontSize: '0.85rem', color: 'textMuted', mb: '1rem' });
+
+// Challenge/goal banner — same card/prompt/hint treatment as DrillEngine's
+// own cardCss/promptCss/hintRowCss/hintBtnCss/hintTextCss.
+const goalCardCss = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'lg',
+  p: { base: '1rem', sm: '1.35rem' },
+  mb: '1rem',
+});
+const goalPromptCss = css({ fontSize: '1.05rem', fontWeight: 600, color: 'text', lineHeight: 1.5, m: 0 });
+const hintRowCss = css({ mt: '0.6rem' });
+const hintBtnCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'transparent',
+  border: 'none',
+  p: 0,
+  cursor: 'pointer',
+  _hover: { color: 'primary' },
+  '&[hidden]': { display: 'none' },
+});
+const hintTextCss = css({ fontSize: '0.85rem', color: 'textMuted', lineHeight: 1.5, mt: '0.35rem', m: 0, '&[hidden]': { display: 'none' } });
+
+// Terminal window chrome.
+const terminalWindowCss = css({
+  border: '1px solid token(colors.border)',
+  borderRadius: 'lg',
+  overflow: 'hidden',
+  bg: 'bgCard',
+  boxShadow: 'card',
+});
+const terminalTitlebarCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  px: '0.9rem',
+  py: '0.5rem',
+  bg: 'bgSubtle',
+  borderBottom: '1px solid token(colors.border)',
+});
+const terminalDotsCss = css({
+  display: 'inline-flex',
+  gap: '0.32rem',
+  '& > span': { display: 'inline-block', w: '9px', h: '9px', borderRadius: 'full', bg: 'border' },
+});
+const terminalTitleTextCss = css({ fontFamily: 'mono', fontSize: '0.75rem', color: 'textMuted' });
+
+// Scrollback — same "scroll, not grow" convention as HashCalculator/
+// IocExtractor's output boxes and event-ids/[slug].astro's sampleLogBox:
+// capped height, vertical scroll only, wrapping (not horizontal scroll)
+// absorbs any single long simulated line. `codeBg` is this codebase's own
+// dedicated code/terminal-block background token (see event-ids/[slug].astro's
+// sampleLogBox for the only other current user of it).
+const terminalOutputCss = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
+  fontFamily: 'mono',
+  fontSize: '0.83rem',
+  lineHeight: 1.6,
+  color: 'text',
+  bg: 'codeBg',
+  p: '0.85rem 1rem',
+  minH: '13rem',
+  maxH: '22rem',
+  overflowY: 'auto',
+});
+const terminalInputRowCss = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  bg: 'codeBg',
+  borderTop: '1px solid token(colors.border)',
+  px: '1rem',
+  py: '0.65rem',
+  _focusWithin: { boxShadow: 'inset 0 0 0 1px token(colors.primary)' },
+});
+const terminalPromptCss = css({ fontFamily: 'mono', fontSize: '0.85rem', fontWeight: 700, color: 'primary', whiteSpace: 'pre', flexShrink: 0 });
+const terminalInputCss = css({
+  flex: 1,
+  minW: 0,
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'transparent',
+  border: 'none',
+  outline: 'none',
+  p: 0,
+});
+
+// One shared line style, varied by `data-kind` — the vocabulary
+// terminalDrill.ts sets on every cloned line: "cmd" (echoed input),
+// "out"/"error" (simulated output, plain vs. a not-recognized message),
+// "hint" (the static welcome line), "correct"/"correct-explain" (the
+// distinct solved-challenge callout).
+const terminalLineCss = css({
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  m: 0,
+  '&[data-kind="cmd"]': { color: 'primary', fontWeight: 600 },
+  '&[data-kind="out"]': { color: 'textMuted' },
+  // Raw `red` (not a semantic token — this palette has no dedicated
+  // error/danger color), same convention as DrillEngine's own
+  // `&[data-incorrect]` rule.
+  '&[data-kind="error"]': { color: 'red' },
+  '&[data-kind="hint"]': { color: 'textMuted', fontStyle: 'italic' },
+  '&[data-kind="correct"]': { color: 'accent', fontWeight: 700, mt: '0.3rem' },
+  '&[data-kind="correct-explain"]': { color: 'textMuted', fontSize: '0.78rem' },
+});
+const terminalLineLinkCss = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  color: 'primary',
+  fontWeight: 600,
+  fontSize: '0.78rem',
+  _hover: { textDecoration: 'underline' },
+});
+
+// Next/Try again — same css(base, primary) deep-merge pattern DrillEngine's
+// own checkBtnCss/nextBtnCss/restartBtnCss use.
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.85rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.85rem',
+  py: '0.5rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+  '&[hidden]': { display: 'none' },
+} as const;
+const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
+const nextBtnCss = css(actionBtnBase, primaryBtnBase);
+const restartBtnCss = css(actionBtnBase);
+const nextRowCss = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', mt: '1rem' });
+const summaryCss = css({ fontFamily: 'sans', fontSize: '0.95rem', fontWeight: 600, color: 'primary', m: 0, '&[hidden]': { display: 'none' } });
+---
+
+<section data-terminal-drill={os} class={rootCss}>
+  <div class={headCss}>
+    <h2 class={`declassify ${headingCss}`}>{heading}</h2>
+    {intro && <p class={introCss}>{intro}</p>}
+  </div>
+
+  <p data-terminal-progress role="status" aria-live="polite" class={progressCss}>
+    {`Challenge 1 of ${totalChallenges} — 0 solved`}
+  </p>
+
+  <div class={goalCardCss}>
+    <p data-terminal-goal tabindex="-1" class={goalPromptCss}>{firstChallenge.prompt}</p>
+    <div class={hintRowCss}>
+      <button type="button" data-terminal-hint-btn hidden={!firstChallenge.hint} aria-expanded="false" class={hintBtnCss}>
+        Show hint
+      </button>
+      <p data-terminal-hint-text hidden={!firstChallenge.hint} class={hintTextCss}>{firstChallenge.hint}</p>
+    </div>
+  </div>
+
+  <div data-terminal-window class={terminalWindowCss}>
+    <div class={terminalTitlebarCss}>
+      <span class={terminalDotsCss} aria-hidden="true"><span></span><span></span><span></span></span>
+      <span class={terminalTitleTextCss}>{shellName} — simulated, runs entirely in your browser</span>
+    </div>
+    <div data-terminal-output role="log" aria-live="polite" aria-label="Terminal output" class={terminalOutputCss}>
+      <div data-kind="hint" class={terminalLineCss}>{welcomeText}</div>
+    </div>
+    <div class={terminalInputRowCss}>
+      <span aria-hidden="true" class={terminalPromptCss}>{promptText}</span>
+      <input
+        type="text"
+        data-terminal-input
+        class={terminalInputCss}
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        aria-label={`${shellName} command input`}
+      />
+    </div>
+  </div>
+
+  <div class={nextRowCss}>
+    <button type="button" data-terminal-next hidden class={nextBtnCss}>
+      Next challenge →
+    </button>
+    <p data-terminal-summary hidden role="status" aria-live="polite" class={summaryCss}></p>
+    <button type="button" data-terminal-restart hidden class={restartBtnCss}>
+      Try again
+    </button>
+  </div>
+
+  {/* Cloned by terminalDrill.ts for every command/output/feedback line — see
+      that file's header comment for why the SSR welcome line above is left
+      alone rather than re-rendered through this same template on mount. */}
+  <template data-terminal-line-template>
+    <div class={terminalLineCss}></div>
+  </template>
+  <template data-terminal-link-line-template>
+    <div class={terminalLineCss} data-kind="correct-link">
+      <a data-terminal-line-link class={terminalLineLinkCss} target="_blank" rel="noopener"></a>
+    </div>
+  </template>
+</section>

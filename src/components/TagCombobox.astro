@@ -193,6 +193,7 @@ const { id, options, placeholder = 'Search…', label = 'Filter' } = Astro.props
         b.type = 'button';
         b.className = 'combobox-token';
         b.setAttribute('aria-label', 'Remove ' + labelOf(val));
+        b.title = 'Remove ' + labelOf(val);
         b.appendChild(document.createTextNode(labelOf(val)));
         var x = document.createElement('span');
         x.className = 'x';

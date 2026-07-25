@@ -198,6 +198,29 @@ const spotlightChip = css({
     </div>
   </div>
 
+  {/* Cross-link to the command-syntax counterpart */}
+  <a
+    href="/tools/cheatsheet/"
+    class={css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      mb: '1.5rem',
+      p: '0.7rem 1rem',
+      borderRadius: 'md',
+      border: '1px solid token(colors.border)',
+      bg: 'bgCard',
+      fontSize: '0.9rem',
+      color: 'text',
+      transition: 'border-color 200ms ease, color 200ms ease',
+      _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+    })}
+  >
+    <Icon name="terminal" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>Looking for actual command syntax, not just the tool? See the <strong class={css({ fontWeight: 700 })}>Command Cheat Sheet</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
   {/* Search + function filter (typeahead combobox) */}
   <div class={css({ mb: '0.6rem' })}>
     <TagCombobox
