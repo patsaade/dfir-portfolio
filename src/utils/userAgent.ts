@@ -156,7 +156,7 @@
 //     still a heuristic, not a guarantee, and (per the macOS/iPadOS note
 //     above) cannot identify an iPad specifically.
 
-export interface UaComponent {
+interface UaComponent {
   /** Human-readable name, e.g. "Chrome", "Windows 10", "Blink". */
   name: string;
   /** Version string as found in the UA (dots, not underscores), or null if this tool doesn't capture one for this match. */

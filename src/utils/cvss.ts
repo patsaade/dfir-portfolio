@@ -17,21 +17,21 @@
 // with published reference answers (see test/cvss.test.ts).
 
 /** Attack Vector — how the vulnerability is reached. */
-export type AttackVector = 'N' | 'A' | 'L' | 'P';
+type AttackVector = 'N' | 'A' | 'L' | 'P';
 /** Attack Complexity — conditions beyond the attacker's control that must
  *  exist for a successful attack. */
-export type AttackComplexity = 'L' | 'H';
+type AttackComplexity = 'L' | 'H';
 /** Privileges Required — the access level an attacker must already hold. */
-export type PrivilegesRequired = 'N' | 'L' | 'H';
+type PrivilegesRequired = 'N' | 'L' | 'H';
 /** User Interaction — whether a human other than the attacker must
  *  participate. */
-export type UserInteraction = 'N' | 'R';
+type UserInteraction = 'N' | 'R';
 /** Scope — whether the exploited vulnerability can affect resources beyond
  *  its own security authority. */
-export type Scope = 'U' | 'C';
+type Scope = 'U' | 'C';
 /** Shared value set for the three Impact metrics (Confidentiality,
  *  Integrity, Availability). */
-export type CiaImpact = 'N' | 'L' | 'H';
+type CiaImpact = 'N' | 'L' | 'H';
 
 export interface CvssV31Metrics {
   AV: AttackVector;
@@ -65,7 +65,7 @@ export interface CvssV31Result {
 // in utils/hashes.ts / SIGMA_MODIFIERS plays in utils/sigma.ts).
 // ---------------------------------------------------------------------------
 
-export interface CvssMetricOption {
+interface CvssMetricOption {
   value: string;
   label: string;
   /** Short, accurate paraphrase of the spec's own definition for this value —

@@ -105,7 +105,7 @@ export const UNSUPPORTED_YARA_FEATURES: { feature: string; example: string; note
   { feature: 'Other condition forms', example: 'none of them, 2 of ($a*)', note: 'Only "them" is understood in the of-operator. none of them (YARA 4.3.0+), explicit string sets, for-loops, not, filesize and entrypoint are out of scope.' },
 ];
 
-export interface YaraTextString {
+interface YaraTextString {
   kind: 'text';
   /** Identifier WITHOUT the leading `$`. */
   id: string;
@@ -118,7 +118,7 @@ export interface YaraTextString {
   modifiers: YaraTextModifier[];
 }
 
-export interface YaraHexString {
+interface YaraHexString {
   kind: 'hex';
   id: string;
   /** Raw source between the braces, e.g. `E8 ?? ?? ?? ??`. */
@@ -152,7 +152,7 @@ interface ByteMatcher {
 
 /** One compiled searchable form of a string. A text string with both `ascii`
  *  and `wide` compiles to two of these; a hex string to exactly one. */
-export interface CompiledForm {
+interface CompiledForm {
   form: 'ascii' | 'wide' | 'hex';
   matchers: ByteMatcher[];
 }
@@ -391,7 +391,7 @@ export function findMatchOffsets(data: Uint8Array, matchers: ByteMatcher[]): num
   return out;
 }
 
-export interface YaraStringMatch {
+interface YaraStringMatch {
   offset: number;
   length: number;
   form: 'ascii' | 'wide' | 'hex';
@@ -407,7 +407,7 @@ export interface YaraStringResult {
   error: string | null;
 }
 
-export const MAX_REPORTED_MATCHES = 20;
+const MAX_REPORTED_MATCHES = 20;
 
 /** Scan one string against the sample. A string that fails to compile comes
  *  back with `error` set and `matched: false` — never a throw, and never a

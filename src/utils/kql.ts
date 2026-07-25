@@ -290,7 +290,7 @@ function collectShortTermTip(items: string[], columnName: string, tips: string[]
 // Query assembly
 // ---------------------------------------------------------------------------
 
-export interface KqlSummarize {
+interface KqlSummarize {
   aggregationId: string;
   /** Column the aggregation is applied to. Ignored when the aggregation takes
    *  no argument (count()). */

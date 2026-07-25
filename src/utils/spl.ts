@@ -122,9 +122,9 @@ export const SPL_WHERE_OPERATORS: SplWhereOperator[] = ['=', '==', '!=', '<', '<
  *  is the distinction Splunk's own `where` docs call out as the command's
  *  biggest gotcha versus `search`: `where ipaddress=clientip` compares two
  *  FIELDS, while a string literal has to be double-quoted to be a literal. */
-export type SplOperandKind = 'string' | 'number' | 'field';
+type SplOperandKind = 'string' | 'number' | 'field';
 
-export interface SplFilter {
+interface SplFilter {
   field: string;
   operator: SplComparison;
   value: string;
@@ -182,31 +182,31 @@ export interface SplAggregation {
   alias: string;
 }
 
-export interface SplStatsCommand {
+interface SplStatsCommand {
   kind: 'stats';
   aggregations: SplAggregation[];
   /** The `BY <field-list>` group-by fields; emitted comma-separated. */
   by: string[];
 }
 
-export interface SplTableCommand {
+interface SplTableCommand {
   kind: 'table';
   fields: string[];
 }
 
-export interface SplSortField {
+interface SplSortField {
   field: string;
   direction: 'asc' | 'desc';
 }
 
-export interface SplSortCommand {
+interface SplSortCommand {
   kind: 'sort';
   /** Optional leading `<count>`. Splunk documents 0 as "return everything". */
   limit: string;
   fields: SplSortField[];
 }
 
-export interface SplWhereCommand {
+interface SplWhereCommand {
   kind: 'where';
   left: string;
   operator: SplWhereOperator;
@@ -214,18 +214,18 @@ export interface SplWhereCommand {
   rightKind: SplOperandKind;
 }
 
-export interface SplEvalAssignment {
+interface SplEvalAssignment {
   field: string;
   /** Free text, emitted verbatim — see the file header. */
   expression: string;
 }
 
-export interface SplEvalCommand {
+interface SplEvalCommand {
   kind: 'eval';
   assignments: SplEvalAssignment[];
 }
 
-export interface SplHeadCommand {
+interface SplHeadCommand {
   kind: 'head';
   /** Blank emits a bare `| head`, whose documented default is 10. */
   limit: string;

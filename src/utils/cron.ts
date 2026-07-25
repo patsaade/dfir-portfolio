@@ -83,7 +83,7 @@ export const CRON_FIELD_RANGE_HINT: Record<CronFieldName, string> = {
 // validate it and to drive describeCron()'s wording.
 // ---------------------------------------------------------------------------
 
-export type LeafShape =
+type LeafShape =
   | { kind: 'single'; value: number }
   | { kind: 'range'; start: number; end: number }
   | { kind: 'rangeStep'; start: number; end: number; step: number }
@@ -91,7 +91,7 @@ export type LeafShape =
 
 export type FieldShape = { kind: 'every' } | { kind: 'list'; items: LeafShape[] } | LeafShape;
 
-export interface ParsedCronField {
+interface ParsedCronField {
   /** The exact text the visitor typed for this field (post-whitespace-split, pre-parse). */
   raw: string;
   shape: FieldShape;
@@ -109,13 +109,13 @@ export interface CronSchedule {
 }
 
 /** '@reboot' has no 5-field equivalent — it runs once when the cron daemon starts, not on a schedule. */
-export interface CronReboot {
+interface CronReboot {
   kind: 'reboot';
 }
 
 export type ParsedCron = CronSchedule | CronReboot;
 
-export interface CronParseError {
+interface CronParseError {
   /** Which field the problem is in, or null for a whole-expression-level problem (wrong field count, unknown nickname). */
   field: CronFieldName | null;
   message: string;
@@ -312,7 +312,7 @@ const NICKNAMES: Record<string, string> = {
   '@daily': '0 0 * * *',
   '@hourly': '0 * * * *',
 };
-export const CRON_NICKNAMES = ['@reboot', ...Object.keys(NICKNAMES)];
+const CRON_NICKNAMES = ['@reboot', ...Object.keys(NICKNAMES)];
 
 /** Parse a cron expression: either a plain 5-field schedule, or one of the 7 '@'-nickname
  *  extensions cronie's crontab(5) documents. Never throws — any problem comes back as

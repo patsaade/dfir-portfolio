@@ -377,7 +377,7 @@ export const KQL_TABLES: KqlTable[] = [
  *  - `binary`   -> `Column <symbol> <value>`
  *  - `list`     -> `Column <symbol> (<v1>, <v2>, ...)`
  *  - `function` -> `<symbol>(Column)` (no value at all) */
-export type KqlOperatorForm = 'binary' | 'list' | 'function';
+type KqlOperatorForm = 'binary' | 'list' | 'function';
 
 export interface KqlOperator {
   id: string;
