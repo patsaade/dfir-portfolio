@@ -12,17 +12,6 @@
 // across 6 groups, small enough that hiding any of it behind a click would
 // defeat the point of a landing/overview page whose whole job is to show
 // everything at a glance.
-//
-// This is also the page cyberkit.win's own "/" redirects to (vercel.json,
-// see CLAUDE.md invariant 14) — meaning for that domain, this page's own
-// header effectively IS the site's homepage hero, not just a DFIR
-// sub-section header. `cyberkitHero`/`cyberkitBrowseRow` below render an
-// alternate, CyberKit-branded hero (no breadcrumb, names the toolkit,
-// states its purpose, and links out to IT/Drills too since CyberKit spans
-// all three, not just DFIR) toggled by the same `data-brand="cyberkit"`
-// mechanism Navigation.astro/Footer.astro already use — Patrick's own
-// `defaultHero` below (title "DFIR", breadcrumb, DFIR-scoped description)
-// is untouched and still what patricksaade.com/dfir/ shows.
 export const prerender = true;
 import { css } from 'styled-system/css';
 import { card } from 'styled-system/recipes';
@@ -31,44 +20,6 @@ import PageHeader from '../components/PageHeader.astro';
 import GroupOverview from '../components/GroupOverview.astro';
 import Icon from '../components/Icon.astro';
 import { DFIR_GROUPS } from '../consts';
-
-// Toggles which hero renders — see this file's own top comment. A flat,
-// single-level `[data-brand="cyberkit"] &` selector on each (never nested
-// with a second self-selector — the exact Panda gotcha documented in
-// CLAUDE.md's Debugging section) matches the same pattern already proven
-// safe in Navigation.astro/Footer.astro.
-const defaultHeroWrap = css({ '[data-brand="cyberkit"] &': { display: 'none' } });
-const cyberkitHeroWrap = css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'block' } });
-
-// The three top-level sections CyberKit spans — this page only ever covers
-// DFIR_GROUPS, so a visitor landing here (cyberkit.win's own "/" redirects
-// to this exact page) needs a way to see IT/Drills exist too, not just
-// this one section. Hrefs are the same fixed landing routes Navigation.astro
-// links to; no new data import needed for two stable paths.
-const CYBERKIT_SECTIONS = [
-  { href: '/dfir/', label: 'DFIR', icon: 'shield', desc: 'Forensics & incident response' },
-  { href: '/it/', label: 'IT', icon: 'wifi', desc: 'Networking & computing fundamentals' },
-  { href: '/drills/', label: 'Drills', icon: 'target', desc: 'Practice quizzes' },
-] as const;
-const browseRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', mb: '2rem' });
-const browseChip = css({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '0.5rem',
-  px: '0.85rem',
-  py: '0.55rem',
-  fontFamily: 'sans',
-  fontSize: '0.85rem',
-  fontWeight: 600,
-  color: 'text',
-  bg: 'bgCard',
-  border: '1px solid token(colors.border)',
-  borderRadius: 'md',
-  transition: 'border-color 200ms ease, transform 200ms ease',
-  _hover: { borderColor: 'primary', transform: 'translateY(-1px)' },
-  '&[aria-current=page]': { borderColor: 'primary', borderWidth: '1.5px' },
-});
-const browseChipDesc = css({ color: 'textMuted', fontSize: '0.78rem', fontWeight: 400 });
 
 // "Browse by category" jump-strip — one tile per DFIR_GROUPS category,
 // representative icon = that category's first link (icon uniqueness across
@@ -160,40 +111,12 @@ const cardDesc = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.45
   title="DFIR"
   description="A DFIR reference and tools hub — the tool catalog, command cheat sheet, glossary, MITRE ATT&CK/D3FEND maps, and browser-based forensics tools, all in one place."
 >
-  {/* Patrick's own /dfir/ header — unchanged, what patricksaade.com always shows. */}
-  <div class={defaultHeroWrap}>
-    <PageHeader
-      breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'DFIR' }]}
-      eyebrow="Reference & Tools"
-      title="DFIR"
-      description="Everything for digital forensics & incident response work, organized by what you're trying to do — reference material if you need to look something up, the MITRE framework maps if you're mapping technique to defense, or the browser-based tools below if you're extracting, converting, or parsing something you already have in hand."
-    />
-  </div>
-
-  {/* CyberKit's own homepage hero — this page IS what cyberkit.win's "/"
-      redirects to (see this file's own top comment), so it gets a real
-      hero naming the toolkit and stating its purpose, not just a DFIR
-      sub-section header with a "Home > DFIR" breadcrumb that would make no
-      sense as a homepage. No breadcrumbs prop — this is the top of the
-      site on this domain, there's nothing to trail back to. */}
-  <div class={cyberkitHeroWrap}>
-    <PageHeader
-      eyebrow="Free & Browser-Based"
-      title="CyberKit"
-      description="A free digital forensics, incident response, and IT security toolkit — every tool runs entirely in your browser. Nothing you enter is ever uploaded, logged, or sent anywhere."
-    />
-    <div class={browseRow}>
-      {
-        CYBERKIT_SECTIONS.map((s) => (
-          <a href={s.href} class={browseChip} aria-current={s.href === '/dfir/' ? 'page' : undefined}>
-            <Icon name={s.icon} size={16} class={css({ color: 'primary', flexShrink: 0 })} />
-            {s.label}
-            <span class={browseChipDesc}>— {s.desc}</span>
-          </a>
-        ))
-      }
-    </div>
-  </div>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'DFIR' }]}
+    eyebrow="Reference & Tools"
+    title="DFIR"
+    description="Everything for digital forensics & incident response work, organized by what you're trying to do — reference material if you need to look something up, the MITRE framework maps if you're mapping technique to defense, or the browser-based tools below if you're extracting, converting, or parsing something you already have in hand."
+  />
 
   <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.6rem', color: 'textMuted', fontSize: '0.9rem', mt: '-0.5rem', mb: '1.5rem' })}>
     <span>{totalLinks} destinations across {DFIR_GROUPS.length} categories</span>

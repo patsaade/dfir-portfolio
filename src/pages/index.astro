@@ -1,433 +1,152 @@
 ---
-// Home page — masthead, hero, headline stats, certifications strip, featured/
-// latest posts, and a closing CTA. "Field Report" visual redesign, kept
-// deliberately light on prose per Patrick's direction (pure-visual, relaxed —
-// a title is enough, no descriptive paragraphs) and, on top of that, made
-// more dynamic/less static: below-the-fold sections were previously fully
-// inert once the hero's one-shot load animations finished — everything here
-// now scroll-reveals into place (`data-reveal`, armed by this page's own
-// script; see motion.css section 2), the stat rail's numeral counts up, the
-// certifications ring draws itself in, and the hero illustration gains a
-// subtle post-settle idle pulse — instead of the page just sitting static
-// once painted. The stat captions/excerpt text this removed (Red Canary, "In
-// pursuit of GCFA/GCFE/GCIH", etc.) still live in full on the About/
-// Certifications pages and in post listings — this is a display-density
-// decision for the home page specifically, not a fact drop.
-// Static page — prerender to HTML served from the CDN (output: 'server' is on-demand by default).
+// Home page — a single, distinct, minimal-typographic hero per domain, sized
+// to fit one viewport with no scrolling required. Patrick's version: identity
+// + current role + headline certs at a glance, two CTAs into the blog/labs —
+// content depth (the full post archive, full certification detail) lives on
+// its own pages (/blog/, /certifications/), not stacked below the fold here.
+// CyberKit's version (data-brand="cyberkit", see CLAUDE.md invariant 14):
+// wordmark + purpose statement + three links into DFIR/IT/Drills. This is
+// the first page besides Navigation.astro/Footer.astro to fork by brand —
+// cyberkit.win's own "/" used to redirect into /dfir/ (which forked its own
+// hero the same way); that's been decoupled so /dfir/ can stay a single,
+// fully-scrollable reference hub on both domains while this page carries the
+// zero-scroll splash instead.
 export const prerender = true;
 import { css } from 'styled-system/css';
-import { tag } from 'styled-system/recipes';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import BlogCard from '../components/BlogCard.astro';
 import Icon from '../components/Icon.astro';
 import PixelStar from '../components/PixelStar.astro';
-import FragmentTimeline from '../components/FragmentTimeline.astro';
-import { getSortedPosts, estimateReadTime } from '../utils/posts';
-import { STATS, SOCIALS } from '../consts';
-import { CERTIFICATIONS, EARNED_CERTS } from '../data/certifications';
+import { SOCIALS } from '../consts';
 
-const posts = await getSortedPosts();
-const featured = posts.filter((p) => p.data.featured).slice(0, 3);
-const latest = (featured.length ? featured : posts).slice(0, 3);
-const [cover, ...secondary] = latest;
+// Sizing shared by both hero variants — `minH` is the viewport height minus
+// the known fixed chrome above <main>: Ticker (~35px base / ~37px sm+) +
+// Navigation's sticky header (64px + 1px border) + BaseLayout <main>'s own
+// top padding (32px base / 48px md+). `minHeight`, not `height`/
+// `overflow:hidden` — BaseLayout's <main> is shared by every other page, so
+// an unusually short viewport should gracefully grow a small natural scroll
+// rather than get clipped.
+const heroSizing = {
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  minH: { base: 'calc(100dvh - 140px)', md: 'calc(100dvh - 158px)' },
+} as const;
+// Each is ONE css(base, variant) call — not two separately-called css()
+// results concatenated as class strings. Both objects set `display`, and
+// STYLE_GUIDE.md's "Buttons" gotcha already bit this codebase once (the
+// primary-button hover-color bug) when two independently-atomized classes
+// each override the same property: they race on source order instead of
+// deep-merging. A single call is what guarantees the brand override wins.
+const defaultHeroWrap = css({ ...heroSizing }, { '[data-brand="cyberkit"] &': { display: 'none' } });
+const cyberkitHeroWrap = css({ ...heroSizing, display: 'none' }, { '[data-brand="cyberkit"] &': { display: 'flex' } });
 
-const year = new Date().getFullYear();
+// The three top-level sections CyberKit spans.
+const CYBERKIT_SECTIONS = [
+  { href: '/dfir/', label: 'DFIR tools', icon: 'shield' },
+  { href: '/it/', label: 'IT tools', icon: 'wifi' },
+  { href: '/drills/', label: 'Practice drills', icon: 'target' },
+] as const;
 
-// Certifications progress ring — real counts from src/data/certifications.ts (see
-// that file's own content-accuracy note); nothing here is invented.
-const CERT_RING_R = 22;
-const certRingCircumference = 2 * Math.PI * CERT_RING_R;
-const certRingOffset = certRingCircumference * (1 - EARNED_CERTS.length / CERTIFICATIONS.length);
+const eyebrow = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  fontWeight: 700,
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  color: 'primary',
+  mb: '0.6rem',
+});
+const heroH1 = css({
+  fontSize: { base: '2.6rem', md: '3.75rem', lg: '4.25rem' },
+  fontWeight: 700,
+  lineHeight: 1.05,
+  letterSpacing: '-0.04em',
+  mb: '0.85rem',
+});
+const tagline = css({ fontSize: '1.05rem', color: 'textMuted', maxW: '620px', lineHeight: 1.5 });
+const ctaRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', mt: '1.25rem' });
+const ctaPrimary = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  bg: 'primary',
+  color: 'onPrimary',
+  fontWeight: 600,
+  px: '1.25rem',
+  py: '0.7rem',
+  borderRadius: 'md',
+  transition: 'background 200ms ease, transform 200ms ease',
+  _hover: { bg: 'primaryHover', transform: 'translateY(-1px)' },
+});
+const ctaGhost = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  fontWeight: 600,
+  px: '1.25rem',
+  py: '0.7rem',
+  borderRadius: 'md',
+  transition: 'border-color 200ms ease',
+  _hover: { borderColor: 'primary' },
+});
+const signOffLink = css({ color: 'primary', fontWeight: 600, _hover: { textDecoration: 'underline' } });
+const signOffRow = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', mt: '1rem' });
 ---
 
 <BaseLayout>
-  {/* Masthead strip */}
-  <div
-    class={css({
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: '0.5rem',
-      py: '0.6rem',
-      mb: { base: '1.5rem', md: '2rem' },
-      borderBottom: '1px solid token(colors.border)',
-      fontFamily: 'mono',
-      fontSize: '0.7rem',
-      letterSpacing: '0.08em',
-      textTransform: 'uppercase',
-      color: 'textMuted',
-    })}
-  >
-    <span>DFIR Field Notes · SOC &amp; Incident Response</span>
-    <span>Vol. {year}</span>
-  </div>
-
-  {/* Hero */}
-  <section
-    class={css({
-      display: 'grid',
-      gridTemplateColumns: { base: '1fr', lg: '1.3fr 1fr' },
-      gap: { base: '1.5rem', lg: '3rem' },
-      alignItems: { lg: 'end' },
-      pb: { base: '2rem', md: '3rem' },
-      mb: '3rem',
-      borderBottom: '1px solid token(colors.border)',
-    })}
-  >
-    <div>
-      <p
-        class={css({
-          fontFamily: 'mono',
-          fontSize: '0.78rem',
-          fontWeight: 700,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase',
-          color: 'primary',
-          mb: '0.75rem',
-        })}
-      >
-        Field Report
-      </p>
-      <h1
-        class={`declassify-hero ${css({
-          fontSize: { base: '2.6rem', md: '4.25rem', lg: '4.75rem' },
-          fontWeight: 700,
-          lineHeight: 1.05,
-          letterSpacing: '-0.04em',
-          maxW: '15ch',
-          mb: '1.5rem',
-        })}`}
-      >
-        DFIR-focused.<br />
-        <span class={css({ color: 'primary' })}>SOC & Incident Response @ First American.</span>
-      </h1>
-      <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', mt: '2rem' })}>
-        <a
-          href="/blog/"
-          class={css({
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            bg: 'primary',
-            color: 'onPrimary',
-            fontWeight: 600,
-            px: '1.25rem',
-            py: '0.7rem',
-            borderRadius: 'md',
-            transition: 'background 200ms ease, transform 200ms ease',
-            _hover: { bg: 'primaryHover', transform: 'translateY(-1px)' },
-          })}
-        >
-          Latest posts <Icon name="arrow-right" size={17} />
-        </a>
-        <a
-          href="/labs/"
-          class={css({
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            border: '1px solid token(colors.border)',
-            color: 'text',
-            fontWeight: 600,
-            px: '1.25rem',
-            py: '0.7rem',
-            borderRadius: 'md',
-            transition: 'border-color 200ms ease',
-            _hover: { borderColor: 'primary' },
-          })}
-        >
-          <Icon name="flask" size={17} /> Lab writeups
-        </a>
-      </div>
-    </div>
-
-    <FragmentTimeline class={css({ display: { base: 'none', lg: 'block' }, w: '100%', maxW: '420px', h: 'auto' })} />
-  </section>
-
-  {/* Stat rail — scroll-reveals with a per-item stagger (data-reveal, armed
-      by this page's script); the numeral counts up from 0 the moment it
-      enters view (motion.css / index.astro script), always landing on and
-      matching the real static "3+" a no-JS/reduced-motion reader sees immediately. */}
-  <section
-    data-reveal
-    class={css({
-      display: 'grid',
-      gridTemplateColumns: { base: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
-      gap: { base: '1.5rem', md: 0 },
-      borderTop: '1px solid token(colors.border)',
-      borderBottom: '1px solid token(colors.border)',
-      py: { base: '2rem', md: '2.5rem' },
-      mb: '2rem',
-    })}
-  >
-    {
-      STATS.map((s, i) => (
-        <div
-          style={`transition-delay:${i * 90}ms`}
-          class={css({
-            px: { base: 0, md: '1.25rem' },
-            borderInlineStart: { base: 'none', md: i > 0 ? '1px solid token(colors.border)' : 'none' },
-          })}
-        >
-          {i === 1 ? (
-            <div
-              data-count-target="3"
-              class={css({
-                fontSize: { base: '2.5rem', md: '3.5rem' },
-                fontWeight: 700,
-                color: 'primary',
-                lineHeight: 1,
-                mb: '0.5rem',
-              })}
-            >
-              3+
-            </div>
-          ) : (
-            <Icon name={s.icon} size={20} class={css({ color: 'primary', mb: '0.6rem' })} />
-          )}
-          <div
-            title={s.desc}
-            class={css({ fontWeight: 700, fontSize: '0.95rem', color: 'text', lineHeight: 1.3, textWrap: 'balance' })}
-          >
-            {s.title}
-          </div>
-        </div>
-      ))
-    }
-  </section>
-
-  {/* Certifications strip — real counts from src/data/certifications.ts. The
-      ring draws itself in (empty -> real earned/total offset) the moment it
-      scroll-reveals (data-reveal, cert-ring-fill — see motion.css); its
-      unconditional stroke-dashoffset attribute below is the always-correct
-      ground truth for no-JS/reduced-motion readers. */}
-  <a
-    href="/certifications/"
-    data-reveal
-    class={css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: '1rem',
-      py: '1.25rem',
-      borderBottom: '1px solid token(colors.border)',
-      mb: '2rem',
-      transition: 'opacity 200ms ease',
-      _hover: { opacity: 0.85 },
-    })}
-  >
-    <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true" class={css({ flexShrink: 0 })}>
-      <circle cx="28" cy="28" r={CERT_RING_R} fill="none" style="stroke: var(--colors-border)" stroke-width="4" />
-      <circle
-        cx="28"
-        cy="28"
-        r={CERT_RING_R}
-        fill="none"
-        class="cert-ring-fill"
-        style={`stroke: var(--colors-primary); --cert-empty-offset: ${certRingCircumference}; --cert-final-offset: ${certRingOffset};`}
-        stroke-width="4"
-        stroke-linecap="round"
-        stroke-dasharray={certRingCircumference}
-        stroke-dashoffset={certRingOffset}
-        transform="rotate(-90 28 28)"
-      />
-    </svg>
-    <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' })}>
-      <span class={tag({ tone: 'muted' })}>
-        <Icon name="award" size={12} /> CISSP
-      </span>
-      <span class={tag({ tone: 'accent' })}>
-        <Icon name="clock" size={12} /> GCFA · GCFE · GCIH
-      </span>
-    </div>
-  </a>
-
-  {/* Divider */}
-  <div class={css({ position: 'relative', borderTop: '1px solid token(colors.border)', mb: '2.5rem' })}>
-    <span
-      aria-hidden="true"
-      class={css({
-        position: 'absolute',
-        top: '-0.65rem',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        bg: 'bg',
-        color: 'textMuted',
-        px: '0.75rem',
-        fontSize: '0.9rem',
-        lineHeight: 1,
-      })}
-    >
-      •
-    </span>
-  </div>
-
-  {/* Featured / latest posts — scroll-reveals (header, then the cover+list
-      block); the secondary list also reveals each row with its own stagger. */}
-  <section data-reveal>
-    <div class={css({ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: '1.5rem' })}>
-      <h2 class={css({ fontSize: '1.75rem', fontWeight: 700 })}>
-        {featured.length ? 'Featured writeups' : 'Latest posts'}
-      </h2>
-      {
-        secondary.length === 0 && (
-          <a href="/blog/" class={css({ fontSize: '0.9rem', color: 'primary', _hover: { textDecoration: 'underline' } })}>
-            View all →
-          </a>
-        )
-      }
-    </div>
-
-    {
-      cover ? (
-        <div
-          class={css({
-            display: 'grid',
-            gridTemplateColumns: secondary.length ? { base: '1fr', lg: '1.6fr 1fr' } : '1fr',
-            gap: { base: '1.5rem', lg: '2rem' },
-          })}
-        >
-          <BlogCard
-            size="lg"
-            hideExcerpt
-            href={`/blog/${cover.id}/`}
-            title={cover.data.title}
-            excerpt={cover.data.excerpt}
-            category={cover.data.category}
-            date={cover.data.date}
-            readTime={estimateReadTime(cover.body, cover.data.readTime)}
-            difficulty={cover.data.difficulty}
-            tags={cover.data.tags}
-            featured={cover.data.featured}
-          />
-          {
-            secondary.length > 0 && (
-              <div data-reveal class={css({ display: 'flex', flexDirection: 'column' })}>
-                {secondary.map((p, i) => (
-                  <div style={`transition-delay:${i * 100}ms`}>
-                    <BlogCard
-                      size="sm"
-                      href={`/blog/${p.id}/`}
-                      title={p.data.title}
-                      excerpt={p.data.excerpt}
-                      category={p.data.category}
-                      date={p.data.date}
-                      readTime={estimateReadTime(p.body, p.data.readTime)}
-                      difficulty={p.data.difficulty}
-                    />
-                  </div>
-                ))}
-                <a
-                  href="/blog/"
-                  class={css({
-                    mt: '1rem',
-                    alignSelf: 'flex-end',
-                    fontSize: '0.9rem',
-                    color: 'primary',
-                    _hover: { textDecoration: 'underline' },
-                  })}
-                >
-                  View all →
-                </a>
-              </div>
-            )
-          }
-        </div>
-      ) : (
-        <p class={css({ color: 'textMuted' })}>First posts publishing soon.</p>
-      )
-    }
-  </section>
-
-  {/* Closing sign-off — a wordless mark instead of a repeated rhetorical
-      question (the cert-pursuit fact already lives once, above, in the
-      certifications strip); the star's twinkle keeps a small ambient motion
-      going after the page's other one-shot entrances settle. */}
-  <section
-    data-reveal
-    class={css({
-      mt: '3.5rem',
-      pt: '3rem',
-      borderTop: '1px solid token(colors.border)',
-      textAlign: 'center',
-    })}
-  >
-    <div class={css({ display: 'flex', justifyContent: 'center', mb: '1.25rem' })}>
-      <PixelStar size={26} />
-    </div>
-    <div class={css({ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' })}>
-      <a href={SOCIALS.linkedin} target="_blank" rel="noopener" class={css({ color: 'primary', fontWeight: 600, _hover: { textDecoration: 'underline' } })}>
-        LinkedIn
+  {/* Patrick's own homepage hero — unchanged, what patricksaade.com always shows. */}
+  <section class={defaultHeroWrap}>
+    <p class={eyebrow}>Field Report</p>
+    <h1 class={`declassify-hero ${heroH1}`}>
+      DFIR-focused.<br />
+      <span class={css({ color: 'primary' })}>SOC &amp; Incident Response @ First American.</span>
+    </h1>
+    <p class={tagline}>
+      3+ years in live incident response — memory &amp; host forensics, EDR, and detection.
+      CISSP certified; in pursuit of GCFA, GCFE, and GCIH.
+    </p>
+    <div class={ctaRow}>
+      <a href="/blog/" class={ctaPrimary}>
+        Latest posts <Icon name="arrow-right" size={17} />
       </a>
+      <a href="/labs/" class={ctaGhost}>
+        <Icon name="flask" size={17} /> Lab writeups
+      </a>
+    </div>
+    <div class={signOffRow}>
+      <PixelStar size={22} />
+      <a href={SOCIALS.linkedin} target="_blank" rel="noopener" class={signOffLink}>LinkedIn</a>
       <span class={css({ color: 'border' })}>·</span>
-      <a href={SOCIALS.github} target="_blank" rel="noopener" class={css({ color: 'primary', fontWeight: 600, _hover: { textDecoration: 'underline' } })}>
-        GitHub
-      </a>
+      <a href={SOCIALS.github} target="_blank" rel="noopener" class={signOffLink}>GitHub</a>
+    </div>
+  </section>
+
+  {/* CyberKit's own homepage hero — cyberkit.win's actual landing page. No
+      breadcrumb, no personal identity — names the toolkit, states its
+      purpose, and links straight into the three sections it spans. */}
+  <section class={cyberkitHeroWrap}>
+    <p class={eyebrow}>
+      <PixelStar size={14} />
+      Free &amp; Browser-Based
+    </p>
+    <h1 class={`declassify-hero ${heroH1}`}>CyberKit</h1>
+    <p class={tagline}>
+      A free digital forensics, incident response, and IT security toolkit — every tool runs
+      entirely in your browser. Nothing you enter is ever uploaded, logged, or sent anywhere.
+    </p>
+    <div class={ctaRow}>
+      {
+        CYBERKIT_SECTIONS.map((s, i) => (
+          <a href={s.href} class={i === 0 ? ctaPrimary : ctaGhost}>
+            <Icon name={s.icon} size={17} /> {s.label}
+          </a>
+        ))
+      }
     </div>
   </section>
 </BaseLayout>
-
-<script>
-  // @ts-nocheck — vanilla DOM script
-  (function () {
-    var motionOk = !window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!motionOk || !('IntersectionObserver' in window)) return;
-
-    // Scroll-reveal: each [data-reveal] container's direct children fade/rise
-    // in independently as they cross into view (see motion.css section 2 for
-    // the `.reveal-ready`/`.is-revealed` CSS this drives — the same mechanism
-    // PostLayout uses for blog-post prose, generalized to any container here).
-    // The class is only ever added here, never server-rendered, so a no-JS or
-    // reduced-motion reader always sees every section fully visible already.
-    var containers = document.querySelectorAll('[data-reveal]');
-    if (containers.length) {
-      var io = new IntersectionObserver(
-        function (entries) {
-          entries.forEach(function (entry) {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('is-revealed');
-              io.unobserve(entry.target);
-            }
-          });
-        },
-        { rootMargin: '0px 0px -8% 0px', threshold: 0.05 },
-      );
-      containers.forEach(function (container) {
-        container.classList.add('reveal-ready');
-        Array.prototype.forEach.call(container.children, function (el) {
-          io.observe(el);
-        });
-      });
-    }
-
-    // Stat rail numeral: counts up from 0 the moment it enters view, landing
-    // on the exact same real value ("3+") a no-JS/reduced-motion reader
-    // already sees statically. Plain rAF, not motion/mini's animate() — that
-    // drives the Web Animations API on real CSS/DOM properties and has no
-    // per-frame JS callback to rewrite textContent with.
-    var counter = document.querySelector('[data-count-target]');
-    if (counter) {
-      var target = parseInt(counter.getAttribute('data-count-target'), 10);
-      var counterIo = new IntersectionObserver(
-        function (entries) {
-          entries.forEach(function (entry) {
-            if (!entry.isIntersecting) return;
-            counterIo.unobserve(entry.target);
-            var start = null;
-            var duration = 700;
-            function tick(ts) {
-              if (start === null) start = ts;
-              var progress = Math.min((ts - start) / duration, 1);
-              var eased = 1 - Math.pow(1 - progress, 3);
-              counter.textContent = Math.round(eased * target) + '+';
-              if (progress < 1) requestAnimationFrame(tick);
-            }
-            requestAnimationFrame(tick);
-          });
-        },
-        { threshold: 0.4 },
-      );
-      counterIo.observe(counter);
-    }
-  })();
-</script>

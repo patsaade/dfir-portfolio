@@ -60,16 +60,6 @@
     opacity: 1 !important;
     transform: none !important;
   }
-  .ft-fragment,
-  .ft-tracer {
-    animation: none !important;
-    opacity: 1 !important;
-  }
-  .ft-node,
-  .ft-idle .ft-node {
-    animation: none !important;
-    opacity: var(--ft-end-opacity, 1) !important;
-  }
   [data-ioc-category] {
     animation: none !important;
   }
@@ -254,70 +244,7 @@
   animation: copyPop 220ms ease;
 }
 
-/* ── 5. Fragment timeline settle — hero illustration (FragmentTimeline.astro) ──
-   Evidence fragments fade in, tracers draw down to the axis, then the event
-   nodes pop in — one time on load, staggered per-element via inline
-   animation-delay (same technique as the pixel-star twinkle above). Purely
-   decorative/aria-hidden, so settling instantly under reduced motion (the
-   block up top) loses nothing. */
-@keyframes ftFragmentIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-.ft-fragment {
-  opacity: 0;
-  animation: ftFragmentIn 420ms ease-out both;
-}
-@keyframes ftTracerIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 0.35;
-  }
-}
-.ft-tracer {
-  opacity: 0;
-  animation: ftTracerIn 420ms ease-out both;
-}
-@keyframes ftNodeIn {
-  0% {
-    opacity: 0;
-  }
-  100% {
-    opacity: var(--ft-end-opacity, 1);
-  }
-}
-.ft-node {
-  opacity: 0;
-  animation: ftNodeIn 380ms ease-out both;
-}
-
-/* Idle pulse — once the settle-in above fully finishes, a slow continuous
-   opacity breathe on the timeline nodes keeps the illustration from going
-   visually inert (armed by FragmentTimeline's own script, only after the
-   settle-in's last delay + duration has elapsed and motion is allowed — so it
-   picks up exactly where ftNodeIn left off, no visible jump). Same infinite-
-   loop-with-reduced-motion-off-switch shape as the pixel-star twinkle above,
-   just gated behind `.ft-idle` so it never fights the settle-in it follows. */
-@keyframes ftNodePulse {
-  0%,
-  100% {
-    opacity: var(--ft-end-opacity, 1);
-  }
-  50% {
-    opacity: calc(var(--ft-end-opacity, 1) * 0.7);
-  }
-}
-.ft-idle .ft-node {
-  animation: ftNodePulse 3.4s ease-in-out infinite;
-}
-
-/* ── 6. Result-card drop-in — dynamically-populated cards (IocExtractor) ───────
+/* ── 5. Result-card drop-in — dynamically-populated cards (IocExtractor) ───────
    A category card switches from `display:none` to visible the moment it gets
    a match (data-has-matches, toggled in IocExtractor's script) — this animates
    that reveal with a quick fade + downward settle instead of an instant snap.
@@ -339,7 +266,7 @@
   animation: resultCardIn 260ms ease-out both;
 }
 
-/* ── 7. Theme wipe — circular reveal on light/dark + palette switches ──────────
+/* ── 6. Theme wipe — circular reveal on light/dark + palette switches ──────────
    User-initiated theme changes (BaseHead's applyAnimated) run through the View
    Transitions API. The wipe itself is animated in JS (root.animate on the
    ::view-transition-new(root) snapshot) so the circle radiates accurately from the

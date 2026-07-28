@@ -13,8 +13,11 @@ The decisions every change should serve:
   practitioners/peers (read deep), 3) students/newcomers. So: the hero must convey identity +
   current role + headline certs at a glance, and the About page is one click for recruiters —
   but the body goes deep enough for practitioners.
-- **Home emphasis:** **blog-forward**. Lead with content (featured/latest posts); keep a
-  concise credentials hero, but push depth of "about me" to the About page.
+- **Home emphasis:** a **single-screen, minimal-typographic hero** — identity, current role, and
+  headline certs at a glance in one line, two CTAs straight into `/blog/`/`/labs/`, sized to need
+  no scrolling. Content depth (the full post archive, full certification detail) lives on its own
+  pages, not stacked below the fold on the homepage — see CLAUDE.md invariant 14 for the mechanics
+  and the cyberkit.win homepage fork this same file also carries.
 - **Content pillars (priority order):** **Host forensics** and **Memory forensics** first;
   then EDR analysis, Labs/CTF, Tools/exam-prep.
 - **Content source:** **public lab & CTF challenges and personal study only** — CyberDefenders,
@@ -64,7 +67,9 @@ artifacts, or models — never products, tools, vendors, or companies** (the gen
 ## Visual direction
 
 Aim **richly technical** while keeping the dark, terminal-adjacent base, the ambient node
-background, and the theme system:
+background, and the theme system. **Exception:** both domains' homepage heroes (`index.astro`)
+are deliberately minimal-typographic instead — no diagrams/tables/decorative framing there, just
+type, whitespace, and the ambient canvas; don't "correct" them back toward richly-technical.
 
 - Favor **diagrams, annotated screenshots, data tables, and timelines** in posts over plain
   prose where they clarify.

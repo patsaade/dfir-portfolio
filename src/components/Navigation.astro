@@ -36,14 +36,39 @@ const LANDING_HREF: Partial<Record<(typeof dropdowns)[number]['id'], string>> = 
   it: '/it/',
   drills: '/drills/',
 };
-const isAnyActive = (groups: readonly { links: readonly { href: string }[] }[]) =>
-  groups.some((g) => g.links.some((l) => isActive(l.href)));
+// Every explicit link href across all four dropdowns, mapped to whichever
+// dropdown owns it. Needed because DFIR's "Tool Catalog" entry links to the
+// bare hub page "/tools/" — a prefix match meant to catch its own dynamically
+// generated catalog-entry detail pages (e.g. "/tools/volatility-3/", which
+// isn't individually listed anywhere) — but several IT_GROUPS tool pages
+// (e.g. "/tools/cidr-calculator/") live under that same "/tools/*" URL
+// prefix while being explicitly, individually owned by IT instead. Without a
+// tie-break, viewing an IT tool page satisfied both DFIR's loose "/tools/"
+// prefix AND IT's own exact entry, underlining both nav triggers at once. An
+// exact match on a specific page is always more specific than another
+// section's looser hub prefix, so exact ownership wins outright.
+const hrefOwner = new Map<string, (typeof dropdowns)[number]['id']>();
+for (const d of dropdowns) {
+  for (const g of d.groups) {
+    for (const link of g.links) {
+      if (!hrefOwner.has(link.href)) hrefOwner.set(link.href, d.id);
+    }
+  }
+}
+const isLinkActive = (href: string, ownerId: (typeof dropdowns)[number]['id']) => {
+  if (pathname === href) return true;
+  if (!isActive(href)) return false;
+  const exactOwner = hrefOwner.get(pathname);
+  return exactOwner === undefined || exactOwner === ownerId;
+};
+const isAnyActive = (ownerId: (typeof dropdowns)[number]['id'], groups: readonly { links: readonly { href: string }[] }[]) =>
+  groups.some((g) => g.links.some((l) => isLinkActive(l.href, ownerId)));
 // A dropdown's own landing page isn't inside its links (it's the page those
 // links point AT), so isAnyActive alone would leave the trigger looking
 // unselected while actually on that page.
 const isDropdownActive = (d: (typeof dropdowns)[number]) => {
   const landing = LANDING_HREF[d.id];
-  return isAnyActive(d.groups) || (landing !== undefined && isActive(landing));
+  return isAnyActive(d.id, d.groups) || (landing !== undefined && isActive(landing));
 };
 
 // Desktop nav "More" dropdown (mirrors the footer's More column). Opens on
@@ -322,34 +347,7 @@ const mobileLink = css({
   color: 'textMuted',
   '&[aria-current=page]': { color: 'primary', fontWeight: 600 },
 });
-const mobileGroupLabel = css({
-  fontFamily: 'sans',
-  fontSize: '0.65rem',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.1em',
-  color: 'primary',
-  mt: '0.5rem',
-  '&:first-child': { mt: 0 },
-});
-// Mobile collapsible-section header (DFIR / More).
-const mobileSummary = css({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  py: '0.55rem',
-  cursor: 'pointer',
-  listStyle: 'none',
-  fontFamily: 'sans',
-  fontSize: '0.7rem',
-  fontWeight: 700,
-  textTransform: 'uppercase',
-  letterSpacing: '0.1em',
-  color: 'textMuted',
-  '&::-webkit-details-marker': { display: 'none' },
-  '&::marker': { display: 'none' },
-  '& .mobile-section-chev': { transition: 'transform 200ms ease' },
-});
+const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
 ---
 
 <header
@@ -729,42 +727,34 @@ const mobileSummary = css({
         </li>
       ))
     }
+    {/* DFIR / IT / Drills — flat links straight to each section's own landing
+        page, no accordion: saves vertical space on mobile (desktop keeps its
+        own hover mega-menus above, unaffected). This link already is what the
+        old "Browse all X pages →" sub-link pointed at, so there's nothing to
+        duplicate underneath it. */}
     {
-      dropdowns.map((d) => (
-        <li class={css({ borderTop: '1px solid token(colors.border)' })}>
-          <details class="nav-mobile-section" name="nav-mobile-accordion">
-            <summary class={mobileSummary}>
+      dropdowns
+        .filter((d) => d.id !== 'more')
+        .map((d, i) => (
+          <li class={i === 0 ? mobileLinkDivider : undefined}>
+            <a
+              href={LANDING_HREF[d.id]}
+              aria-current={LANDING_HREF[d.id] && isActive(LANDING_HREF[d.id]!) ? 'page' : undefined}
+              class={mobileLink}
+            >
               {d.label}
-              <Icon name="chevron-down" size={15} class="mobile-section-chev" />
-            </summary>
-            <div class={css({ display: 'flex', flexDirection: 'column', pl: '0.5rem', pb: '0.3rem' })}>
-              {d.id === 'dfir' && (
-                <a href="/dfir/" aria-current={isActive('/dfir/') ? 'page' : undefined} class={mobileLink}>
-                  Browse all DFIR pages →
-                </a>
-              )}
-              {d.id === 'it' && (
-                <a href="/it/" aria-current={isActive('/it/') ? 'page' : undefined} class={mobileLink}>
-                  Browse all IT pages →
-                </a>
-              )}
-              {d.id === 'drills' && (
-                <a href="/drills/" aria-current={isActive('/drills/') ? 'page' : undefined} class={mobileLink}>
-                  Browse all Drills →
-                </a>
-              )}
-              {d.groups.map((g) => (
-                <>
-                  {g.category && <p class={mobileGroupLabel}>{g.category}</p>}
-                  {g.links.map((link) => (
-                    <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={mobileLink}>
-                      {link.label}
-                    </a>
-                  ))}
-                </>
-              ))}
-            </div>
-          </details>
+            </a>
+          </li>
+        ))
+    }
+    {/* More (Certifications/Privacy/Colophon) — same flat treatment, no
+        grouping label needed for 3 items. */}
+    {
+      MORE_LINKS.map((link, i) => (
+        <li class={`${i === 0 ? mobileLinkDivider : ''} ${link.href === '/certifications/' ? css({ '[data-brand="cyberkit"] &': { display: 'none' } }) : ''}`}>
+          <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={mobileLink}>
+            {link.label}
+          </a>
         </li>
       ))
     }
