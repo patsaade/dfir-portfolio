@@ -261,8 +261,9 @@ still uses normal sentence case, e.g. "…detection-and-response and incident re
 - **Badges** ([Badge.astro](../src/components/Badge.astro)): variants `default` (muted),
   `primary` (category — pass `icon`), `accent` (certs/tools/featured), `difficulty`. Mono,
   small, uppercase-ish. Use `categoryIcon()` from `consts.ts` for category badges.
-- **Icons** ([Icon.astro](../src/components/Icon.astro)): lucide-style inline SVG, stroke,
-  `currentColor`, 24×24 viewBox. Add new ones to the `ICONS` map. Default size 18; 13–15 in
+- **Icons** ([Icon.astro](../src/components/Icon.astro)): lucide-style SVG, stroke,
+  `currentColor`, 24×24 viewBox, served as one external sprite. Add new ones to the `ICONS` map
+  in [icons.ts](../src/data/icons.ts) — geometry only, no paint attributes. Default size 18; 13–15 in
   badges/inline, 20 in section headings.
 - **Buttons:** primary = solid `bg: 'primary'` / `color: 'onPrimary'` / `borderRadius: 'md'`,
   hover `bg: 'primaryHover'` + lift; ghost = `border` + transparent, hover `borderColor: 'primary'`.

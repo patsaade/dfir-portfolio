@@ -2,6 +2,7 @@
 import { SITE, SOCIALS } from '../consts';
 import { THEME_MODES, THEME_BG, DEFAULT_DARK, DEFAULT_LIGHT } from '../themes';
 import { ogSlugForPath } from '../og/routes';
+import { ICON_SPRITE_HREF } from '../utils/iconSprite';
 
 interface Props {
   title?: string;
@@ -156,6 +157,16 @@ const jsonLd = JSON.stringify({ '@context': 'https://schema.org', '@graph': grap
   media="(prefers-reduced-motion: no-preference)"
   crossorigin
 />
+
+<!-- Preload the icon sprite. Every page renders 110-700 <Icon>s, all of which are
+     now a <use> reference into this one file (src/utils/iconSprite.ts), so it is a
+     genuine first-paint dependency: without the preload it isn't discovered until
+     the parser reaches the first icon, and nav/ticker/sidebar icons would be blank
+     for that round-trip. No `crossorigin` — it is same-origin, and adding it would
+     make the preload a credentials-mode mismatch for the <use> fetch and cause a
+     second download. The href carries the sprite's content hash, so it must come
+     from the same ICON_SPRITE_HREF the <use> elements use, never a hardcoded path. -->
+<link rel="preload" href={ICON_SPRITE_HREF} as="image" type="image/svg+xml" />
 
 <!-- Structured data -->
 <script type="application/ld+json" is:inline set:html={jsonLd} />
