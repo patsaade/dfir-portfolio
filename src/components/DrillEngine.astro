@@ -131,7 +131,7 @@ const choiceBtnCss = css({
   _hover: { borderColor: 'primary', color: 'primary' },
   _disabled: { cursor: 'not-allowed' },
   '&:disabled:not([data-correct]):not([data-incorrect])': { opacity: 0.5 },
-  '&[data-correct]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 12%, transparent)' },
+  '&[data-correct]': { borderColor: 'success', bg: 'color-mix(in srgb, token(colors.success) 12%, transparent)' },
   // The `danger` semantic token (per-palette, contrast-checked) — never the
   // raw `red` keyword this used to use, which sat outside the theme system
   // entirely and couldn't be tuned per palette. Note every incorrect/fail
@@ -190,7 +190,7 @@ const testCaseRowCss = css({
   borderRadius: 'md',
   border: '1px solid token(colors.border)',
   bg: 'bgSubtle',
-  '&[data-state="pass"]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 10%, transparent)' },
+  '&[data-state="pass"]': { borderColor: 'success', bg: 'color-mix(in srgb, token(colors.success) 10%, transparent)' },
   '&[data-state="fail"]': { borderColor: 'danger', bg: 'color-mix(in srgb, token(colors.danger) 8%, transparent)' },
 });
 const testCaseIconCss = css({
@@ -211,7 +211,7 @@ const testCaseIconCss = css({
   // ✓ glyph" without embedding it as content here too, so the row's own
   // data-state additionally recolors this ring for a belt-and-suspenders
   // signal that doesn't rely on the glyph alone (color-blind friendly).
-  '[data-state="pass"] &': { borderColor: 'accent', color: 'accent' },
+  '[data-state="pass"] &': { borderColor: 'success', color: 'success' },
   '[data-state="fail"] &': { borderColor: 'danger', color: 'danger' },
 });
 const testCaseTextCss = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'text', wordBreak: 'break-all' });
@@ -348,7 +348,7 @@ const extractRowCss = css({
   borderRadius: 'md',
   border: '1px solid token(colors.border)',
   bg: 'bgSubtle',
-  '&[data-state="pass"]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 10%, transparent)' },
+  '&[data-state="pass"]': { borderColor: 'success', bg: 'color-mix(in srgb, token(colors.success) 10%, transparent)' },
   '&[data-state="fail"]': { borderColor: 'danger', bg: 'color-mix(in srgb, token(colors.danger) 8%, transparent)' },
 });
 const extractLabelCss = css({ fontFamily: 'sans', fontSize: '0.82rem', fontWeight: 600, color: 'text', flex: '1 1 200px', minW: '160px' });
@@ -380,7 +380,7 @@ const extractIconCss = css({
   color: 'textMuted',
   bg: 'bgCard',
   border: '1px solid token(colors.border)',
-  '[data-state="pass"] &': { borderColor: 'accent', color: 'accent' },
+  '[data-state="pass"] &': { borderColor: 'success', color: 'success' },
   '[data-state="fail"] &': { borderColor: 'danger', color: 'danger' },
 });
 
@@ -397,7 +397,7 @@ const matchRowCss = css({
   borderRadius: 'md',
   border: '1px solid token(colors.border)',
   bg: 'bgSubtle',
-  '&[data-state="pass"]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 10%, transparent)' },
+  '&[data-state="pass"]': { borderColor: 'success', bg: 'color-mix(in srgb, token(colors.success) 10%, transparent)' },
   '&[data-state="fail"]': { borderColor: 'danger', bg: 'color-mix(in srgb, token(colors.danger) 8%, transparent)' },
 });
 // Same ✓/✕ status ring 'construct'/'extract' rows already use — added here
@@ -418,7 +418,7 @@ const matchIconCss = css({
   color: 'textMuted',
   bg: 'bgCard',
   border: '1px solid token(colors.border)',
-  '[data-state="pass"] &': { borderColor: 'accent', color: 'accent' },
+  '[data-state="pass"] &': { borderColor: 'success', color: 'success' },
   '[data-state="fail"] &': { borderColor: 'danger', color: 'danger' },
 });
 const matchTextCss = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'text', wordBreak: 'break-all', flex: '1 1 220px', minW: '160px' });
@@ -474,7 +474,7 @@ const sequenceTileCss = css({
   transition: 'all 150ms ease',
   _hover: { borderColor: 'primary' },
   _disabled: { cursor: 'not-allowed', opacity: 0.7 },
-  '&[data-state="pass"]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 12%, transparent)' },
+  '&[data-state="pass"]': { borderColor: 'success', bg: 'color-mix(in srgb, token(colors.success) 12%, transparent)' },
   '&[data-state="fail"]': { borderColor: 'danger', bg: 'color-mix(in srgb, token(colors.danger) 10%, transparent)' },
 });
 // A sequence tile's position used to be graded by border/background alone
@@ -493,7 +493,7 @@ const sequenceIconCss = css({
   // testCaseIconCss/extractIconCss use. (Nesting a second self-selector
   // inside one of these is the documented Panda gotcha that compiles to a
   // rule with the ancestor condition baked into the class NAME only.)
-  '[data-state="pass"] &': { display: 'inline', color: 'accent' },
+  '[data-state="pass"] &': { display: 'inline', color: 'success' },
   '[data-state="fail"] &': { display: 'inline', color: 'danger' },
 });
 const sequenceResetBtnCss = css({
@@ -572,7 +572,7 @@ const feedbackCss = css({
   border: '1px solid token(colors.border)',
   bg: 'bgSubtle',
   '&[hidden]': { display: 'none' },
-  '&[data-state="correct"]': { borderColor: 'accent', bg: 'color-mix(in srgb, token(colors.accent) 10%, transparent)' },
+  '&[data-state="correct"]': { borderColor: 'success', bg: 'color-mix(in srgb, token(colors.success) 10%, transparent)' },
   '&[data-state="incorrect"]': { borderColor: 'danger', bg: 'color-mix(in srgb, token(colors.danger) 8%, transparent)' },
   // 'construct' only, via a hiddenTestCases generalization check (see
   // drillEngine.ts) — every visible test case already passes, but the

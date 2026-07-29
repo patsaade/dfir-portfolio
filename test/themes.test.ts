@@ -22,6 +22,7 @@ const COLOR_KEYS: (keyof ThemeColors)[] = [
   'primaryHover',
   'accent',
   'codeBg',
+  'success',
   'danger',
 ];
 

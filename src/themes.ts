@@ -8,7 +8,8 @@
 // Contrast contract (verified per palette with the WCAG relative-luminance
 // formula, against bg / bgCard / bgSubtle / codeBg — every surface the color
 // can land on):
-//   • text, textMuted, primary, primaryHover, accent, danger  >= 4.5:1 (1.4.3)
+//   • text, textMuted, primary, primaryHover, accent,
+//     success, danger                                        >= 4.5:1 (1.4.3)
 //   • onPrimary vs primary/primaryHover, onDanger vs danger    >= 4.5:1
 //   • borderStrong                                            >= 3:1  (1.4.11)
 //   • border is DECORATIVE ONLY (~1.2-1.8:1) and is exempt — never use it as
@@ -36,6 +37,18 @@ export interface ThemeColors {
   primaryHover: string;
   accent: string;
   codeBg: string;
+  /** Success / pass state (drill pass glyphs, satisfied test cases). `danger`'s
+   *  counterpart, and the reason it exists: pass state used to borrow `accent`,
+   *  which is a *decorative* color and is amber/terracotta/salmon in 6 of the 10
+   *  palettes — so pass and fail rendered in the same warm hue family and were
+   *  genuinely hard to tell apart. Green, so the two differ by HUE, not just
+   *  intensity. Same contract as `danger`: >=4.5:1 as normal text against every
+   *  surface. Deliberately NOT tuned to match `danger`'s contrast ratio — the eye
+   *  is ~3x more sensitive to green (luminance coefficient 0.7152 vs 0.2126), so
+   *  equal contrast forces a neon green that fights this palette's muted
+   *  direction; these are chosen for equal *apparent* weight instead, checked
+   *  visually against a rendered pass/fail pair per palette. */
+  success: string;
   /** Error / failure state (drill fail glyphs, invalid-input messages). Tuned
    *  per palette to clear 4.5:1 as NORMAL TEXT against every surface
    *  (`bg`/`bgCard`/`bgSubtle`/`codeBg`) — it replaces the raw `red` keyword,
@@ -75,6 +88,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#f8c463',
       accent: '#e8a23f',
       codeBg: '#1e1505',
+      success: '#88d392',
       danger: '#e45a5a',
       onDanger: '#150d02',
       onPrimary: '#150d02',
@@ -97,6 +111,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#e8abd4',
       accent: '#7ad0d6',
       codeBg: '#1f1a34',
+      success: '#88d3b0',
       danger: '#e66767',
       onDanger: '#161226',
       onPrimary: '#161226',
@@ -119,6 +134,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#b6d6a4',
       accent: '#e3a55c',
       codeBg: '#19221b',
+      success: '#88d39e',
       danger: '#e76a6a',
       onDanger: '#121913',
       onPrimary: '#121913',
@@ -141,6 +157,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#dbbeec',
       accent: '#edab8d',
       codeBg: '#241d22',
+      success: '#88d397',
       danger: '#e76969',
       onDanger: '#1b1518',
       onPrimary: '#1b1518',
@@ -163,6 +180,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#efb5c6',
       accent: '#e9cb8c',
       codeBg: '#231d2b',
+      success: '#88d399',
       danger: '#e76969',
       onDanger: '#1a1521',
       onPrimary: '#1a1521',
@@ -192,6 +210,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#8a3c1d',
       accent: '#566425',
       codeBg: '#efe1c5',
+      success: '#2d5f25',
       danger: '#b03629',
       onDanger: '#fdf8ee',
       onPrimary: '#fdf8ee',
@@ -214,6 +233,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#5a4290',
       accent: '#36686f',
       codeBg: '#e9e2f4',
+      success: '#255f46',
       danger: '#b3372a',
       onDanger: '#fdfbff',
     },
@@ -237,6 +257,7 @@ export const THEMES: Theme[] = [
       // measured 4.48:1 on bgSubtle, just under WCAG 1.4.3 AA for normal text.
       accent: '#9f4e2b',
       codeBg: '#efead9',
+      success: '#255f2d',
       danger: '#b6382b',
       onDanger: '#fffef9',
     },
@@ -260,6 +281,7 @@ export const THEMES: Theme[] = [
       // measured 4.35:1 on bgSubtle, under WCAG 1.4.3 AA for normal text.
       accent: '#a14b35',
       codeBg: '#ede4ea',
+      success: '#255f33',
       danger: '#b4372a',
       onDanger: '#fffdfe',
     },
@@ -281,6 +303,7 @@ export const THEMES: Theme[] = [
       primaryHover: '#883354',
       accent: '#2f6f64',
       codeBg: '#f4e2dd',
+      success: '#255f42',
       danger: '#b4372a',
       onDanger: '#fffafa',
     },
@@ -318,6 +341,7 @@ const VAR_NAMES: Record<Exclude<keyof ThemeColors, 'onPrimary'>, string> = {
   primaryHover: '--colors-primary-hover',
   accent: '--colors-accent',
   codeBg: '--colors-code-bg',
+  success: '--colors-success',
   danger: '--colors-danger',
   onDanger: '--colors-on-danger',
 };

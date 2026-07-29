@@ -203,6 +203,15 @@ export default defineConfig({
           onPrimary: {
             value: { base: '#ffffff', _dark: '#ffffff' },
           },
+          // Success / pass state (drill pass glyphs, satisfied test cases) —
+          // `danger`'s counterpart. Pass state used to reuse `accent`, which is
+          // decorative and amber/terracotta/salmon in 6 of 10 palettes, making
+          // pass and fail the same warm hue and hard to tell apart. Green, so
+          // the two differ by hue. Every per-theme override in src/themes.ts
+          // clears 4.5:1 as normal text on bg / bgCard / bgSubtle / codeBg.
+          success: {
+            value: { base: '#15803d', _dark: '#86efac' },
+          },
           // Error / failure state (drill fail glyphs, invalid-input messages).
           // Replaces the raw `red` CSS keyword, which only reached ~3.8-4.2:1 on
           // bgCard; every per-theme override in src/themes.ts clears 4.5:1 as
