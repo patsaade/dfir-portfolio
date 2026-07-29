@@ -4,7 +4,7 @@
 export const prerender = true;
 import { css } from 'styled-system/css';
 import { tag } from 'styled-system/recipes';
-import { SITE } from '../consts';
+import { SITE, REPO } from '../consts';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageHeader from '../components/PageHeader.astro';
 import { prosePara, proseH2, proseLink, proseLinkBase } from '../styles/prose';
@@ -180,7 +180,7 @@ const STACK = [
     Straight up: I built the design and front-end with AI assistance
     (<a class={link} href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a>),
     then reviewed and refined every piece myself. The source is on{' '}
-    <a class={link} href="https://github.com/patsaade/personal-portfolio" target="_blank" rel="noopener">GitHub</a>,
+    <a class={link} href={REPO} target="_blank" rel="noopener">GitHub</a>,
     and the footer links the exact build version and commit.
   </p>
 </BaseLayout>

@@ -22,8 +22,11 @@ export const SOCIALS = {
   credly: 'https://www.credly.com/users/patsaade',
 } as const;
 
-// Source repository — used for the footer version/commit link (see utils/version.ts).
-export const REPO = 'https://github.com/patsaade/personal-portfolio';
+// Source repository — used for the footer version/commit link (see utils/version.ts)
+// and the colophon's own source link. Single source of truth: never hardcode this
+// URL at a call site, or a repo rename silently leaves a stale link behind (which
+// is exactly what the personal-portfolio → dfir-portfolio rename did).
+export const REPO = 'https://github.com/patsaade/dfir-portfolio';
 
 // Plain top-level nav links (Navigation.astro's own Blog/Labs/About map,
 // desktop + mobile) and Footer.astro's Explore column. The categorized
