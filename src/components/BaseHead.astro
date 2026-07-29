@@ -28,7 +28,11 @@ const {
   updatedDate,
   tags,
   section,
-  robots = 'index, follow, max-image-preview:large',
+  // `max-snippet:-1` / `max-video-preview:-1` opt out of the shortened-preview
+  // defaults some regions apply, so search engines may show a full text snippet
+  // (the trio is the standard "show everything" directive set alongside
+  // `max-image-preview:large`).
+  robots = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1',
 } = Astro.props;
 
 const pageTitle = title ? `${title} · ${SITE.title}` : `${SITE.title} — ${SITE.tagline}`;
@@ -38,9 +42,16 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? SITE.url);
 const ogImage = new URL(image ?? `/og/${ogSlugForPath(Astro.url.pathname)}.png`, Astro.site ?? SITE.url);
 const ogImageAlt = title ? `${title} — ${SITE.author}` : `${SITE.author} — ${SITE.tagline}`;
 
-// Structured data (JSON-LD): a Person + WebSite graph site-wide, plus a
-// BlogPosting node on article pages. Helps search engines and rich results.
+// Structured data (JSON-LD): a Person + WebSite + WebPage graph site-wide, plus
+// a BlogPosting node on article pages. Helps search engines and rich results.
+// Every node is @id'd off an ABSOLUTE canonical URL so the nodes resolve to one
+// another (and to Breadcrumbs.astro's own BreadcrumbList block) rather than
+// being three unrelated islands — which matters more than usual right now: the
+// site's URLs all moved at once, so every page is being (re)discovered cold.
 const personId = `${SITE.url}/#person`;
+const websiteId = `${SITE.url}/#website`;
+const pageId = `${canonicalURL.toString()}#webpage`;
+const articleId = `${canonicalURL.toString()}#article`;
 const graph: Record<string, unknown>[] = [
   {
     '@type': 'Person',
@@ -52,20 +63,36 @@ const graph: Record<string, unknown>[] = [
   },
   {
     '@type': 'WebSite',
-    '@id': `${SITE.url}/#website`,
+    '@id': websiteId,
     url: SITE.url,
     name: SITE.title,
     description: SITE.description,
     inLanguage: 'en',
     publisher: { '@id': personId },
   },
+  {
+    // Self-identifying node for THIS URL. Nothing here is invented: every field
+    // is the page's own already-rendered title/description/canonical/card.
+    '@type': 'WebPage',
+    '@id': pageId,
+    url: canonicalURL.toString(),
+    name: pageTitle,
+    description,
+    inLanguage: 'en',
+    isPartOf: { '@id': websiteId },
+    primaryImageOfPage: ogImage.toString(),
+    ...(type === 'article' ? { mainEntity: { '@id': articleId } } : {}),
+  },
 ];
 if (type === 'article') {
   graph.push({
     '@type': 'BlogPosting',
+    '@id': articleId,
+    url: canonicalURL.toString(),
     headline: title,
     description,
     image: ogImage.toString(),
+    inLanguage: 'en',
     datePublished: publishedDate?.toISOString(),
     // Falls back to datePublished when the post has no real edit — dateModified
     // should never be absent or earlier than datePublished on an article.
@@ -74,7 +101,8 @@ if (type === 'article') {
     ...(section ? { articleSection: section } : {}),
     author: { '@id': personId },
     publisher: { '@id': personId },
-    mainEntityOfPage: canonicalURL.toString(),
+    isPartOf: { '@id': pageId },
+    mainEntityOfPage: { '@id': pageId },
   });
 }
 // `.replace` escapes `<` so authored content can never break out of the <script> tag.
@@ -104,14 +132,30 @@ const jsonLd = JSON.stringify({ '@context': 'https://schema.org', '@graph': grap
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 
-<!-- Preload the Redaction faces needed for first paint: body (grade 0, regular),
-     wordmark (grade 50, bold), and the declassify heading decode's start (grade
-     100, bold) + settled (grade 0, bold) frames — every H1 runs that animation
-     on load, so both ends of it need to be available without a font-swap flash. -->
+<!-- Preload the Redaction faces needed for first paint.
+     Unconditional (all three are real above-the-fold text, motion or not):
+       - grade 0 regular + bold — body copy and the settled state of every heading.
+       - grade 50 bold — the nav wordmark AND the whole Term of the Day ticker bar
+         (Ticker.astro sets `fontFamily: 'redaction50'` on the bar itself), which is
+         the topmost text on every page. Do NOT media-gate this one: it renders
+         identically under reduced motion, and skipping the preload there would
+         swap-flash the wordmark + ticker.
+     Motion-gated (grade 100 bold, ~20 KB): used ONLY as the 0% frame of motion.css's
+     `declassify`/`declassify-hero` keyframes, which are `animation: none` under
+     `prefers-reduced-motion: reduce`. A <link rel=preload> honors `media`, so a
+     non-matching query simply never issues the fetch — reduced-motion visitors save
+     the download outright instead of paying for a face nothing on the page will use. -->
 <link rel="preload" href="/fonts/redaction/redaction-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="preload" href="/fonts/redaction/redaction-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="preload" href="/fonts/redaction/redaction-50-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
-<link rel="preload" href="/fonts/redaction/redaction-100-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link
+  rel="preload"
+  href="/fonts/redaction/redaction-100-latin-700-normal.woff2"
+  as="font"
+  type="font/woff2"
+  media="(prefers-reduced-motion: no-preference)"
+  crossorigin
+/>
 
 <!-- Structured data -->
 <script type="application/ld+json" is:inline set:html={jsonLd} />
@@ -128,6 +172,7 @@ const jsonLd = JSON.stringify({ '@context': 'https://schema.org', '@graph': grap
 <meta property="og:image:type" content="image/png" />
 <meta property="og:image:secure_url" content={ogImage} />
 <meta property="og:site_name" content={SITE.title} />
+<meta property="og:locale" content="en_US" />
 {publishedDate && (
   <meta property="article:published_time" content={publishedDate.toISOString()} />
 )}

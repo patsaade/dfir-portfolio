@@ -71,7 +71,7 @@ const CATEGORY_NOTES: Record<string, string> = {
   description="Paste a log, alert, or report and extract every IOC it contains — IPs, domains, URLs, emails, file hashes, CVE IDs, MITRE ATT&CK IDs, and Bitcoin addresses — with a defang/refang toggle for safe sharing."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'IOC Extractor' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'IOC Extractor' }]}
     eyebrow="Extractors"
     title="IOC Extractor"
     description="Paste raw text — a log, an alert, a phishing email, a report — and every indicator it contains gets pulled out, deduped, and grouped by type."
@@ -108,7 +108,7 @@ const CATEGORY_NOTES: Record<string, string> = {
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Category reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Category reference table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -135,7 +135,7 @@ const CATEGORY_NOTES: Record<string, string> = {
   <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.85rem', lineHeight: 1.7 })}>
     A hit in the <strong class={css({ color: 'text' })}>ATT&amp;CK</strong> category is a shape match (uppercase
     T + digits), not a confirmed reference — cross-check it against the{' '}
-    <a href="/attack-map/" class={css({ color: 'primary' })}>ATT&amp;CK coverage map</a> before treating it as one.
+    <a href="/reference/attack-map/" class={css({ color: 'primary' })}>ATT&amp;CK coverage map</a> before treating it as one.
   </p>
 
   <h2 id="related" class={sectionH2}>

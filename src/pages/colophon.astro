@@ -4,6 +4,7 @@
 export const prerender = true;
 import { css } from 'styled-system/css';
 import { tag } from 'styled-system/recipes';
+import { SITE } from '../consts';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import PageHeader from '../components/PageHeader.astro';
 import { prosePara, proseH2, proseLink, proseLinkBase } from '../styles/prose';
@@ -12,6 +13,16 @@ const para = prosePara;
 const h2 = proseH2;
 const link = proseLink;
 const term = css({ color: 'text', fontWeight: 600 });
+
+// Brand fork (CLAUDE.md invariant 14) — the "how it's built" content is
+// identical on both domains (same codebase, same build); only the identity
+// and authorship framing differs. Both variants render server-side and one is
+// hidden by a FLAT, single-level `[data-brand="cyberkit"] &` selector. NEVER
+// nest a second self-selector inside it — Panda bakes the ancestor condition
+// into the class name instead of the selector, so it would apply everywhere.
+const hideOnCyberkit = css({ '[data-brand="cyberkit"] &': { display: 'none' } });
+const onlyOnCyberkit = css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } });
+const onlyOnCyberkitBlock = css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'block' } });
 
 // The stack, as a small bordered record — same row-list idiom as the condensed
 // experience block on /about/, so it reads as "materials used" rather than a
@@ -44,9 +55,21 @@ const STACK = [
 
 <BaseLayout
   title="Colophon"
-  description="How patricksaade.com is built — the stack, design choices, and principles behind the site."
+  description="How this site is built — the stack, design choices, and principles behind it."
 >
   <PageHeader breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Colophon' }]} eyebrow="Colophon" title="How This Site Is Built" description="What it's built with, and why it works the way it does." />
+
+  {/* Provenance — cyberkit.win only. patricksaade.com is already the
+      authored-by page, so it needs no credit line; this domain does, and it's
+      the first thing to establish before the first-person voice below. */}
+  <p class={`${para} ${onlyOnCyberkitBlock}`}>
+    CyberKit is built and maintained by <span class={term}>Patrick Saade</span>, with support from
+    Claude Code. He writes
+    about digital forensics and incident response at{' '}
+    <a class={link} href={SITE.url}>patricksaade.com</a>. The two sites run
+    from the same codebase and the same build — this domain just leaves out the portfolio side
+    and keeps the reference material and the tools.
+  </p>
 
   <p class={para}>
     I designed this to be fast, readable, and private — static HTML with a little inline
@@ -64,15 +87,31 @@ const STACK = [
     small tools that do real work (extract IOCs, decode timestamps, compute and identify
     hashes, build OSINT search-operator queries) — free, and the ones that process what you
     give them do it entirely client-side, so nothing you paste, type, or upload ever leaves
-    your browser. That's also why the toolkit is reachable at{' '}
-    <span class={term}>cyberkit.win</span>, independent of <span class={term}>patricksaade.com</span> —
-    the tools stand on their own, whether or not you're here for the portfolio side of the site.
+    your browser.{' '}
+    <span class={hideOnCyberkit}>
+      That's also why the toolkit is reachable at <span class={term}>cyberkit.win</span>,
+      independent of <span class={term}>patricksaade.com</span> — the tools stand on their own,
+      whether or not you're here for the portfolio side of the site.
+    </span>
+    <span class={onlyOnCyberkit}>
+      That's what <span class={term}>cyberkit.win</span> is: the reference material and the tools
+      on their own domain, with none of the portfolio wrapped around them. The same material
+      also sits on <span class={term}>patricksaade.com</span> next to the writeups and labs, for
+      anyone who wants both.
+    </span>
   </p>
 
   <h2 class={h2}>What's actually here</h2>
   <p class={para}>
-    There's more to this site than the posts, and it's built to be a working reference for
-    analysts, not just a portfolio. A searchable <span class={term}>Glossary</span> covers 500+
+    <span class={hideOnCyberkit}>
+      There's more to this site than the posts, and it's built to be a working reference for
+      analysts, not just a portfolio.
+    </span>
+    <span class={onlyOnCyberkit}>
+      All of it is built to be a working reference for analysts — something to keep open in a
+      tab during an investigation, not a demo.
+    </span>{' '}
+    A searchable <span class={term}>Glossary</span> covers 500+
     security concepts, with a new <span class={term}>Term of the Day</span> picked daily,
     alongside a free, open-source tools directory and a command cheat sheet for quick
     install/syntax lookup — each tool links to the glossary concept it implements, so looking up
@@ -93,7 +132,7 @@ const STACK = [
     independently so switching modes never forgets your color pick; a field of drifting,
     connected nodes behind everything; and a hand-drawn cursor for anyone browsing with a mouse.
     Search lives on <span class={term}>⌘K</span>, sound is opt-in from the nav, and the whole
-    thing installs like an app and stays readable offline. The site also has a DFIR sidebar — a
+    thing installs like an app and stays readable offline. The site also has a Quick Access sidebar — a
     compact icon rail docked to the left edge on every page, letting you jump straight to any
     reference page, framework map, or interactive tool without a trip back through the nav.
   </p>

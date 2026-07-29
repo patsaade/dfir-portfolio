@@ -11,7 +11,7 @@
  * immediately (skipWaiting + clients.claim) so a new deploy supersedes the old SW.
  * To force a hard refresh of all caches, bump VERSION.
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const ASSET_CACHE = 'assets-' + VERSION;
 const PAGE_CACHE = 'pages-' + VERSION;
 

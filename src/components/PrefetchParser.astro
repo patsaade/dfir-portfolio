@@ -77,7 +77,7 @@ const textarea = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.7rem 0.85rem',
   w: '100%',
@@ -117,6 +117,10 @@ const fileBtn = css({
   cursor: 'pointer',
   transition: 'border-color 150ms ease',
   _hover: { borderColor: 'primary', color: 'primary' },
+  // The file input inside this label is visually hidden but focusable, so the
+  // label has to surface the focus ring on its behalf — otherwise tabbing to
+  // it puts focus somewhere with no visible indicator (WCAG 2.4.7).
+  '&:has(input:focus-visible)': { outline: '2px solid token(colors.primary)', outlineOffset: '2px', borderColor: 'primary' },
 });
 const fileName = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
 
@@ -293,7 +297,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
       <div class={fileRow} data-pf-file-row hidden>
         <label class={fileBtn}>
           <Icon name="download" size={15} /> Choose .pf file
-          <input type="file" accept=".pf" data-pf-file class={css({ display: 'none' })} />
+          <input type="file" accept=".pf" data-pf-file class={css({ position: 'absolute', w: '1px', h: '1px', p: 0, m: '-1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 })} />
         </label>
         <span class={fileName} data-pf-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
       </div>
@@ -325,7 +329,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
 
     <div>
       <p class={paneLabel}>Execution times (UTC)</p>
-      <ul class={runList} data-pf-run-list></ul>
+      <ul class={runList} data-pf-run-list tabindex="0" aria-label="Run times"></ul>
       <template data-pf-run-template>
         <li class={runRow}>
           <span class={runSlot} data-pf-run-slot></span>

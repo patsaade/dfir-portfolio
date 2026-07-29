@@ -1,0 +1,336 @@
+---
+// Tools page — free / open-source DFIR toolkit, grouped by the platform a tool
+// runs on (Cross-platform, Windows, macOS & Linux, Web). A star marks the tools
+// in my day-to-day kit; each card carries a function tag + a cost tag and links to
+// its own detail page (/tools/[slug]/). Data lives in src/data/tools.ts. Searchable
+// by function (combobox) and cost tier (chip row — "just show me the open-source
+// ones"), both shareable via URL (?q / ?cost).
+// Static page — prerender to HTML served from the CDN (output: 'server' is on-demand by default).
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag, card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import FilterToggle from '../../components/FilterToggle.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import { tagSlug, getSortedPosts, getSortedLabs } from '../../utils/posts';
+import { TOOL_PLATFORMS, TOTAL_TOOLS, costTone } from '../../data/tools';
+
+const platforms = TOOL_PLATFORMS;
+const totalTools = TOTAL_TOOLS;
+
+// "Browse by platform" overview tiles, mirroring the glossary's category strip.
+const platformTiles = platforms.map((p) => ({
+  id: `plat-${p.id}`,
+  icon: p.icon,
+  title: p.title,
+  blurb: p.blurb,
+  count: p.tools.length,
+}));
+const coreTools = platforms.flatMap((p) => p.tools).filter((t) => t.core);
+
+// Function facet for the search combobox (each tool carries one function tag).
+const fnCounts: Record<string, number> = {};
+for (const p of platforms) for (const t of p.tools) fnCounts[t.fn] = (fnCounts[t.fn] ?? 0) + 1;
+const fnOptions = Object.keys(fnCounts)
+  .sort()
+  .map((fn) => ({ value: tagSlug(fn), label: fn, count: fnCounts[fn] }));
+
+// Cost tier — a second, independent facet (chip row, ANDed with the function
+// combobox) so "just show me the open-source ones" is a click, not free text.
+const costCounts: Record<string, number> = {};
+for (const p of platforms) for (const t of p.tools) costCounts[t.cost] = (costCounts[t.cost] ?? 0) + 1;
+const costTiers = Object.keys(costCounts).sort();
+
+// Tools featured in a writeup (matched by name in post/lab `tools` frontmatter).
+const [tPosts, tLabs] = await Promise.all([getSortedPosts(), getSortedLabs()]);
+const featuredTools = new Set([...tPosts, ...tLabs].flatMap((p) => (p.data.tools ?? []).map((n) => n.toLowerCase())));
+
+// Each platform is a collapsible <details>. The summary holds the heading; the
+// blurb + tool grid live inside, so they fold away (and a search auto-expands them).
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .tools-grp-title': { color: 'primary' } },
+});
+const groupHead = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flexWrap: 'wrap',
+  m: 0,
+  fontSize: '1.25rem',
+  fontWeight: 700,
+});
+// Chevron points right when closed, rotates down when the parent <details> is open.
+const chevCls = css({
+  color: 'textMuted',
+  flexShrink: 0,
+  transition: 'transform 200ms ease',
+  'details[open] &': { transform: 'rotate(90deg)' },
+});
+const grpCount = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  px: '0.5rem',
+  py: '0.1rem',
+});
+const grpBlurb = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.5rem', mb: 0 });
+// Fluid grid: as many ~230px columns as fit (1 on mobile, up to ~3 at 960px).
+const toolsGrid = css({ mt: '1rem' }); // columns/gap come from the shared .card-grid class
+// `transition` is a shorthand — a page-local override replaces the recipe's
+// value entirely rather than merging, so this must restate the full list.
+const toolCard = `${card()} ${css({
+  transition: 'border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease',
+  _hover: { boxShadow: 'card', '& .tool-go': { transform: 'translateX(2px)', color: 'primary' } },
+})}`;
+const toolHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' });
+const toolName = css({ flex: 1, minW: 0, fontFamily: 'sans', fontWeight: 700, fontSize: '0.9rem', color: 'text', lineHeight: 1.3 });
+const starCls = css({ display: 'inline', verticalAlign: '-2px', mr: '0.25rem', color: 'accent', fill: 'token(colors.accent)' });
+const goCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease, color 200ms ease' });
+// t.use ranges 24-65 chars. totd-clamp2 caps growth at 2 lines; the fixed `h` (not minH
+// — a page-local minH is what card-consistency.test.ts forbids, and isn't what's needed
+// here anyway) reserves that same 2-line box for every card regardless of actual text
+// length, so a short one-liner doesn't get stretched into a dead gap by its longer
+// .card-grid row-mate — see certifications.astro's certFull for the full mechanics.
+const toolUse = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.45, h: '2.4rem' });
+// Function + cost tags sit in a row at the bottom of the card (shared `tag` recipe).
+// flexWrap MUST stay 'nowrap': with 'wrap', the wrap algorithm can push the
+// cost tag onto a second line using fnTag's un-shrunk hypothetical width,
+// growing this card taller than its .card-grid neighbors even *with*
+// fnTag's own truncation in place (event-ids.astro hit exactly this — see
+// its tagRow comment for the full mechanics). fnTag (flexShrink: 1,
+// truncates) absorbs all the squeezing; costTag (flexShrink: 0) never moves.
+const tagRow = css({ display: 'flex', flexWrap: 'nowrap', gap: '0.3rem', mt: 'auto', pt: '0.15rem', minW: 0 });
+const fnTag = `${tag({ tone: 'muted' })} ${css({ minW: 0, flexShrink: 1, maxW: '100%', overflow: 'hidden', textOverflow: 'ellipsis' })}`;
+
+// Cost-tier chip row — same exclusive single-select chip pattern as Blog's category
+// chips and Labs' source chips, wired through ListFilter's chipGroup.
+const filterRow = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', mb: '0.75rem' });
+const rowLabel = css({ fontFamily: 'sans', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', mr: '0.1rem' });
+const costChip = css({
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  px: '0.8rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'text' },
+  '&[data-active]': { bg: 'primary', color: 'onPrimary', borderColor: 'primary' },
+});
+
+// "Core kit" spotlight — a slim row of chip links to the tools flagged `core: true`,
+// a quick-access callout distinct from the starred cards in the full grid below.
+const spotlightWrap = css({ mb: '2rem' });
+const spotlightLabel = css({
+  display: 'block',
+  fontFamily: 'sans',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.7rem',
+});
+const spotlightRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' });
+const spotlightChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  px: '0.6rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  transition: 'border-color 200ms ease, color 200ms ease',
+  _hover: { borderColor: 'accent', color: 'accent', '& svg': { transform: 'translateX(2px)' } },
+});
+---
+
+<BaseLayout
+  title="Tool Catalog"
+  description="Free and open-source DFIR tools grouped by platform — Windows, macOS and Linux, cross-platform, and web — each with a function, cost tag, and a reference page explaining why it earns a place in an investigation."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Tool Catalog' }]}
+    eyebrow="Reference"
+    title="Tool Catalog"
+    description="Free and open-source tools, grouped by where they run — the actual kit behind memory, host, and network investigations, not a vendor list. A star (★) marks what's in my day-to-day kit; each tool links to a short reference page. Tags mark each tool's function and cost."
+  />
+
+  {/* ── Browse by platform (jump-to overview strip) ── */}
+  <GroupOverview items={platformTiles} heading="Browse by platform" />
+
+  {/* ── Core kit spotlight — the tools in day-to-day use ── */}
+  <div class={spotlightWrap}>
+    <span class={spotlightLabel}>In my day-to-day kit</span>
+    <div class={spotlightRow}>
+      {
+        coreTools.map((t) => (
+          <a href={`/reference/tool-catalog/${t.slug}/`} class={spotlightChip}>
+            <Icon name="star" size={12} strokeWidth={0} class={css({ color: 'accent', fill: 'token(colors.accent)' })} />
+            {t.name}
+            <Icon name="arrow-right" size={12} class={css({ transition: 'transform 200ms ease' })} />
+          </a>
+        ))
+      }
+    </div>
+  </div>
+
+  {/* Cross-link to the command-syntax counterpart */}
+  <a
+    href="/reference/command-cheatsheet/"
+    class={css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      mb: '1.5rem',
+      p: '0.7rem 1rem',
+      borderRadius: 'md',
+      border: '1px solid token(colors.border)',
+      bg: 'bgCard',
+      fontSize: '0.9rem',
+      color: 'text',
+      transition: 'border-color 200ms ease, color 200ms ease',
+      _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+    })}
+  >
+    <Icon name="terminal" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>Looking for actual command syntax, not just the tool? See the <strong class={css({ fontWeight: 700 })}>Command Cheat Sheet</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
+  {/* Search + function filter (typeahead combobox) */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="tools-cb"
+      options={fnOptions}
+      placeholder={`Search ${totalTools} tools, or type a function…`}
+      label="Search tools or filter by function"
+    />
+  </div>
+
+  {/* Cost-tier chips — a click, not a typed guess, for "just show me the open-source ones" */}
+  <div class={filterRow}>
+    <span class={rowLabel}>Cost</span>
+    <button class={costChip} data-filter="all" data-active aria-pressed="true" type="button">All</button>
+    {
+      costTiers.map((c) => (
+        <button class={costChip} data-filter={c} aria-pressed="false" type="button">{c}</button>
+      ))
+    }
+  </div>
+
+  <div class={css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' })}>
+    <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.6rem', color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span><span id="tools-result-count">{totalTools}</span> free tools across {platforms.length} groups</span>
+      <span aria-hidden="true">·</span>
+      <span>{coreTools.length} in my kit</span>
+      <span aria-hidden="true">·</span>
+      <span>{featuredTools.size} featured in writeups</span>
+    </p>
+    <div class={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', ml: { sm: 'auto' } })}>
+      <FilterToggle id="tools-writeup-toggle" icon="file-text" label="In a writeup" tone="primary" />
+      <FilterToggle id="tools-core-toggle" icon="star" label="In my kit" tone="accent" />
+      <CollapseAll target="[data-tools-group]" />
+    </div>
+  </div>
+
+  <div class={css({ display: 'flex', flexDirection: 'column' })}>
+    {
+      platforms.map((p) => {
+        const coreHere = p.tools.filter((t) => t.core).length;
+        // A group with barely any starred tools can read as an oversight rather
+        // than what it is — real day-to-day use just doesn't concentrate there.
+        const sparseCore = p.tools.length > 3 && coreHere < 2;
+        return (
+          <details id={`plat-${p.id}`} data-tools-group open class={groupDetails}>
+            <summary class={groupSummary}>
+              <h2 class={groupHead}>
+                <Icon name="chevron-right" size={18} class={chevCls} />
+                <Icon name={p.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class="tools-grp-title">{p.title}</span>
+                <span class={grpCount}>{p.tools.length}</span>
+              </h2>
+            </summary>
+            <p class={grpBlurb}>
+              {p.blurb}
+              {sparseCore && ' Fewer stars here reflect real day-to-day use, not incomplete curation.'}
+            </p>
+            <div class={`card-grid ${toolsGrid}`}>
+            {p.tools.map((t) => (
+              <a
+                href={`/reference/tool-catalog/${t.slug}/`}
+                class={toolCard}
+                data-fn={tagSlug(t.fn)}
+                data-cost={t.cost}
+                data-tools-card={`${t.name} ${t.use} ${t.fn} ${t.cost} ${p.title} ${t.tags.join(' ')}`.toLowerCase()}
+                {...(featuredTools.has(t.name.toLowerCase()) ? { 'data-in-writeup': true } : {})}
+                {...(t.core ? { 'data-core': true } : {})}
+              >
+                <span class={toolHead}>
+                  <span class={toolName}>
+                    {t.core && (
+                      <Icon name="star" size={13} strokeWidth={0} class={starCls} label="In my kit" />
+                    )}
+                    {t.name}
+                  </span>
+                  <Icon name="arrow-right" size={14} class={`tool-go ${goCls}`} />
+                </span>
+                <span class={`${toolUse} totd-clamp2`}>{t.use}</span>
+                <span class={tagRow}>
+                  <span class={fnTag} title={t.fn}>{t.fn}</span>
+                  <span class={`${tag({ tone: costTone(t.cost) })} ${css({ flexShrink: 0 })}`}>{t.cost}</span>
+                </span>
+              </a>
+            ))}
+          </div>
+          </details>
+        );
+      })
+    }
+  </div>
+
+  <p id="tools-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No tools match your search.
+  </p>
+
+  <ListFilter
+    config={{
+      comboboxId: 'tools-cb',
+      cardSelector: '[data-tools-card]',
+      searchAttr: 'data-tools-card',
+      groupSelector: '[data-tools-group]',
+      countId: 'tools-result-count',
+      emptyId: 'tools-empty',
+      facetAttr: 'data-fn',
+      chipGroup: { selector: '[data-filter]', attr: 'data-cost' },
+      urlSync: { queryParam: 'q', facetParam: 'fn', chipParam: 'cost' },
+      toggles: [
+        { id: 'tools-writeup-toggle', attr: 'data-in-writeup' },
+        { id: 'tools-core-toggle', attr: 'data-core' },
+      ],
+    }}
+  />
+</BaseLayout>

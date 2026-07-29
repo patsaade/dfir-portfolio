@@ -25,6 +25,11 @@
 // check). Sample strings are hand-authored fixtures (quiz data, not claims
 // about a real incident — same "fabricating a plausible fixture is fine"
 // rule this site's other drills already follow).
+//
+// 8 of the 11 challenges additionally ship `hiddenTestCases` — see
+// RegexRangeChallenge's own doc comment and the comment above
+// REGEX_RANGE_CHALLENGES below for what these catch and why the remaining 3
+// (anchors, escaping, lookahead) were deliberately left without one.
 
 import { compileRegexSafely, findAllMatches } from '../../utils/regexPatterns';
 
@@ -39,8 +44,41 @@ export interface RegexRangeChallenge {
   referenceSolution: string;
   referenceHref?: string;
   referenceLabel?: string;
+  /** Never shown to the learner — checked only after every visible testCases
+   *  entry already passes, to catch a pattern that fits only the shown
+   *  samples rather than the taught concept (e.g. a literal-text challenge
+   *  "solved" with just a matching prefix, or a quantifier challenge
+   *  "solved" by checking for scattered occurrences instead of a run). Every
+   *  entry here was verified two ways (see test/regexDrill.test.ts and this
+   *  file's own header comment): the authored `referenceSolution` passes it,
+   *  and a concrete "wrong concept, still fits every visible sample"
+   *  pattern fails it. Only added where such a real gap could be
+   *  constructed — see this array's own doc comment on `REGEX_RANGE_CHALLENGES`
+   *  for which challenges were left without one and why. */
+  hiddenTestCases?: { text: string; shouldMatch: boolean }[];
 }
 
+// 8 of the 11 challenges below carry `hiddenTestCases` — added after an
+// audit for "does it actually generalize?" gaps: a wrong-concept pattern
+// that fits every VISIBLE sample by accident rather than actually solving
+// what the challenge teaches. Each one was verified two ways with this
+// file's own compileRegexSafely/findAllMatches (see test/regexDrill.test.ts):
+// the authored referenceSolution passes it, and a concrete "wrong but fits
+// every visible case" pattern fails it. The remaining 3 — anchors, escaping,
+// lookahead — were checked the same way and left alone:
+//   - anchors: every plausible "forgot the anchor" or "anchored the wrong
+//     thing" mistake (plain `ERROR`, `^.*ERROR`) already gets caught by the
+//     existing visible cases (`Got ERROR from server` / `MINOR_ERROR_CODE`).
+//   - escaping: every plausible "forgot to escape the dot" mistake (plain
+//     `4624.`, or `462[0-9].` with an unescaped trailing dot) already fails
+//     the existing visible "extra digit"/"extra character" cases — that's
+//     the exact gap those cases were built to catch.
+//   - lookahead: the reference solution itself is a document-wide condition
+//     (each `(?=...)` can be satisfied by a digit/uppercase anywhere in the
+//     whole string, not scoped to one contiguous token) — any hidden case
+//     built to expose that scoping gap would fail the REFERENCE solution
+//     too (verified), so there's no fair "wrong pattern only" gap to add
+//     here without also breaking the reference.
 export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
   {
     id: 'literals',
@@ -57,6 +95,12 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     hint: 'Just type the word you want to find — regular expressions match literal text by default.',
     explanation: 'powershell (or any pattern containing it) matches every should-match case because plain characters match themselves literally. This is the baseline every other regex feature builds on top of.',
     referenceSolution: 'powershell',
+    // Catches a partial-prefix "solution" like `power` — none of the visible
+    // should-NOT-match cases happen to contain "power" outside of
+    // "powershell", so a prefix shortcut fits every shown sample but was
+    // never actually asked to match the full word. Verified: `power` passes
+    // all 6 visible cases here but wrongly matches this hidden one.
+    hiddenTestCases: [{ text: 'power outage detected on the UPS', shouldMatch: false }],
   },
   {
     id: 'character-classes',
@@ -73,6 +117,13 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     hint: 'A character class [XYZ] matches exactly one character, as long as it is X, Y, or Z.',
     explanation: "[CDE]: matches a single C, D, or E immediately followed by a colon — a bracket character class is an OR across individual characters, distinct from alternation (|) which ORs whole sub-patterns (you'll meet that in a later challenge).",
     referenceSolution: '[CDE]:',
+    // Catches dropping the colon entirely (`[CDE]` alone) — none of the
+    // visible should-NOT-match cases happen to contain a stray uppercase
+    // C/D/E elsewhere, so the class-without-colon fits every shown sample
+    // without ever actually requiring "drive letter followed by a colon".
+    // Verified: `[CDE]` passes all 6 visible cases but wrongly matches this
+    // hidden one (a bare uppercase D with no colon in sight).
+    hiddenTestCases: [{ text: 'Report card D listed as final', shouldMatch: false }],
   },
   {
     id: 'quantifiers',
@@ -89,6 +140,15 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     hint: '\\d matches one digit. A quantifier like {4,} right after something means "four or more in a row", with no upper limit.',
     explanation: '\\d{4,} (equally [0-9]{4,}) matches four or more consecutive digits. {min,} with nothing after the comma means "at least min, unlimited max" — {min,max} would cap it, and {exact} would require exactly that many.',
     referenceSolution: '\\d{4,}',
+    // Catches a pattern that checks for four digits scattered ANYWHERE in
+    // the string rather than four IN A ROW (e.g. `\d.*\d.*\d.*\d`). Every
+    // visible should-match case's digits happen to be contiguous, and every
+    // visible should-NOT-match case has fewer than 4 digits total — so the
+    // "4 digits somewhere" misreading fits every shown sample without ever
+    // being asked to reject a string with 4+ digits that AREN'T consecutive.
+    // Verified: `\d.*\d.*\d.*\d` passes all 6 visible cases but wrongly
+    // matches this hidden one (4 digits present, none of them adjacent).
+    hiddenTestCases: [{ text: 'user42 has 99 items', shouldMatch: false }],
   },
   {
     id: 'anchors',
@@ -120,6 +180,14 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     hint: 'A|B|C matches any ONE of A, B, or C — an OR across whole sub-patterns, not single characters like a character class.',
     explanation: 'vbs|ps1|bat matches any one of three literal alternatives. Alternation is how a single pattern accepts several genuinely different substrings, not just different single characters.',
     referenceSolution: 'vbs|ps1|bat',
+    // Catches dropping the trailing "1" (`vbs|ps|bat`) — "ps" alone still
+    // happens to appear inside "run.ps1 executed" (as a substring of "ps1"),
+    // and none of the visible should-NOT-match cases coincidentally contain
+    // a stray "ps", so the truncated alternative fits every shown sample
+    // without ever actually requiring the ".ps1" extension. Verified:
+    // `vbs|ps|bat` passes all 6 visible cases but wrongly matches this
+    // hidden one ("helps.txt" contains "ps" but isn't a ps1 script).
+    hiddenTestCases: [{ text: 'the coach helps.txt was modified', shouldMatch: false }],
   },
   {
     id: 'escaping',
@@ -150,6 +218,15 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     hint: '\\b matches the invisible boundary between a word character and a non-word character (or the start/end of the string) — it consumes no characters itself.',
     explanation: "\\badmin\\b only matches 'admin' as a complete word. The boundaries on each side stop it from also matching inside 'administrator' or 'badmin_tool' — without them, plain admin would match all five test cases, not just the first two.",
     referenceSolution: '\\badmin\\b',
+    // Catches substituting literal spaces for \b (` admin ` instead of
+    // \badmin\b) — every visible should-match case happens to have a space
+    // on both sides of "admin", and every visible should-NOT-match case
+    // lacks one, so the literal-space version fits every shown sample
+    // without ever being asked to handle "admin" at the very start of a
+    // string (a real word boundary — start-of-string counts — but not a
+    // literal space character). Verified: ` admin ` passes all 5 visible
+    // cases but wrongly fails to match this hidden one.
+    hiddenTestCases: [{ text: 'admin escalated privileges', shouldMatch: true }],
   },
   {
     id: 'negated-classes',
@@ -165,6 +242,14 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     hint: "[^X] matches any ONE character that is NOT X. You only need to rule out enough to separate this data — you don't need to spell out every tag that should match.",
     explanation: "\\[[^I] matches an opening bracket followed by any character that isn't 'I'. Since INFO is the only tag here starting with I, that's enough to separate it from WARN/ERROR/CRIT — a classic minimal-pattern move: exploit whatever detail actually distinguishes YOUR data, rather than exhaustively spelling out every valid tag. A more bulletproof real-world version would use a negative lookahead, \\[(?!INFO\\]) — you'll meet lookaheads in a later challenge.",
     referenceSolution: '\\[[^I]',
+    // Catches enumerating the exact three tags shown (`\[(WARN|ERROR|CRIT)\]`)
+    // instead of actually negating on the distinguishing character — every
+    // visible should-match case IS one of those three tags, so the
+    // hardcoded list fits every shown sample without ever being asked about
+    // a fourth, never-shown tag. Verified: the enumeration passes all 5
+    // visible cases but wrongly fails to match this hidden one (a new tag,
+    // not [INFO], that the real "not-I" rule handles fine).
+    hiddenTestCases: [{ text: '[DEBUG] verbose trace enabled', shouldMatch: true }],
   },
   {
     id: 'backreferences',
@@ -181,6 +266,14 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     hint: 'Wrap part of your pattern in ( ) to capture it, then refer back to exactly what it captured with \\1.',
     explanation: '(\\w+) captures a run of word characters, and \\1 requires that SAME captured text to appear again right after a space. A backreference is the only way to require two parts of a match to be identical without knowing the word in advance — you cannot express "whatever this matched, again" with a character class or quantifier alone.',
     referenceSolution: '\\b(\\w+) \\1\\b',
+    // Catches enumerating the exact three repeated words shown
+    // (`\b(the the|user user|error error)\b`) instead of a real backreference
+    // — every visible should-match case IS one of those three pairs, so the
+    // hardcoded list fits every shown sample without ever proving it can
+    // detect an arbitrary repeated word. Verified: the enumeration passes
+    // all 6 visible cases but wrongly fails to match this hidden one (a
+    // fourth, never-shown word repeated the same way).
+    hiddenTestCases: [{ text: 'please please respond quickly', shouldMatch: true }],
   },
   {
     id: 'lookahead',
@@ -217,6 +310,15 @@ export const REGEX_RANGE_CHALLENGES: RegexRangeChallenge[] = [
     referenceSolution: '\\b(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}\\b',
     referenceHref: '/tools/regex-tester/',
     referenceLabel: 'See the full pattern in the Regex Tester',
+    // Catches blacklisting the exact three invalid octets shown (300, 256,
+    // 999) via a negative lookahead instead of doing real 0–255 range
+    // checking — every visible should-NOT-match case uses one of those
+    // three values, so the blacklist fits every shown sample without ever
+    // being asked about a DIFFERENT out-of-range octet. Verified: the
+    // blacklist pattern passes all 8 visible cases but wrongly matches this
+    // hidden one (octet 260 — out of range, but not one of the blacklisted
+    // three).
+    hiddenTestCases: [{ text: 'gateway at 192.168.1.260 is unreachable', shouldMatch: false }],
   },
 ];
 
@@ -225,8 +327,14 @@ export const REGEX_DRILL_TOTAL = REGEX_RANGE_CHALLENGES.length;
 /** Compiles `userPattern` (always case-sensitive — every challenge above was
  *  deliberately written so no challenge needs the `i` flag, keeping the UI to
  *  a single pattern input with no separate flags field) and runs it against
- *  every one of `challenge`'s test cases using the exact same pure functions
- *  the live Regex Tester uses. */
+ *  every one of `challenge`'s VISIBLE test cases using the exact same pure
+ *  functions the live Regex Tester uses. If every visible case passes and the
+ *  challenge also ships `hiddenTestCases` (never shown to the learner — see
+ *  RegexRangeChallenge's own doc comment), those are checked too: any hidden
+ *  failure means the pattern only fit the shown samples, not the taught
+ *  concept, so this returns `pass: false` (never `pass: true`) plus a
+ *  `generalizationGap` naming the first such failure — matching the exact
+ *  DrillValidateResult contract drillEngine.ts's handleConstructCheck reads. */
 function validateChallenge(challenge: RegexRangeChallenge, userPattern: string) {
   const compiled = compileRegexSafely(userPattern, '');
   if (!compiled.ok) return { ok: false as const, error: compiled.error };
@@ -235,8 +343,21 @@ function validateChallenge(challenge: RegexRangeChallenge, userPattern: string) 
     shouldMatch: tc.shouldMatch,
     actualMatch: findAllMatches(compiled.regex, tc.text).length > 0,
   }));
-  const pass = results.every((r) => r.actualMatch === r.shouldMatch);
-  return { ok: true as const, pass, results };
+  const visiblePass = results.every((r) => r.actualMatch === r.shouldMatch);
+  if (visiblePass && challenge.hiddenTestCases && challenge.hiddenTestCases.length > 0) {
+    for (const tc of challenge.hiddenTestCases) {
+      const actualMatch = findAllMatches(compiled.regex, tc.text).length > 0;
+      if (actualMatch !== tc.shouldMatch) {
+        return {
+          ok: true as const,
+          pass: false,
+          results,
+          generalizationGap: { text: tc.text, shouldMatch: tc.shouldMatch, actualMatch },
+        };
+      }
+    }
+  }
+  return { ok: true as const, pass: visiblePass, results };
 }
 
 /** Pure, deterministic function of `index` (wraps via modulo) — see

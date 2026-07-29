@@ -1,0 +1,353 @@
+---
+// SentinelOne PowerQuery (S1QL 2.0) Cheat Sheet — the query shape, operators,
+// commands and Deep Visibility field namespace, from src/data/s1CheatSheet.ts's
+// S1_CHEAT_SHEET. Same structural shape as the Regex Syntax Cheat Sheet
+// (regex-cheatsheet.astro): PageHeader -> GroupOverview jump-strip ->
+// TagCombobox search -> one collapsible <details> group per category ->
+// ListFilter wiring, with a per-category "verified against" source line
+// (S1_CATEGORY_SOURCES).
+//
+// SCOPE IS STATED ON THE PAGE ITSELF, not just in the data file's comment:
+// SentinelOne's full product documentation is behind a customer login, so this
+// sheet is built only from SentinelOne's own publicly published queries. The
+// aside below says so plainly rather than implying the coverage is complete —
+// a smaller, fully-cited sheet is the point. Static — prerendered.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import type { IconName } from '../../components/Icon.astro';
+import Term from '../../components/Term.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { toolChip } from '../../components/RelatedTools.astro';
+import { tagSlug } from '../../utils/posts';
+import { S1_CHEAT_SHEET, S1_CATEGORY_SOURCES } from '../../data/s1CheatSheet';
+
+// Icon + one-line blurb per category — presentational metadata only, kept here
+// so s1CheatSheet.ts stays pure content.
+const CATEGORY_META: Record<string, { icon: IconName; blurb: string }> = {
+  'Query Shape & the Pipeline': { icon: 'terminal', blurb: 'A filter expression first, then piped commands — and the stage order SentinelOne\'s own published queries follow.' },
+  'Filtering & Matching': { icon: 'search', blurb: 'The operators that select events: equality, contains, the anycase variants, list membership and negation.' },
+  'Core Event & Endpoint Fields': { icon: 'monitor', blurb: 'What kind of event it was, when, and which agent reported it.' },
+  'Process, File & Network Fields': { icon: 'layers', blurb: 'The src / tgt namespace — who acted, what they acted on, and where the traffic went.' },
+  'Aggregation with group': { icon: 'activity', blurb: 'group and its functions, including the array aggregates that make a summary readable.' },
+  'Shaping & Computing Fields': { icon: 'columns', blurb: 'columns, let, arithmetic, ternaries and inline regex parsing.' },
+  'Combining Result Sets': { icon: 'arrow-left-right', blurb: 'join and union over named subqueries — merging side by side or stacking rows.' },
+};
+const FALLBACK_META = { icon: 'list' as IconName, blurb: '' };
+
+interface CategoryGroup {
+  id: string;
+  title: string;
+  icon: IconName;
+  blurb: string;
+  source?: { name: string; url: string };
+  entries: typeof S1_CHEAT_SHEET;
+}
+
+const categories: CategoryGroup[] = [];
+const byCategory = new Map<string, CategoryGroup>();
+for (const entry of S1_CHEAT_SHEET) {
+  let group = byCategory.get(entry.category);
+  if (!group) {
+    const meta = CATEGORY_META[entry.category] ?? FALLBACK_META;
+    group = {
+      id: `s1cheat-${tagSlug(entry.category)}`,
+      title: entry.category,
+      icon: meta.icon,
+      blurb: meta.blurb,
+      source: S1_CATEGORY_SOURCES[entry.category],
+      entries: [],
+    };
+    byCategory.set(entry.category, group);
+    categories.push(group);
+  }
+  group.entries.push(entry);
+}
+
+const totalEntries = S1_CHEAT_SHEET.length;
+const categoryTiles = categories.map((c) => ({ id: c.id, icon: c.icon, title: c.title, blurb: c.blurb, count: c.entries.length }));
+const categoryOptions = categories.map((c) => ({ value: tagSlug(c.title), label: c.title, count: c.entries.length }));
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const entryCard = `${card()} ${css({ gap: '0.5rem' })}`;
+const syntaxCode = css({
+  display: 'inline-block',
+  fontFamily: 'mono',
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  color: 'primary',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.55rem',
+  py: '0.15rem',
+  wordBreak: 'break-word',
+  alignSelf: 'flex-start',
+});
+const entryDesc = css({ fontSize: '0.88rem', color: 'text', lineHeight: 1.65, m: 0 });
+const entryExample = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.4rem',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  color: 'textMuted',
+  lineHeight: 1.6,
+  wordBreak: 'break-word',
+  pt: '0.45rem',
+  borderTop: '1px dashed token(colors.border)',
+  m: 0,
+});
+const entriesGrid = css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' });
+const sourceLine = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  fontSize: '0.75rem',
+  color: 'textMuted',
+  mt: '-0.35rem',
+  mb: '0.85rem',
+  '& a': { color: 'primary' },
+});
+
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .s1cheat-grp-title': { color: 'primary' } },
+});
+const chevCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease', 'details[open] &': { transform: 'rotate(90deg)' } });
+const grpCount = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem' });
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' });
+const inlineLink = css({ color: 'primary' });
+
+const scopeBox = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'accent',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+---
+
+<BaseLayout
+  title="SentinelOne PowerQuery Cheat Sheet"
+  description={`A SentinelOne PowerQuery (S1QL 2.0) reference for responders — ${totalEntries} operators, commands, aggregate functions and Deep Visibility field names, every one of them taken from a query SentinelOne has published publicly.`}
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'SentinelOne PowerQuery Cheat Sheet' }]}
+    eyebrow="Reference"
+    title="SentinelOne PowerQuery Cheat Sheet"
+    description={`${totalEntries} PowerQuery (S1QL 2.0) entries across ${categories.length} categories — the pipeline, matching operators, the Deep Visibility src/tgt field namespace, group and its aggregates, computed columns, and join/union over subqueries. Every entry carries a real example and every section cites the SentinelOne-published page it came from.`}
+  />
+
+  <aside class={scopeBox}>
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      <strong class={css({ color: 'text' })}>What this sheet is, and what it isn't.</strong> SentinelOne's full product
+      documentation sits behind a customer login, so — unlike the{' '}
+      <a href="/reference/kql-cheatsheet/" class={inlineLink}>KQL</a> and{' '}
+      <a href="/reference/spl-cheatsheet/" class={inlineLink}>SPL</a> sheets, which are verified against Microsoft's
+      and Splunk's openly published language references — everything here comes from SentinelOne's own{' '}
+      <em>publicly published</em> material: engineering and threat-research posts that ship complete, real queries.
+      Every operator, function and field name below appears verbatim in at least one of them, and each section links
+      to the exact page.
+    </p>
+    <p class={css({ color: 'textMuted', lineHeight: 1.7, fontSize: '0.9rem', mt: '0.75rem', mb: 0 })}>
+      Three gaps stated rather than papered over. The field list is <strong>not the schema</strong> — Deep Visibility
+      exposes far more than the fields named here; the console's own autocomplete is the authority on the rest. Only
+      the <code class={inlineCode}>event.type</code> values that appear in a published query are named, because the
+      full enumeration isn't public and isn't worth guessing. And none of SentinelOne's older{' '}
+      <strong>S1QL 1.0</strong> syntax is reproduced — that generation used a completely different PascalCase field
+      namespace (<code class={inlineCode}>ProcessCmd</code>, <code class={inlineCode}>DstIP</code>), and mixing the two
+      produces queries that silently match nothing.
+    </p>
+  </aside>
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      The one thing to internalise before anything else:{' '}
+      <strong class={css({ color: 'text' })}><code class={inlineCode}>src.*</code> is the process that acted, and{' '}
+      <code class={inlineCode}>tgt.*</code> is what it acted on.</strong> On a Process Creation event that means{' '}
+      <code class={inlineCode}>src.process.name</code> is the spawning process and{' '}
+      <code class={inlineCode}>tgt.process.name</code> is the one that got created — which is the reverse of what a
+      Windows Event 4688 or a Defender <code class={inlineCode}>InitiatingProcessFileName</code> habit will have you
+      expecting. Getting it backwards is the single most common reason a SentinelOne query looks right and returns
+      nothing. The other thing worth knowing early is{' '}
+      <code class={inlineCode}>src.process.storyline.id</code>: SentinelOne's correlation key, which pulls every
+      related process, file and network event for an incident into one query. The{' '}
+      <a href="/tools/s1-builder/" class={inlineLink}>SentinelOne PowerQuery Builder</a> assembles the same pipeline
+      shape against this field namespace.
+    </p>
+  </aside>
+
+  <GroupOverview items={categoryTiles} heading="Jump to category" />
+
+  {/* Search + category filter (typeahead combobox) */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="s1cheat-cb"
+      options={categoryOptions}
+      placeholder={`Search ${totalEntries} PowerQuery entries, or type a category…`}
+      label="Search the SentinelOne PowerQuery cheat sheet or filter by category"
+    />
+  </div>
+
+  <div class={css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' })}>
+    <p role="status" aria-live="polite" class={css({ color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span id="s1cheat-result-count">{totalEntries}</span> entries shown
+    </p>
+    <CollapseAll target="[data-s1cheat-group]" class={css({ ml: { sm: 'auto' } })} />
+  </div>
+
+  <p id="s1cheat-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No entries match your search.
+  </p>
+
+  {
+    categories.map((c) => (
+      <details id={c.id} data-s1cheat-group open class={groupDetails}>
+        <summary class={groupSummary}>
+          <h2 class={sectionH2}>
+            <Icon name="chevron-right" size={17} class={chevCls} />
+            <Icon name={c.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+            <span class="s1cheat-grp-title">{c.title}</span>
+            <span class={grpCount}>{c.entries.length}</span>
+          </h2>
+        </summary>
+        {c.source && (
+          <p class={sourceLine}>
+            <Icon name="external-link" size={12} />
+            <span>
+              Verified against{' '}
+              <a href={c.source.url} target="_blank" rel="noopener">
+                {c.source.name}
+              </a>
+            </span>
+          </p>
+        )}
+        <div class={entriesGrid}>
+          {c.entries.map((e) => (
+            <div
+              class={entryCard}
+              data-cat={tagSlug(c.title)}
+              data-s1cheat-card={`${e.category} ${e.syntax} ${e.description} ${e.example}`.toLowerCase()}
+            >
+              <code class={syntaxCode}>{e.syntax}</code>
+              <p class={entryDesc}>{e.description}</p>
+              <p class={entryExample}>
+                <Icon name="arrow-right" size={12} class={css({ flexShrink: 0, mt: '0.2rem' })} />
+                <span>{e.example}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      </details>
+    ))
+  }
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/s1-builder/" class={toolChip}>
+        <Icon name="shield" size={13} /> SentinelOne PowerQuery Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Assemble a hunt clause by clause against the Deep Visibility field namespace, then copy the finished query
+        into the console.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/kql-cheatsheet/" class={toolChip}>
+        <Icon name="terminal" size={13} /> KQL Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The Microsoft Defender XDR and Sentinel equivalent. The two languages solve the same problems with different
+        grammar — this is the sheet to open next to this one when moving a hunt between two{' '}
+        <Term slug="edr">EDR</Term> platforms.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/spl-cheatsheet/" class={toolChip}>
+        <Icon name="activity" size={13} /> Splunk SPL Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        SPL for when SentinelOne telemetry is forwarded into a <Term slug="siem">SIEM</Term> rather than queried in
+        the console — the field names carry across, the query language does not.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="target" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A <Term slug="sigma-rule">Sigma rule</Term> expresses the detection once and converts into a platform query —
+        the right place to write logic that has to survive an EDR migration.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Most of the field combinations on this page map to a specific technique — process lineage to{' '}
+        <Term slug="lolbin">LOLBin</Term> abuse, <code class={inlineCode}>dst.port.number</code> summaries to{' '}
+        <Term slug="command-and-control">command and control</Term>. The map is where to check what detection
+        telemetry MITRE says a technique should produce.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['s1-cheatsheet']} />
+
+  <ListFilter
+    config={{
+      comboboxId: 's1cheat-cb',
+      cardSelector: '[data-s1cheat-card]',
+      searchAttr: 'data-s1cheat-card',
+      groupSelector: '[data-s1cheat-group]',
+      countId: 's1cheat-result-count',
+      emptyId: 's1cheat-empty',
+      facetAttr: 'data-cat',
+      urlSync: { queryParam: 'q', facetParam: 'cat' },
+    }}
+  />
+</BaseLayout>

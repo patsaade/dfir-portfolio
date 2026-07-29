@@ -6,7 +6,7 @@
 // (src/utils/dataSize.ts) — nothing here needs runtime lookup, it's unit
 // conversion. Same page shape as the other interactive tools (intro aside ->
 // tool -> reference notes). IT-fundamentals content, not DFIR-specific — see
-// consts.ts's IT_GROUPS comment and CLAUDE.md's "Nav grouping" invariant for
+// consts.ts's Domain notes for
 // the framing rule this page follows. Static page — prerender to HTML
 // served from the CDN.
 export const prerender = true;
@@ -78,7 +78,7 @@ const example5TB = convertDataSize(5, 'TB');
   description="Convert a value between bit, byte, decimal (kB-PB) and binary (KiB-PiB) size units live as you type — and see exactly why a '500 GB' drive shows less in Windows."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Data Size & Storage Unit Converter' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Data Size & Storage Unit Converter' }]}
     eyebrow="Tools"
     title="Data Size & Storage Unit Converter"
     description="Type a value into any unit — bit, byte, decimal kB-PB, or binary KiB-PiB — and every other field updates live, so you can see exactly how the two prefix systems diverge."
@@ -138,7 +138,7 @@ const example5TB = convertDataSize(5, 'TB');
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Unit reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Unit reference table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -208,7 +208,7 @@ const example5TB = convertDataSize(5, 'TB');
       </p>
     </div>
     <div>
-      <a href="/osi-model/" class={toolChip}>
+      <a href="/reference/osi-model/" class={toolChip}>
         <Icon name="layers" size={13} /> OSI &amp; TCP/IP Model Reference <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>

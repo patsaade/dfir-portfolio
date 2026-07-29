@@ -16,12 +16,22 @@ import { toolChip } from '../../../components/RelatedTools.astro';
 import ExternalResources from '../../../components/ExternalResources.astro';
 import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
 import { EVENT_IDS } from '../../../data/eventIds';
-import { getEventIdsDrillQuestion, EVENT_IDS_DRILL_TOTAL } from '../../../data/drills/eventIdsDrill';
+import { eventIdsDrillQuestionBank, EVENT_IDS_DRILL_TOTAL } from '../../../data/drills/eventIdsDrill';
 
-// Called once here (build time, for the no-JS shell) and again by the
-// client <script> below on mount — see DrillEngine.astro's own header
-// comment for why question 0 must be deterministic to avoid a flash.
-const q0 = getEventIdsDrillQuestion(0);
+// The ENTIRE question bank, materialised at build time and handed to the
+// client as a JSON island below. The generator is a pure, deterministic
+// function of the question index, so there's nothing the client needs it for
+// at runtime — and keeping it out of the client bundle is what stops Rollup
+// pulling all 125 EVENT_IDS entries (every raw sampleLog) plus the full ATT&CK
+// technique set (~777 KB raw) into this page to ask ten questions. See
+// src/data/drills/graders.ts for how the `grade` closures survive the JSON
+// round-trip — including the per-field one on sysmon-22's QueryResults blank.
+const QUESTIONS = eventIdsDrillQuestionBank();
+// Question 0 renders for real server-side (DrillEngine's no-JS contract). It's
+// the SAME object the client hydrates for index 0, not a second call to the
+// generator, so SSR and hydration cannot drift.
+const q0 = QUESTIONS[0];
+const questionsJson = JSON.stringify(QUESTIONS).replace(/</g, '\\u003c');
 
 const securityCount = EVENT_IDS.filter((e) => e.source === 'security').length;
 const sysmonCount = EVENT_IDS.filter((e) => e.source === 'sysmon').length;
@@ -50,7 +60,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'Windows Event IDs' }]}
     eyebrow="Practice"
     title="Windows Event ID Drill"
-    description="Read a raw Security or Sysmon log entry and identify it — generated from the same fully-cited dataset behind this site's Event ID / Sysmon Reference."
+    description="Read a raw Security or Sysmon log entry, then either extract the specific fields an analyst pulls out during triage or identify the event itself — generated from the same fully-cited dataset behind this site's Event ID / Sysmon Reference."
   />
 
   <aside
@@ -73,27 +83,30 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 
   <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
     Most questions show a real raw log entry — rendered the way it'd actually appear in Event Viewer's Friendly View
-    or a Sysmon operational log — and ask you to type the event ID that generated it. A few bonus questions instead
-    ask you to type the MITRE ATT&amp;CK technique ID a given event commonly maps to, cross-checked against this
-    site's own ATT&amp;CK Coverage Map data. No multiple choice — every answer links straight to that event's own
-    detail page on the Event ID / Sysmon Reference for the full "what it is / why it matters / common triggers"
-    writeup.
+    or a Sysmon operational log — and ask you to read it and type the specific field values an analyst pulls out
+    during triage (the account, the source IP, the logon type), including telling apart same-named fields that
+    appear in different blocks with different meanings. A few bonus questions instead ask you to type the MITRE
+    ATT&amp;CK technique ID a given event commonly maps to, cross-checked against this site's own ATT&amp;CK Coverage
+    Map data. No multiple choice — every answer links straight to that event's own detail page on the Event ID /
+    Sysmon Reference for the full "what it is / why it matters / common triggers" writeup.
   </p>
 
   <DrillEngine
     drill="event-ids"
     heading="Windows Event ID Drill"
-    intro="Ten questions — read the raw log, name the event."
+    intro="Ten questions — read the raw log, extract the fields that matter."
     totalQuestions={EVENT_IDS_DRILL_TOTAL}
     firstQuestion={q0}
   />
+
+  <script type="application/json" data-drill-questions="event-ids" is:inline set:html={questionsJson} />
 
   <h2 id="related" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Related
   </h2>
   <div class={relatedList}>
     <div>
-      <a href="/event-ids/" class={toolChip}>
+      <a href="/reference/event-ids/" class={toolChip}>
         <Icon name="list" size={13} /> Event ID / Sysmon Reference <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
@@ -102,7 +115,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </p>
     </div>
     <div>
-      <a href="/attack-map/" class={toolChip}>
+      <a href="/reference/attack-map/" class={toolChip}>
         <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
@@ -116,8 +129,22 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 </BaseLayout>
 
 <script>
+  // Imports the drill engine and the tiny grader shim ONLY — never
+  // ../../../data/drills/eventIdsDrill, which would drag EVENT_IDS (and the
+  // ATT&CK dataset behind it) into this page's bundle. The questions come from
+  // the JSON island the frontmatter above emitted.
   import { initDrill } from '../../../scripts/drillEngine';
-  import { getEventIdsDrillQuestion, EVENT_IDS_DRILL_TOTAL } from '../../../data/drills/eventIdsDrill';
+  import { hydrateQuestion, type SerialisableDrillQuestion } from '../../../data/drills/graders';
   const root = document.querySelector('[data-drill="event-ids"]');
-  if (root) initDrill({ root, totalQuestions: EVENT_IDS_DRILL_TOTAL, nextQuestion: getEventIdsDrillQuestion });
+  const dataEl = document.querySelector('[data-drill-questions="event-ids"]');
+  if (root && dataEl) {
+    const questions: SerialisableDrillQuestion[] = JSON.parse(dataEl.textContent || '[]');
+    if (questions.length) {
+      initDrill({
+        root,
+        totalQuestions: questions.length,
+        nextQuestion: (i: number) => hydrateQuestion(questions[((i % questions.length) + questions.length) % questions.length]),
+      });
+    }
+  }
 </script>

@@ -1,0 +1,453 @@
+---
+// SentinelOne PowerQuery Builder — a guided compose UI for Singularity Data
+// Lake event search. Same page shape as the other query builders (scope aside
+// -> tool -> packages -> reference tables -> related -> external resources).
+// Static page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import S1Builder from '../../components/S1Builder.astro';
+import Term from '../../components/Term.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { S1_AGGREGATIONS, S1_EVENT_TYPES, S1_FIELDS, S1_FIELD_GROUPS, S1_OPERATORS } from '../../data/s1';
+import { S1_PACKAGES, queryPackageText, themesFor } from '../../data/queryPackages';
+import { ATTACK_TECHNIQUE_BY_ID } from '../../data/references';
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const refTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const refTh = css({
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  p: '0.5rem 0.7rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const refTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text', verticalAlign: 'top' } as const;
+const refTd = css(refTdBase);
+const refTdMuted = css({ ...refTdBase, color: 'textMuted', fontSize: '0.8rem' });
+const refTdCode = css(refTdBase, { fontFamily: 'mono', fontSize: '0.78rem', color: 'primary', whiteSpace: 'nowrap' });
+const bodyText = css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' });
+const mutedNote = css({ color: 'textMuted', fontSize: '0.88rem', mt: '1.5rem', lineHeight: 1.7 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85em', color: 'primary' });
+const linkStyle = css({ color: 'primary' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+
+const themeH3 = css({
+  fontSize: '0.72rem',
+  fontFamily: 'sans',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+  mt: '1.75rem',
+  mb: '0.85rem',
+});
+const packageCard = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '1rem 1.1rem',
+  mb: '1rem',
+});
+const packageTitle = css({ fontSize: '1rem', fontWeight: 700, color: 'text', m: 0, mb: '0.35rem' });
+const packageFinds = css({ color: 'text', fontSize: '0.9rem', lineHeight: 1.65, m: 0, mb: '0.6rem' });
+const packageMeta = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.65, m: 0, mb: '0.4rem' });
+const metaKey = css({ fontFamily: 'sans', fontWeight: 700, color: 'text' });
+const packageCode = css({
+  m: 0,
+  mt: '0.7rem',
+  p: '0.7rem 0.85rem',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  lineHeight: 1.7,
+  color: 'text',
+  bg: 'codeBg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  maxH: '18rem',
+  overflowY: 'auto',
+});
+const tierChip = css({
+  display: 'inline-block',
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+  px: '0.4rem',
+  py: '0.1rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+  color: 'textMuted',
+  whiteSpace: 'nowrap',
+});
+
+// Rendered from the same pure builder the interactive tool uses, so what a
+// reader sees here cannot drift from what the tool would produce.
+const packages = S1_PACKAGES.map((p) => ({
+  ...p,
+  query: queryPackageText(p),
+  technique: p.attack ? ATTACK_TECHNIQUE_BY_ID.get(p.attack) : undefined,
+}));
+const themes = themesFor('s1');
+const vendorFieldCount = S1_FIELDS.filter((f) => f.source === 'sentinelone').length;
+---
+
+<BaseLayout
+  title="SentinelOne PowerQuery Builder"
+  description="Assemble a valid SentinelOne Singularity Data Lake PowerQuery against verified Deep Visibility field names — filter terms, group, sort, limit and columns — then copy it and run it in your own console."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'SentinelOne PowerQuery Builder' }]}
+    eyebrow="Query Builders"
+    title="SentinelOne PowerQuery Builder"
+    description="Compose a Singularity Data Lake query against field names that were verified before they were offered — plus 14 loadable DFIR hunting packages."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      This builder assembles <strong class={css({ color: 'text' })}>query text</strong>, nothing more. It has no connection
+      to any SentinelOne console, tenant, or API — it cannot run a query, and it never sees a single event. Everything
+      happens in your browser; you copy the result and run it yourself in Singularity's own Event Search. It also covers a
+      defined subset of PowerQuery — a filter expression plus <code class={inlineCode}>group</code>,{' '}
+      <code class={inlineCode}>filter</code>, <code class={inlineCode}>sort</code>, <code class={inlineCode}>limit</code>{' '}
+      and <code class={inlineCode}>columns</code> — not the whole language.
+    </p>
+  </aside>
+
+  <p class={bodyText}>
+    SentinelOne's Deep Visibility data lands in the Singularity Data Lake, and PowerQuery is how you ask it questions. The
+    shape is a pipeline: a filter expression first, then a series of <code class={inlineCode}>|</code> stages that
+    aggregate, narrow, order and shape what comes back. Terms in the filter expression are separated by nothing more than a
+    space, which the platform reads as an implicit AND — so a query grows by adding conditions rather than by nesting them.
+  </p>
+  <p class={bodyText}>
+    The thing that actually stops people writing a good <Term slug="threat-hunting">hunting</Term> query here is the field
+    names. The schema is namespaced by role rather than by event: <code class={inlineCode}>src.*</code> describes the
+    process doing something, <code class={inlineCode}>tgt.*</code> describes the thing being done to. On a process-creation
+    row that means <code class={inlineCode}>src.process.name</code> is the PARENT and{' '}
+    <code class={inlineCode}>tgt.process.name</code> is the child — the opposite way round from how most{' '}
+    <Term slug="edr">EDR</Term> schemas name the same pair, and the single most common reason a first PowerQuery returns
+    nothing.
+  </p>
+
+  <h2 id="builder" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="search" size={20} class={css({ color: 'primary' })} /> Query builder
+  </h2>
+  <S1Builder />
+
+  <h2 id="sourcing" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> Where these field names come from
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.75, fontSize: '0.95rem', mb: '1rem' })}>
+    SentinelOne's product documentation sits behind a customer login, so it can't be linked from here the way Microsoft
+    Learn or the Splunk Search Reference can. That's a real constraint and it's worth being explicit about how it was
+    handled, because a plausible-looking field name that doesn't exist returns zero rows and reads as
+    <em> "nothing to find here"</em> — the worst failure mode a hunting query has. Every name offered by this tool had to
+    clear one of two bars:
+  </p>
+  <ul class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.8, pl: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+    <li>
+      <strong class={css({ color: 'text' })}>Vendor.</strong> The exact spelling appears verbatim in a query SentinelOne
+      itself published, or in the SentineLabs query repository. {vendorFieldCount} of the {S1_FIELDS.length} fields here
+      clear this bar.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>Corroborated.</strong> The exact spelling appears in at least two
+      independently-authored public sources — the maintained pySigma SentinelOne PowerQuery backend's field mapping, and
+      published Cloud Funnel field documentation from vendors who ingest this telemetry.
+    </li>
+  </ul>
+  <p class={mutedNote}>
+    Anything that cleared neither bar was left out, even where it looked obvious by symmetry with a field that did.
+    Known gaps, named rather than quietly omitted: process-integrity and signing fields on the{' '}
+    <code class={inlineCode}>tgt.*</code> side, named-pipe and module-path fields, the login event family beyond{' '}
+    <code class={inlineCode}>event.category</code>, and the <code class={inlineCode}>Task Register</code> event type. The
+    absence of a name here means it could not be verified from public material — never that it doesn't exist. Check your
+    own console's field browser, which is the real authority.
+  </p>
+
+  <h2 id="packages" class={sectionH2}>
+    <Icon name="target" size={20} class={css({ color: 'primary' })} /> DFIR packages
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1.25rem' })}>
+    Each of these is loadable from the <strong class={css({ color: 'text' })}>DFIR package</strong> dropdown in the builder
+    above, and stays fully editable once loaded. They are starting points for an investigation, not finished detections —
+    every one returns benign activity in a real environment, which is what the tuning line on each is for. Set the time
+    range in the console before running any of them.
+  </p>
+  {
+    themes.map((theme) => (
+      <>
+        <h3 class={themeH3}>{theme}</h3>
+        {packages
+          .filter((p) => p.theme === theme)
+          .map((p) => (
+            <div class={packageCard}>
+              <h4 class={packageTitle}>{p.title}</h4>
+              <p class={packageFinds}>{p.finds}</p>
+              <p class={packageMeta}>
+                <span class={metaKey}>Needs</span> — {p.dataSource}
+              </p>
+              <p class={packageMeta}>
+                <span class={metaKey}>Tuning</span> — {p.tuning}
+              </p>
+              {p.technique && (
+                <p class={packageMeta}>
+                  <span class={metaKey}>ATT&amp;CK</span> —{' '}
+                  <a href={`/reference/attack-map/${p.technique.id}/`} class={linkStyle}>
+                    {p.technique.id} {p.technique.name}
+                  </a>
+                </p>
+              )}
+              <pre class={packageCode} tabindex="0" role="region" aria-label="Example query"><code>{p.query}</code></pre>
+            </div>
+          ))}
+      </>
+    ))
+  }
+
+  <h2 id="fields" class={sectionH2}>
+    <Icon name="layers" size={20} class={css({ color: 'primary' })} /> Fields covered
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    {S1_FIELDS.length} fields across {S1_FIELD_GROUPS.length} groups. The <strong class={css({ color: 'text' })}>Source</strong>{' '}
+    column is the sourcing bar each name cleared, per the section above.
+  </p>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Fields covered table">
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Field</th>
+          <th class={refTh}>Type</th>
+          <th class={refTh}>Source</th>
+          <th class={refTh}>What it holds</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          S1_FIELDS.map((field) => (
+            <tr>
+              <td class={refTdCode}>{field.name}</td>
+              <td class={refTdMuted}>{field.kind}</td>
+              <td class={refTd}>
+                <span class={tierChip}>{field.source === 'sentinelone' ? 'Vendor' : 'Corroborated'}</span>
+              </td>
+              <td class={refTdMuted}>{field.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="event-types" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Event types
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1rem' })}>
+    <code class={inlineCode}>event.type</code> is the first filter almost every PowerQuery starts with, and the values are
+    literal strings rather than an enum you can guess at. These are the ones that could be verified.
+  </p>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Event types table">
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Value</th>
+          <th class={refTh}>Source</th>
+          <th class={refTh}>What it records</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          S1_EVENT_TYPES.map((type) => (
+            <tr>
+              <td class={refTdCode}>'{type.value}'</td>
+              <td class={refTd}>
+                <span class={tierChip}>{type.source === 'sentinelone' ? 'Vendor' : 'Corroborated'}</span>
+              </td>
+              <td class={refTdMuted}>{type.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="operators" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Operators &amp; aggregates
+  </h2>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Operators reference table">
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Operator</th>
+          <th class={refTh}>Applies to</th>
+          <th class={refTh}>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          S1_OPERATORS.map((operator) => (
+            <tr>
+              <td class={refTdCode}>{operator.symbol}</td>
+              <td class={refTdMuted}>{operator.kinds.join(', ')}</td>
+              <td class={refTdMuted}>{operator.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <div class={css({ overflowX: 'auto', mt: '1.5rem' })} tabindex="0" role="region" aria-label="Aggregates reference table">
+    <table class={refTable}>
+      <thead>
+        <tr>
+          <th class={refTh}>Aggregate</th>
+          <th class={refTh}>Takes a field</th>
+          <th class={refTh}>Behavior</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          S1_AGGREGATIONS.map((agg) => (
+            <tr>
+              <td class={refTdCode}>{agg.fn}()</td>
+              <td class={refTdMuted}>{agg.needsField ? 'Yes' : 'No'}</td>
+              <td class={refTdMuted}>{agg.hint}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="scope" class={sectionH2}>
+    <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> What this tool does not do
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.75, fontSize: '0.95rem', mb: '1rem' })}>
+    Deliberate scope cuts, stated plainly rather than left as surprises:
+  </p>
+  <ul class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.8, pl: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+    <li>
+      <strong class={css({ color: 'text' })}>No ascending sort.</strong> Every published SentinelOne example spells the
+      descending form (<code class={inlineCode}>| sort -field</code>) and none of the material this was checked against
+      spells the ascending one, so the builder emits descending only rather than guessing at a prefix. To reach the RARE
+      end of a distribution, group and then narrow with the <code class={inlineCode}>| filter</code> stage — which is what
+      the packages under <em>Frequency analysis</em> do.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>No <code class={inlineCode}>join</code>,{' '}
+      <code class={inlineCode}>union</code>, <code class={inlineCode}>let</code>, <code class={inlineCode}>parse</code> or{' '}
+      <code class={inlineCode}>transpose</code>.</strong> All five are real PowerQuery commands. They're out of scope for a
+      guided builder, not absent from the language.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>No OR grouping.</strong> Terms are space-separated, which is an implicit AND.
+      For "any of these values" use <code class={inlineCode}>in</code>; genuinely nested boolean logic needs parentheses
+      you'll add yourself.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>No conditional aggregates.</strong>{' '}
+      <code class={inlineCode}>count(status &gt;= 500)</code> is valid PowerQuery, but it needs a second expression grammar
+      the builder doesn't model.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>No time range.</strong> PowerQuery takes its window from the console's own
+      picker rather than from the query text, so there is nothing here to set. That's a platform behaviour, not an
+      omission — but it does mean a copied query is only half the search until you set the range.
+    </li>
+    <li>
+      <strong class={css({ color: 'text' })}>A quoting rule built from two verified examples only.</strong> String values
+      are single-quoted with backslashes doubled; a value containing a single quote switches to double quotes instead. A
+      value containing both is refused rather than escaped, because there is no escape sequence for that case this tool
+      could verify.
+    </li>
+  </ul>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/reference/s1-cheatsheet/" class={toolChip}>
+        <Icon name="book-open" size={13} /> SentinelOne PowerQuery Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The language reference behind this builder — the pipeline, matching operators, the src/tgt field namespace,
+        group and its aggregates, computed columns and join/union. Every entry comes from a query SentinelOne has
+        published publicly, and each section links to the exact page.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/kql-builder/" class={toolChip}>
+        <Icon name="cpu" size={13} /> KQL Query Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The same hunts against Microsoft Defender XDR and Sentinel. Useful side by side: the two schemas name the parent and
+        child process in almost opposite ways, and seeing one hunt written twice is the fastest way to internalise that.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/spl-builder/" class={toolChip}>
+        <Icon name="activity" size={13} /> Splunk SPL Query Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The same hunts against Splunk, where the field names depend on how the data was onboarded rather than on a fixed
+        schema — the packages there say which add-on and sourcetype each one assumes.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="shield" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The portable option. A Sigma rule describes <Term slug="detection-rule">detection logic</Term> once and gets
+        converted into a backend's own query language — including SentinelOne's. Build the logic there when it needs to
+        outlive one platform.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/attack-map/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Each technique page lists the telemetry MITRE says detects it — a good way to work backwards from a technique you
+        want to hunt to the event type and fields that would actually show it.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['s1-builder']} />
+</BaseLayout>

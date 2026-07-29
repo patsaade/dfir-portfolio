@@ -36,7 +36,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.7rem 0.85rem',
   minH: '9rem',
@@ -192,7 +192,7 @@ const diffText = css({ flex: 1, minW: 0, whiteSpace: 'pre-wrap', wordBreak: 'bre
   <div>
     <p class={paneLabel}>Diff</p>
     <p class={statsLine} data-diff-stats role="status" aria-live="polite">Paste text on both sides above, then click Compare.</p>
-    <div class={diffBox} data-diff-output>
+    <div class={diffBox} data-diff-output tabindex="0" role="region" aria-label="Diff output">
       <p class={diffEmpty} data-diff-empty>Nothing to compare yet.</p>
     </div>
   </div>

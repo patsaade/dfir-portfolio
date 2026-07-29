@@ -42,7 +42,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   description="Live regex playground with inline match highlighting, a capture-group breakdown, and a library of common DFIR patterns — IPv4/IPv6, Windows SIDs, GUIDs, file paths, registry keys, and more — entirely in your browser."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Regex Tester' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Regex Tester' }]}
     eyebrow="Extractors"
     title="DFIR Regex Tester & Pattern Library"
     description="Test a pattern against sample text with live match highlighting and a capture-group breakdown, or start from a library of common DFIR patterns."
@@ -84,7 +84,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Pattern library reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Pattern library reference table">
     <table class={refTable}>
       <thead>
         <tr>

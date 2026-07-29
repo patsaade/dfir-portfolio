@@ -2,8 +2,9 @@
 // own interactive DFIR tools — researched and WebFetch-verified before
 // inclusion (same no-invention discipline as eventIds.ts/tools.ts). Distinct
 // from RelatedTools.astro's toolChip, which links to OTHER PAGES ON THIS
-// SITE; every resource here is off-site. Keyed by the tool page's own route
-// slug (the segment after /tools/, or 'osint' for the OSINT Toolkit).
+// SITE; every resource here is off-site. Keyed by the page's own final
+// route segment — a tool under /tools/, a reference page under /reference/, or
+// a drill under /drills/.
 // 'reference' = an authoritative spec or standards-body source (RFC, FIPS/NIST,
 // IEEE, POSIX, an official project spec, Microsoft Learn's own format docs,
 // MITRE ATT&CK's own pages) — the same tier of organization CLAUDE.md's
@@ -60,6 +61,48 @@ const MDN_JS_REGEX_ENTRY: ExternalResource = {
 };
 
 export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
+  // SentinelOne's product documentation sits behind a customer login, so none
+  // of it is linkable here. Everything below is publicly reachable and was
+  // fetched before inclusion — the three SentinelOne posts are the vendor
+  // writing about its own query language, which is the closest thing to a
+  // citable PowerQuery specification that exists outside the console.
+  's1-builder': [
+    {
+      name: 'SentinelOne — Transform Your Data On The Fly! (PowerQuery primer)',
+      url: 'https://www.sentinelone.com/blog/intro-powerqueries/',
+      blurb:
+        "SentinelOne's own introduction to PowerQuery, and the single most useful public page on the syntax: it walks one complete query through group, let, sort, filter, limit and columns in order, which is the pipeline this builder is organized around.",
+      kind: 'reference',
+    },
+    {
+      name: 'SentinelOne — PowerQuery Brings New Data Analytics Capabilities to Singularity XDR',
+      url: 'https://www.sentinelone.com/blog/powerquery-brings-new-data-analytics-capabilities-to-singularity-xdr/',
+      blurb:
+        "The vendor's own command list — filter, columns, group by, join, limit, sort, transpose, parse, union, let — with the aggregate function names each one accepts. Worth reading for the four commands this builder deliberately leaves out.",
+      kind: 'reference',
+    },
+    {
+      name: 'SentinelOne — Singularity Operations Center',
+      url: 'https://www.sentinelone.com/blog/singularity-operations-center-unified-security-operations-for-rapid-triage/',
+      blurb:
+        'Carries two complete worked PowerQueries against real investigation questions — a command-frequency hunt and an outbound-connection hunt. Short, but it is vendor-published query text, which makes it a primary source for field spellings.',
+      kind: 'reference',
+    },
+    {
+      name: 'SentineLabs — S1QL-Queries',
+      url: 'https://github.com/SentineLabs/S1QL-Queries',
+      blurb:
+        "SentinelOne Research's own repository of hunting queries, each with its ATT&CK tags, false positives and minimum agent version. Written in the earlier S1QL dialect rather than PowerQuery, so read it for the detection logic and translate the field names.",
+      kind: 'recommendation',
+    },
+    {
+      name: 'pySigma-backend-sentinelone-pq',
+      url: 'https://github.com/7RedViolin/pySigma-backend-sentinelone-pq',
+      blurb:
+        "The maintained Sigma-to-PowerQuery backend. Its processing pipeline is effectively a published Sigma-field-to-SentinelOne-field mapping table, which makes it the most useful public cross-reference for a field name you can't find anywhere else.",
+      kind: 'recommendation',
+    },
+  ],
   'spl-builder': [
     {
       name: 'Splunk Search Reference — Command quick reference',
@@ -115,6 +158,147 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       name: 'regex101',
       url: 'https://regex101.com/?flavor=javascript',
       blurb: "An interactive tester deep-linked to regex101's JavaScript flavor, so a pasted pattern is explained and highlighted using actual JS engine semantics rather than PCRE2's — a useful second opinion alongside this site's own Regex Tester.",
+      kind: 'recommendation',
+    },
+  ],
+  // The three query-language cheat sheets under /reference/. Each cites the
+  // exact vendor pages every entry on that page was verified against, so a
+  // reader can check any single claim at source — and, for KQL and SPL, the
+  // full reference the sheet is deliberately a DFIR-relevant subset of.
+  'kql-cheatsheet': [
+    {
+      name: 'Microsoft Learn — KQL quick reference',
+      url: 'https://learn.microsoft.com/en-us/kusto/query/kql-quick-reference',
+      blurb:
+        "Microsoft's own one-page operator table — name, description and syntax for every tabular operator, grouped the same way this page is. The single best page to keep open next to a query editor, and the source most of this sheet's operator entries were verified against.",
+      kind: 'reference',
+    },
+    {
+      name: 'Microsoft Learn — Kusto Query Language overview',
+      url: 'https://learn.microsoft.com/en-us/kusto/query/',
+      blurb:
+        'The reference landing page for the whole language. Everything this sheet leaves out on purpose — geospatial functions, time-series decomposition, the plugin/`evaluate` surface, management commands — is documented from here.',
+      kind: 'reference',
+    },
+    {
+      name: 'Microsoft Learn — String operators',
+      url: 'https://learn.microsoft.com/en-us/kusto/query/datatypes-string-operators',
+      blurb:
+        'The per-operator table that settles which string comparisons are case-sensitive, plus the explanation of term indexing that makes `has` fundamentally different from `contains`. Read the "Performance tips" section once and most slow-query problems stop happening.',
+      kind: 'reference',
+    },
+    {
+      name: 'Microsoft Learn — Advanced hunting schema tables',
+      url: 'https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-schema-tables',
+      blurb:
+        'Every table in the Defender XDR advanced hunting schema, each linking to its own per-column page. The authority on the full column set this sheet only names a DFIR-relevant slice of.',
+      kind: 'reference',
+    },
+    {
+      name: 'Microsoft Sentinel & Defender XDR content repository',
+      url: 'https://github.com/Azure/Azure-Sentinel',
+      blurb:
+        'The MIT-licensed, community-contributed repository of real hunting queries, detection rules, workbooks and parsers. Thousands of working KQL queries to read and adapt — the fastest way to pick up the idioms once you know the operators.',
+      kind: 'recommendation',
+    },
+    {
+      name: 'Must Learn KQL (Rod Trent)',
+      url: 'https://github.com/rod-trent/MustLearnKQL',
+      blurb:
+        'A free, MIT-licensed 21-part KQL course with queries, an eBook, workshop material and companion videos — the structured path through the language once a cheat sheet stops being enough.',
+      kind: 'recommendation',
+    },
+  ],
+  'spl-cheatsheet': [
+    {
+      name: 'Splunk Search Reference — Commands by category',
+      url: 'https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference/10.2/quick-reference/commands-by-category',
+      blurb:
+        "Splunk's own categorised index of every search command with a one-line description. The authoritative answer to \"is there a command for this?\", and the page every command name on this sheet was checked against.",
+      kind: 'reference',
+    },
+    {
+      name: 'Splunk Search Reference — Evaluation functions',
+      url: 'https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference/10.2/evaluation-functions/evaluation-functions',
+      blurb:
+        'The complete `eval` function library by category — comparison, conversion, cryptographic, date/time, JSON, multivalue, text and statistical. Far larger than the DFIR-relevant subset listed here.',
+      kind: 'reference',
+    },
+    {
+      name: 'Splunk Search Reference — Time modifiers',
+      url: 'https://help.splunk.com/en/splunk-enterprise/search/spl-search-reference/10.2/time-format-variables-and-modifiers/time-modifiers',
+      blurb:
+        'The full specification for `earliest`/`latest`, the relative-time grammar, the snap-to (`@`) operator and the complete table of valid time unit abbreviations — including the absolute-timestamp forms.',
+      kind: 'reference',
+    },
+    {
+      name: 'Splunk Boss of the SOC (BOTS) v3 dataset',
+      url: 'https://github.com/splunk/botsv3',
+      blurb:
+        "Splunk's free, CC0-licensed CTF dataset — pre-indexed Windows, Linux, AWS, cloud and network telemetry from a simulated intrusion. The realistic way to practise these commands against data that actually has something to find.",
+      kind: 'recommendation',
+    },
+    {
+      name: 'Splunk — Splunk Cheat Sheet: Query, SPL, RegEx, & Commands',
+      url: 'https://www.splunk.com/en_us/blog/learn/splunk-cheat-sheet-query-spl-regex-commands.html',
+      blurb:
+        "Splunk's own shorter cheat sheet — core concepts, common commands with worked queries, eval functions and time formatting. A useful second opinion, and a faster skim than the full Search Reference.",
+      kind: 'recommendation',
+    },
+  ],
+  // SentinelOne's product documentation sits behind a customer login, so every
+  // citation below is a vendor-authored PUBLIC post that ships complete,
+  // runnable queries — which is the closest thing to a citable PowerQuery
+  // specification that exists outside the console, and the reason this sheet is
+  // deliberately smaller than the KQL and SPL ones.
+  's1-cheatsheet': [
+    {
+      name: 'SentinelOne — PowerQuery Brings New Data Analytics Capabilities to Singularity XDR',
+      url: 'https://www.sentinelone.com/blog/powerquery-brings-new-data-analytics-capabilities-to-singularity-xdr/',
+      blurb:
+        "The vendor's own command inventory — filter, columns, group by, join, limit, sort, transpose, parse, union, let — with the aggregate functions each accepts, plus the statement that regex matching, arithmetic and ternaries are supported. The backbone of this sheet's command entries.",
+      kind: 'reference',
+    },
+    {
+      name: 'SentinelOne — Transform Your Data On The Fly! (PowerQuery primer)',
+      url: 'https://www.sentinelone.com/blog/intro-powerqueries/',
+      blurb:
+        'Walks one complete query through group, let, sort, filter, limit and columns in order. The clearest public illustration of the stage ordering PowerQuery expects, and worth reading before writing your first one.',
+      kind: 'reference',
+    },
+    {
+      name: 'SentinelOne — Adding fit and finish to your PowerQueries reports',
+      url: 'https://www.sentinelone.com/blog/adding-fit-and-finish-to-your-powerqueries-reports/',
+      blurb:
+        'The published source for `parse ... from` with named regex captures and for chained ternaries inside a `columns` stage — the two techniques that turn a raw aggregate into a report someone else can read.',
+      kind: 'reference',
+    },
+    {
+      name: 'SentinelOne — Summary Calculations with PowerQuery Join and Union Functions',
+      url: 'https://www.sentinelone.com/blog/summary-calculations-with-joins-and-unions/',
+      blurb:
+        'The exact subquery syntax for `join` and `union`, including the static-key trick for computing a percentage of total. The only public page that spells out how the two commands are actually written.',
+      kind: 'reference',
+    },
+    {
+      name: 'SentinelOne — Protection Against Local Upgrade Technique Described in Aon Research',
+      url: 'https://www.sentinelone.com/blog/protection-against-local-upgrade-technique-described-in-aon-research/',
+      blurb:
+        'A single published detection query that exercises most of this sheet at once — in:anycase, limit, timebucket, estimate_distinct, array_agg_distinct, array_to_string, columns and a post-aggregation filter. Read it as a worked example of the whole pipeline.',
+      kind: 'reference',
+    },
+    {
+      name: 'SentineLabs — S1QL-Queries',
+      url: 'https://github.com/SentineLabs/S1QL-Queries',
+      blurb:
+        "SentinelOne Research's own repository of hunting queries, each with its ATT&CK tags, false positives and minimum agent version. Written in the earlier S1QL dialect rather than PowerQuery — read it for the detection logic and translate the field names.",
+      kind: 'recommendation',
+    },
+    {
+      name: 'pySigma-backend-sentinelone-pq',
+      url: 'https://github.com/7RedViolin/pySigma-backend-sentinelone-pq',
+      blurb:
+        "The maintained Sigma-to-PowerQuery backend. Its processing pipeline is effectively a published Sigma-field-to-SentinelOne-field mapping table, which makes it the most useful public cross-reference for a field name you can't find anywhere else.",
       kind: 'recommendation',
     },
   ],
@@ -231,6 +415,18 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
     },
   ],
   deobfuscator: [
+    {
+      name: 'RFC 4648 — The Base16, Base32, and Base64 Data Encodings',
+      url: 'https://www.rfc-editor.org/rfc/rfc4648',
+      blurb: "The IETF standard for the Base64 encode/decode step this page implements — the alphabet, padding rules, and the URL-safe variant this page's own transform draws from.",
+      kind: 'reference',
+    },
+    {
+      name: 'RFC 1952 — GZIP file format specification version 4.3',
+      url: 'https://www.rfc-editor.org/rfc/rfc1952',
+      blurb: "The specification for the gzip container this page's Gzip-inflate step targets — defines the 1F 8B magic bytes this tool's own step-reference table cites, and the DEFLATE method wrapped inside.",
+      kind: 'reference',
+    },
     {
       name: 'CyberChef',
       url: 'https://gchq.github.io/CyberChef/',
@@ -674,6 +870,12 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       blurb: "The Registration Authority's own raw, downloadable listing of every OUI assignment and the organization behind it — the authoritative source behind any vendor-lookup tool, useful for bulk or offline lookups against many OUIs at once rather than one at a time.",
       kind: 'reference',
     },
+    {
+      name: 'Wireshark OUI Lookup Tool',
+      url: 'https://www.wireshark.org/tools/oui-lookup.html',
+      blurb: "A free, single-box lookup built and maintained by the Wireshark Foundation, wrapping the same IEEE-sourced OUI data in a much friendlier search than the Registration Authority's own multi-field web form — the faster first stop for a one-off vendor lookup once this page has decoded the OUI.",
+      kind: 'recommendation',
+    },
   ],
   'cron-parser': [
     {
@@ -706,6 +908,12 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       name: 'CyberChef',
       url: 'https://gchq.github.io/CyberChef/',
       blurb: 'GCHQ\'s browser-based "Cyber Swiss Army Knife" has dedicated To Base/From Base operations (plus Base32/58/62/64/85 for the less common text encodings) — useful when a number needs converting as one step in a longer decode chain, chained together with the dozens of other operations this page doesn\'t attempt.',
+      kind: 'recommendation',
+    },
+    {
+      name: 'Binary Hex Converter (binaryhexconverter.com)',
+      url: 'https://www.binaryhexconverter.com/',
+      blurb: "A free converter that, unlike this page, handles signed values — converting negative decimal/binary numbers via two's complement — the one representation this page's own arithmetic deliberately never attempts.",
       kind: 'recommendation',
     },
   ],
@@ -759,6 +967,12 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
   ],
   osint: [
     {
+      name: 'Google — Refine web searches (official search operators)',
+      url: 'https://support.google.com/websearch/answer/2466433?hl=en',
+      blurb: "Google's own official documentation for site:, filetype:, exact-phrase quoting, and the minus-sign exclusion operator — the vendor source behind this page's own operator-reference table (which also notes several operators, like intitle:/inurl:/intext:/OR, are no longer formally documented by Google at all).",
+      kind: 'reference',
+    },
+    {
       name: 'OSINT Framework',
       url: 'https://osintframework.com/',
       blurb: 'A free, categorized directory of hundreds of OSINT tools and resources (usernames, email, domains, social media, and more) — a good next stop once a dork built here surfaces a lead that needs a specialized lookup tool rather than a search engine.',
@@ -776,6 +990,12 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       blurb: "Michael Bazzell's (former FBI cyber investigator) collection of purpose-built search forms that auto-generate multi-source queries for emails, usernames, phone numbers, domains, and more — complements this tool's generic dork builder with pre-built, data-type-specific OSINT search automation.",
       kind: 'recommendation',
     },
+    {
+      name: "Bellingcat's Online Investigation Toolkit",
+      url: 'https://bellingcat.gitbook.io/toolkit',
+      blurb: "Bellingcat's own actively-maintained, free directory of investigative OSINT tools and techniques across 12 categories (geolocation, image/video verification, social media analysis, and more) — built by working investigators around verification workflows, a different angle from the flat tool indexes above.",
+      kind: 'recommendation',
+    },
   ],
   // The 7 /drills/* knowledge-check modules — same key-by-route-slug
   // convention as the tool pages above (the segment after /drills/).
@@ -787,6 +1007,12 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       kind: 'reference',
     },
     MDN_JS_REGEX_ENTRY,
+    {
+      name: 'RegexOne',
+      url: 'https://regexone.com/',
+      blurb: "A free, purely interactive regex tutorial — 15 short lessons that each teach one new syntax concept with a live matching exercise, plus separate real-world practice problems. The same one-concept-per-step structure this drill's own challenges follow, and a natural warm-up or parallel practice track.",
+      kind: 'recommendation',
+    },
   ],
   'ip-cidr': [
     RFC_4632_ENTRY,
@@ -812,6 +1038,24 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       kind: 'reference',
     },
     {
+      name: '[MS-NLMP]: NT LAN Manager (NTLM) Authentication Protocol — Microsoft Learn',
+      url: 'https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nlmp/b38c36ed-2804-4868-a9ff-8dd3182128e4',
+      blurb: "Microsoft's own protocol specification defining NTOWF, the NT hash function this drill's MD5-vs-NTLM ambiguity question hinges on — the reason a bare 32-hex-character digest can be either an MD5 file hash or a Windows NTLM password hash with nothing in the bytes to tell them apart.",
+      kind: 'reference',
+    },
+    {
+      name: 'bcrypt(3) — OpenBSD manual pages',
+      url: 'https://man.openbsd.org/bcrypt.3',
+      blurb: "OpenBSD's own manual page for the Blowfish-based hashing scheme this drill asks you to recognize by its $2-prefixed format — spells out the modular crypt structure (version, cost/round log, salt+hash) straight from the OS that shipped bcrypt first.",
+      kind: 'reference',
+    },
+    {
+      name: 'Unix crypt using SHA-256 and SHA-512 (Drepper)',
+      url: 'https://www.akkadia.org/drepper/SHA-crypt.txt',
+      blurb: 'Ulrich Drepper\'s specification for the $5$/$6$ modular crypt format this drill tests — the actual algorithm (5,000 default rounds, up to 16-character salt) behind a Linux/BSD /etc/shadow line.',
+      kind: 'reference',
+    },
+    {
       name: 'Hashcat Wiki: Example Hashes',
       url: 'https://hashcat.net/wiki/doku.php?id=example_hashes',
       blurb: "The Hashcat project's own reference table of a real example hash for essentially every format it supports (MD5, NTLM, bcrypt, Kerberos, and hundreds more) — a free, well-known way to drill format recognition well past the MD5/SHA family this drill's own questions cover.",
@@ -823,6 +1067,12 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       name: 'Get Started — MITRE ATT&CK',
       url: 'https://attack.mitre.org/resources/',
       blurb: "MITRE's own introduction to the ATT&CK framework — what it is and how it's used for detection, threat intel, and adversary emulation, the context behind this drill's technique-recognition questions.",
+      kind: 'reference',
+    },
+    {
+      name: 'MITRE ATT&CK Navigator',
+      url: 'https://mitre-attack.github.io/attack-navigator/',
+      blurb: "MITRE's own official web app for building and color-coding custom \"layers\" over the full Enterprise matrix — worth exploring once technique IDs and tactics from this drill start feeling automatic, for laying out and exporting your own annotated view rather than just recalling one technique at a time.",
       kind: 'reference',
     },
     {
@@ -1020,6 +1270,126 @@ export const EXTERNAL_RESOURCES: Record<string, ExternalResource[]> = {
       url: 'https://http.cat/',
       blurb: 'A free image for every HTTP status code (https://http.cat/{code}) — a genuinely popular placeholder used in API docs, error pages, and test fixtures across the industry.',
       kind: 'recommendation',
+    },
+  ],
+  cheatsheet: [
+    {
+      name: 'SS64 Command Line Reference',
+      url: 'https://ss64.com/',
+      blurb: 'A free, independently-run command-line reference covering Linux/macOS, CMD, and PowerShell — the exact three platforms this page groups its own tool commands by — useful for the full flag/option syntax of a shell or OS-native command sitting alongside a tool\'s own command in a chained workflow.',
+      kind: 'recommendation',
+    },
+    {
+      name: 'SANS DFIR Cheatsheet Booklet',
+      url: 'https://www.sans.org/posters/sans-dfir-cheatsheet-booklet',
+      blurb: "SANS's own free compilation of its most popular DFIR cheat sheets (SIFT workstation, memory forensics, and more) into one downloadable booklet — a broader tool/technique reference to reach for once you're past the specific tool commands curated on this page (free SANS account required to download).",
+      kind: 'recommendation',
+    },
+  ],
+  'ip-reference': [
+    {
+      name: 'RFC 6890 — Special-Purpose IP Address Registries',
+      url: 'https://www.rfc-editor.org/rfc/rfc6890',
+      blurb: "The IETF Best Current Practice that instructs IANA to establish and maintain the special-purpose registries this page's entries cite one by one — the exact criteria (source/destination use, forwardability, global reachability) that qualify a block for the registry in the first place.",
+      kind: 'reference',
+    },
+    {
+      name: 'IANA IPv4 Special-Purpose Address Registry',
+      url: 'https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml',
+      blurb: "The live, IANA-maintained registry every IPv4 entry on this page is sourced from — the place to check directly for an assignment added or amended since this page's own data was last refreshed.",
+      kind: 'reference',
+    },
+    {
+      name: 'IANA IPv6 Special-Purpose Address Registry',
+      url: 'https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml',
+      blurb: "The IPv6 counterpart registry this page's IPv6 entries are sourced from — the authoritative place to check for a newly-registered special-purpose block this page hasn't caught up to yet.",
+      kind: 'reference',
+    },
+  ],
+  'osi-model': [
+    {
+      name: 'ITU-T Recommendation X.200 — OSI Basic Reference Model: The Basic Model',
+      url: 'https://www.itu.int/rec/T-REC-X.200-199407-I/en',
+      blurb: 'The freely downloadable ITU-T recommendation whose text is identical to ISO/IEC 7498-1 — the actual formal standard that defines the seven-layer model this page teaches (ISO itself sells the equivalent standard rather than publishing it free).',
+      kind: 'reference',
+    },
+    {
+      name: 'RFC 1122 — Requirements for Internet Hosts — Communication Layers',
+      url: 'https://www.rfc-editor.org/rfc/rfc1122',
+      blurb: 'There\'s no single formal standard for "the TCP/IP model" — this IETF RFC is the closest thing to one, laying out the exact four layers (Application, Transport, Internet, Link) this page names, in the same order, as its own organizing structure.',
+      kind: 'reference',
+    },
+    {
+      name: 'RFC 6335 — IANA Procedures for the Management of the Service Name and Transport Protocol Port Number Registry',
+      url: 'https://www.rfc-editor.org/rfc/rfc6335',
+      blurb: 'This page\'s own prose names "RFC 6335" as the source splitting the port space into three ranges — this is that RFC, whose Section 6 defines System (0–1023), User (1024–49151), and Dynamic (49152–65535) exactly as this page describes them.',
+      kind: 'reference',
+    },
+    {
+      name: 'IANA Service Name and Transport Protocol Port Number Registry',
+      url: 'https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml',
+      blurb: "The live, searchable registry behind RFC 6335 — the natural next stop after this page's own short port table, for looking up what's actually assigned to any other well-known or registered port right now.",
+      kind: 'reference',
+    },
+    {
+      name: 'Imperva — What Is the OSI Model? The 7 Layers Explained',
+      url: 'https://www.imperva.com/learn/application-security/osi-model/',
+      blurb: 'A friendlier companion to the formal standards above — walks the full seven-layer stack through one worked example (an email crossing the internet end to end) rather than clause-by-clause spec language, a good first read before X.200 itself.',
+      kind: 'recommendation',
+    },
+  ],
+  'network-ports': [
+    {
+      name: 'IANA Service Name and Transport Protocol Port Number Registry',
+      url: 'https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml',
+      blurb: 'The live, canonical registry every individual port page on this site already cites port-by-port — worth linking at the index level too, as the single source to re-check directly if IANA ever reassigns, deprecates, or adds an entry.',
+      kind: 'reference',
+    },
+    {
+      name: 'RFC 6335 — IANA Procedures for the Management of the Service Name and Transport Protocol Port Number Registry',
+      url: 'https://www.rfc-editor.org/rfc/rfc6335',
+      blurb: "The IETF specification behind the three-tier System/User/Dynamic port ranges this page's own \"Understanding port ranges\" section explains, plus the registration/de-assignment/transfer procedures IANA actually follows for every entry in the registry above.",
+      kind: 'reference',
+    },
+    {
+      name: 'Nmap Services (nmap-services)',
+      url: 'https://svn.nmap.org/nmap/nmap-services',
+      blurb: "Nmap's own port database adds a dimension IANA's registry doesn't have: an empirical open-frequency value for nearly every port, derived from real internet-wide scanning — useful for judging how common a port actually is to see open before treating it as a noteworthy finding.",
+      kind: 'recommendation',
+    },
+  ],
+  'attack-map': [
+    {
+      name: 'MITRE ATT&CK® Matrix for Enterprise',
+      url: 'https://attack.mitre.org/matrices/enterprise/',
+      blurb: "MITRE's own canonical Enterprise matrix — the exact tactic/technique dataset this page's tactic-grouped layout mirrors — worth checking directly for a technique's current status or a newly-added platform this page's generated snapshot hasn't picked up yet.",
+      kind: 'reference',
+    },
+    {
+      name: 'MITRE ATT&CK®: Design and Philosophy',
+      url: 'https://attack.mitre.org/docs/ATTACK_Design_and_Philosophy_March_2020.pdf',
+      blurb: "MITRE's own paper on why ATT&CK is structured the way it is — tactics as adversary goals, techniques as the methods to reach them, and the curation bar a technique has to clear to be added at all.",
+      kind: 'reference',
+    },
+    {
+      name: 'MITRE ATT&CK Navigator',
+      url: 'https://mitre-attack.github.io/attack-navigator/',
+      blurb: "MITRE's own official companion tool: build custom layers over the same matrix this page renders — color-code by coverage, plan an exercise, or compare two intrusions side by side — the kind of active, multi-layer exploration this page's own static list/matrix views don't attempt.",
+      kind: 'recommendation',
+    },
+  ],
+  d3fend: [
+    {
+      name: 'MITRE D3FEND Knowledge Graph',
+      url: 'https://d3fend.mitre.org/',
+      blurb: "MITRE's own official D3FEND site — the canonical source for every technique, tactic, and ATT&CK-countermeasure mapping this page mirrors, worth checking directly for anything newer than this page's own generated snapshot.",
+      kind: 'reference',
+    },
+    {
+      name: 'Toward a Knowledge Graph of Cybersecurity Countermeasures (Kaloroumakis & Smith, MITRE, 2021)',
+      url: 'https://d3fend.mitre.org/resources/D3FEND.pdf',
+      blurb: "MITRE's own paper explaining D3FEND's actual methodology — a knowledge graph built bottom-up from cited defensive-research literature rather than a top-down taxonomy — and the reasoning behind its Model/Harden/Detect/Isolate/Deceive/Evict/Restore tactic model this page's own sections follow.",
+      kind: 'reference',
     },
   ],
 };

@@ -10,7 +10,7 @@
 // these are facts about vendor TAXONOMY (how five separate organizations'
 // naming grammars work), not facts about any one specific tracked group, so
 // nothing here is derived from or duplicated out of that dataset. Powers
-// both the "Naming conventions" explainer on /threat-actors/
+// both the "Naming conventions" explainer on /reference/threat-actors/
 // (src/pages/threat-actors.astro) and the namingConvention drill mode in
 // src/data/drills/threatActorsDrill.ts — a fact only needs verifying once
 // and both surfaces stay in lockstep.

@@ -77,7 +77,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   description="Paste a JSON Web Token and see its header, payload, and claims decoded — entirely in your browser. Decodes contents only; it cannot verify the signature."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'JWT Decoder' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'JWT Decoder' }]}
     eyebrow="Extractors"
     title="JWT Decoder"
     description="Paste a JSON Web Token and see exactly what it's carrying — the declared algorithm, the type, and every RFC 7519 registered claim in its payload, including a live expired/not-yet-valid verdict — decoded entirely in your browser."
@@ -123,7 +123,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     <code class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' })}>=</code> padding is always omitted — which is what makes the whole token safe to drop straight into a URL, a cookie, or an
     HTTP header without escaping.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="JWT structure reference table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -166,7 +166,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     any subset of them (plus any number of its own private claims). The decoder above surfaces whichever of these
     are actually present in a pasted token's payload, from this exact reference table.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="Registered claims reference (RFC 7519 §4.1) table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -208,7 +208,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     reject it when a signature was expected have historically been tricked into accepting a completely unsigned,
     freely-editable token as if it were trusted.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="'alg' reference (RFC 7518 §3.1) table">
     <table class={refTable}>
       <thead>
         <tr>

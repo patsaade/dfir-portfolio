@@ -24,13 +24,27 @@
 //    would assign — applying an already-understood rule to a new (but
 //    always real, verified) input, rather than recalling one memorized
 //    example of it.
+// 4. ATTRIBUTION / DECONFLICTION (`deconfliction`, the 'match' answerType) —
+//    given two REAL, MITRE-documented groups that are themselves commonly
+//    confused/linked/overlapping in reporting (MITRE says so directly, in
+//    that group's own description — never an invented pairing), sort a
+//    mixed set of real aliases/malware/tool names into the group each one
+//    actually, verifiably belongs to. This mirrors the actual analyst task of
+//    deconflicting two closely-tracked clusters rather than treating each
+//    group as an isolated flashcard. Every item is drawn from one group's
+//    own THREAT_ACTORS aliases/software — and cross-checked to make sure it
+//    is NOT also present in the other group's own aliases/software (an item
+//    genuinely shared by both would be a bad discriminator, not a fix) — see
+//    DECONFLICTION_SPECS below and its own verification in
+//    test/threatActorsDrill.test.ts.
 //
 // Two separately-verified sources feed this drill:
 //
-// 1. `clueToName`/`aliasToName`/`software` PICKS (`groupId` + `mode`) trace
-//    to REAL data — src/data/threatActors.ts's own THREAT_ACTORS (the same
-//    MITRE-STIX-generated dataset behind the live /threat-actors/ reference
-//    and its detail pages). Every hand-written "clue" is a verified,
+// 1. `clueToName`/`aliasToName`/`software` PICKS (`groupId` + `mode`), AND
+//    `deconfliction` PICKS, trace to REAL data — src/data/threatActors.ts's
+//    own THREAT_ACTORS (the same MITRE-STIX-generated dataset behind the
+//    live /threat-actors/ reference and its detail pages). Every hand-written
+//    "clue" (or, for `deconfliction`, every sorted item) is a verified,
 //    literal fact pulled from that group's own `description`/`summary`/
 //    `aliases`/`software` fields (cross-checked for uniqueness against every
 //    OTHER group in the dataset before being added — see
@@ -47,19 +61,31 @@
 // Nothing in either category is invented, per this repo's "no fabricated
 // content" rule.
 //
-// Free-text recall, not multiple choice, matching this site's drill
-// philosophy: an alias/software/naming question grades a single normalized
-// string; a clueToName question grades against the group's real canonical
+// Free-text recall is the default (not multiple choice), matching this
+// site's drill philosophy, for every mode except `deconfliction` (which
+// necessarily needs the 'match' sort-into-buckets UI, since "which of these
+// two groups does this belong to" isn't a single typed string): an
+// alias/software/naming question grades a single normalized string; a
+// clueToName question grades against the group's real canonical
 // name OR any of its own real aliases, since MITRE documents several valid
 // names per group — any one of them is a correct answer, not just one
 // specific string, same lenient-but-correct spirit as commands.ts's grade()
 // functions. namingConvention/applyNaming questions grade against a
 // hand-written, verified list of acceptable phrasings for the same reason —
 // not just one exact string.
+//
+// PAYLOAD NOTE — this module is BUILD-TIME ONLY. It imports the whole
+// generated THREAT_ACTORS dataset; importing it from a client <script> pulled
+// ~155 KB raw into /drills/threat-actors/ to ask its handful of questions. The
+// page now materialises the entire bank in its frontmatter via
+// `threatActorsDrillQuestionBank()` below and ships it as a JSON island, so
+// nothing here reaches the browser. Keep it that way: never import this file
+// from a `<script>` block.
 import { THREAT_ACTORS, threatActorSlug, type ThreatActor } from '../threatActors';
 import type { DrillQuestion } from '../../scripts/drillEngine';
+import { toSerialisableQuestion, type SerialisableDrillQuestion } from './graders';
 
-type Mode = 'aliasToName' | 'clueToName' | 'software' | 'namingConvention' | 'applyNaming';
+type Mode = 'aliasToName' | 'clueToName' | 'software' | 'namingConvention' | 'applyNaming' | 'deconfliction';
 
 interface GroupPick {
   groupId: string;
@@ -83,7 +109,13 @@ interface ApplyNamingPick {
   specIndex: number;
 }
 
-type Pick = GroupPick | NamingPick | ApplyNamingPick;
+interface DeconflictionPick {
+  mode: 'deconfliction';
+  /** Index into DECONFLICTION_SPECS below. */
+  specIndex: number;
+}
+
+type Pick = GroupPick | NamingPick | ApplyNamingPick | DeconflictionPick;
 
 /** A single hand-authored, hand-verified vendor-naming-taxonomy question.
  *  Every fact referenced here is cross-checked against
@@ -262,13 +294,87 @@ const APPLY_NAMING_SPECS: ApplyNamingSpec[] = [
   },
 ];
 
+/** A single hand-authored "deconfliction" challenge: two REAL, MITRE-tracked
+ *  groups that MITRE's own reporting explicitly calls out as overlapping,
+ *  linked, or commonly conflated with one another (see each spec's
+ *  `confusionNote` — always paraphrased from that group's own real
+ *  `description` in THREAT_ACTORS, never invented) — plus a mixed set of
+ *  real, verified aliases/malware-tool names to sort back to the group each
+ *  one actually belongs to. `itemsA`/`itemsB` are each drawn from that one
+ *  group's own real `aliases`/`software` arrays and deliberately EXCLUDE
+ *  anything the other group's own arrays also contain (a genuinely shared
+ *  item — e.g. both groups' reporting mentions the same malware family —
+ *  would be a bad discriminator, not a useful one: the whole point is
+ *  telling the two apart, not testing what they share). Both directions are
+ *  cross-checked by test/threatActorsDrill.test.ts directly against
+ *  THREAT_ACTORS, the same "verify, don't trust the typed string" discipline
+ *  every other spec array in this file already follows. */
+interface DeconflictionSpec {
+  /** MITRE group id for the first group (its own aliases/software items live in itemsA). */
+  groupAId: string;
+  /** MITRE group id for the second group (its own aliases/software items live in itemsB). */
+  groupBId: string;
+  /** Why these two are genuinely, verifiably confused/linked in reporting — paraphrased from one (or both) group's own real `description`. Shown as the question's hint, so it explains the mix-up without giving away any individual item's answer. */
+  confusionNote: string;
+  /** Real aliases/malware-tool names belonging ONLY to group A (never anything group B's own arrays also contain). */
+  itemsA: string[];
+  /** Real aliases/malware-tool names belonging ONLY to group B (never anything group A's own arrays also contain). */
+  itemsB: string[];
+}
+
+const DECONFLICTION_SPECS: DeconflictionSpec[] = [
+  {
+    // Axiom's own MITRE description: "Some reporting suggests a degree of
+    // overlap between Axiom and Winnti Group but the two groups appear to be
+    // distinct based on differences in reporting on TTPs and targeting."
+    // Winnti Group's own description independently names Axiom right back:
+    // "Some reporting suggests a number of other groups, including Axiom,
+    // APT17, and Ke3chang, are closely linked to Winnti Group." Both groups'
+    // own software lists include PlugX — excluded from both sides below
+    // since a tool they genuinely share can't discriminate between them.
+    groupAId: 'G0001', // Axiom
+    groupBId: 'G0044', // Winnti Group
+    confusionNote:
+      "MITRE's own reporting notes a degree of overlap between Axiom and Winnti Group in how each has been described — but assesses them as distinct groups based on differences in TTPs and targeting.",
+    itemsA: ['Group 72', 'Hikit', 'gh0st RAT'],
+    itemsB: ['Blackfly', 'PipeMon', 'Winnti for Windows'],
+  },
+  {
+    // APT19's own MITRE description states this directly: "Some analysts
+    // track APT19 and Deep Panda as the same group, but it is unclear from
+    // open source information if the groups are the same." No aliases or
+    // software overlap between the two groups' own arrays.
+    groupAId: 'G0073', // APT19
+    groupBId: 'G0009', // Deep Panda
+    confusionNote:
+      'Some analysts track APT19 and Deep Panda as the same group — MITRE itself notes it is unclear from open-source reporting whether the two are actually the same activity.',
+    itemsA: ['Codoso', 'Sunshop Group', 'Empire'],
+    itemsB: ['Shell Crew', 'Sakula', 'StreamEx'],
+  },
+  {
+    // Scarlet Mimic's own MITRE description: "While there is some overlap
+    // between IP addresses used by Scarlet Mimic and Putter Panda, it has
+    // not been concluded that the groups are the same." No aliases or
+    // software overlap between the two groups' own arrays.
+    groupAId: 'G0029', // Scarlet Mimic
+    groupBId: 'G0024', // Putter Panda
+    confusionNote:
+      "MITRE notes some overlap between IP infrastructure used by Scarlet Mimic and Putter Panda, though it hasn't been concluded the two are the same group.",
+    itemsA: ['FakeM', 'MobileOrder', 'Psylo'],
+    itemsB: ['APT2', 'MSUpdater', 'pngdowner'],
+  },
+];
+
 // 9 group-derived recognition challenges + 9 vendor-naming-structure
-// challenges + 9 apply-the-rule challenges. Every groupId below was
-// confirmed to exist in THREAT_ACTORS before being added; every specIndex
-// below was confirmed to exist in its respective spec array (and,
-// transitively via test/threatActorsDrill.test.ts, in
-// VENDOR_NAMING_SCHEMES) — see this repo's CLAUDE.md "Content accuracy"
-// rule (never fabricate a fact this site shows as real).
+// challenges + 9 apply-the-rule challenges + 3 attribution/deconfliction
+// challenges (the 'match' mode — see DECONFLICTION_SPECS above). Every
+// groupId below was confirmed to exist in THREAT_ACTORS before being added;
+// every specIndex below was confirmed to exist in its respective spec array
+// (and, transitively via test/threatActorsDrill.test.ts, in
+// VENDOR_NAMING_SCHEMES for namingConvention/applyNaming, or cross-checked
+// directly against THREAT_ACTORS for deconfliction) — see this repo's
+// CLAUDE.md "Content accuracy" rule (never fabricate a fact this site shows
+// as real).
 const PICKS: Pick[] = [
   { groupId: 'G0016', mode: 'aliasToName', clue: 'Cozy Bear' },
   {
@@ -330,6 +436,13 @@ const PICKS: Pick[] = [
   { mode: 'applyNaming', specIndex: 6 },
   { mode: 'applyNaming', specIndex: 7 },
   { mode: 'applyNaming', specIndex: 8 },
+  // Attribution / deconfliction questions (see DECONFLICTION_SPECS above) —
+  // three real, MITRE-documented pairs of groups that MITRE's own reporting
+  // explicitly calls out as overlapping/linked/commonly conflated (Axiom vs.
+  // Winnti Group, APT19 vs. Deep Panda, Scarlet Mimic vs. Putter Panda).
+  { mode: 'deconfliction', specIndex: 0 },
+  { mode: 'deconfliction', specIndex: 1 },
+  { mode: 'deconfliction', specIndex: 2 },
 ];
 
 export const THREAT_ACTORS_DRILL_TOTAL = PICKS.length;
@@ -352,6 +465,12 @@ function mustGetApplyNamingSpec(index: number): ApplyNamingSpec {
   return s;
 }
 
+function mustGetDeconflictionSpec(index: number): DeconflictionSpec {
+  const s = DECONFLICTION_SPECS[index];
+  if (!s) throw new Error(`Threat actor drill: unknown deconfliction spec index ${index}`);
+  return s;
+}
+
 function normalize(s: unknown): string {
   return String(s ?? '').trim().toLowerCase();
 }
@@ -366,10 +485,32 @@ function matchesGroupName(userAnswer: string, actor: ThreatActor): boolean {
   return actor.aliases.some((a) => normalize(a) === n);
 }
 
+// Serialisable twin of matchesGroupName's captured state: the group's own
+// canonical name plus every one of its real aliases, in that order — a handful
+// of short strings, never the actor object or the dataset behind it. The
+// hydrated 'group-name' grader (see ./graders.ts) compares against exactly this
+// list with the same normalize()/empty-answer semantics; the equivalence is
+// asserted per-question in test/threatActorsDrill.test.ts.
+function groupNameGrader(actor: ThreatActor): { kind: 'group-name'; names: string[] } {
+  return { kind: 'group-name', names: [actor.name, ...actor.aliases] };
+}
+
 function refFor(actor: ThreatActor) {
   return {
-    referenceHref: `/threat-actors/${threatActorSlug(actor.name)}/`,
+    referenceHref: `/reference/threat-actors/${threatActorSlug(actor.name)}/`,
     referenceLabel: `Full profile: ${actor.name}`,
+  };
+}
+
+// deconfliction questions compare TWO groups, but DrillQuestion only carries
+// one reference link — points at group A's own profile page (still a real,
+// working /reference/threat-actors/ destination, same isGroupProfile shape refFor
+// produces above) with a label naming both, so a learner can jump straight
+// to at least one of the two real profiles under discussion.
+function refForPair(a: ThreatActor, b: ThreatActor) {
+  return {
+    referenceHref: `/reference/threat-actors/${threatActorSlug(a.name)}/`,
+    referenceLabel: `Full profile: ${a.name} (compare against ${b.name})`,
   };
 }
 
@@ -380,6 +521,7 @@ function buildAliasToName(actor: ThreatActor, alias: string): DrillQuestion {
     answerType: 'text',
     correctAnswer: actor.name,
     grade: (ans) => matchesGroupName(ans, actor),
+    grader: groupNameGrader(actor),
     explanation: `"${alias}" is one of ${actor.aliases.length} publicly known aliases for ${actor.name}. ${actor.summary}`,
     ...refFor(actor),
   };
@@ -392,6 +534,7 @@ function buildClueToName(actor: ThreatActor, clue: string): DrillQuestion {
     answerType: 'text',
     correctAnswer: actor.name,
     grade: (ans) => matchesGroupName(ans, actor),
+    grader: groupNameGrader(actor),
     explanation: `${actor.name} (${actor.id}) is the group ${clue}. ${actor.summary}`,
     ...refFor(actor),
   };
@@ -404,6 +547,7 @@ function buildSoftware(actor: ThreatActor, software: string): DrillQuestion {
     answerType: 'text',
     correctAnswer: actor.name,
     grade: (ans) => matchesGroupName(ans, actor),
+    grader: groupNameGrader(actor),
     explanation: `${software} is documented malware/tooling used by ${actor.name} (${actor.id}).`,
     ...refFor(actor),
   };
@@ -427,8 +571,13 @@ function buildNamingConvention(spec: NamingSpec): DrillQuestion {
       const n = normalize(ans);
       return spec.acceptableAnswers.some((a) => normalize(a) === n);
     },
+    // Serialisable twin of the closure above. Note 'any-of' deliberately has
+    // no empty-answer guard, exactly like this closure (unlike
+    // matchesGroupName) — see ./graders.ts's header on why that asymmetry is
+    // preserved rather than tidied up.
+    grader: { kind: 'any-of', accepted: spec.acceptableAnswers },
     explanation: spec.explanation,
-    referenceHref: '/threat-actors/#naming-conventions',
+    referenceHref: '/reference/threat-actors/#naming-conventions',
     referenceLabel: 'Naming conventions: why one group has so many names',
   };
 }
@@ -445,9 +594,42 @@ function buildApplyNaming(spec: ApplyNamingSpec): DrillQuestion {
     answerType: 'text',
     correctAnswer: spec.code,
     grade: (ans) => normalize(ans) === normalize(spec.code),
+    // Serialisable twin of the closure above — a single-entry 'any-of' is
+    // exactly `normalize(ans) === normalize(code)`.
+    grader: { kind: 'any-of', accepted: [spec.code] },
     explanation: spec.explanation,
-    referenceHref: '/threat-actors/#naming-conventions',
+    referenceHref: '/reference/threat-actors/#naming-conventions',
     referenceLabel: `Naming conventions: ${spec.vendor}'s own scheme`,
+  };
+}
+
+// deconfliction questions sort a mixed set of real, verified aliases/
+// malware-tool names into whichever of two commonly-confused REAL groups
+// each one actually belongs to — see DECONFLICTION_SPECS' own header comment
+// for why every item is guaranteed non-shared between the pair being asked
+// about. Items are interleaved (A, B, A, B, …) rather than grouped by group,
+// so their on-screen order doesn't hint at the grouping before the learner
+// sorts them. Unlike the free-text builders above, there's no single
+// correctAnswer/grade() here — the engine grades 'match' questions
+// per-matchItem against matchItems[].correctCategory instead (see
+// drillEngine.ts's handleMatchCheck).
+function buildDeconfliction(spec: DeconflictionSpec): DrillQuestion {
+  const a = mustGetActor(spec.groupAId);
+  const b = mustGetActor(spec.groupBId);
+  const matchItems: { text: string; correctCategory: string }[] = [];
+  const max = Math.max(spec.itemsA.length, spec.itemsB.length);
+  for (let i = 0; i < max; i++) {
+    if (spec.itemsA[i] !== undefined) matchItems.push({ text: spec.itemsA[i], correctCategory: a.name });
+    if (spec.itemsB[i] !== undefined) matchItems.push({ text: spec.itemsB[i], correctCategory: b.name });
+  }
+  return {
+    prompt: `${a.name} and ${b.name} are frequently confused/linked in reporting. Sort each item below into the group it actually, verifiably belongs to.`,
+    hint: spec.confusionNote,
+    answerType: 'match',
+    matchItems,
+    matchCategories: [a.name, b.name],
+    explanation: `${spec.confusionNote} ${a.name}: ${a.summary} ${b.name}: ${b.summary}`,
+    ...refForPair(a, b),
   };
 }
 
@@ -457,6 +639,9 @@ function buildQuestion(pick: Pick): DrillQuestion {
   }
   if (pick.mode === 'applyNaming') {
     return buildApplyNaming(mustGetApplyNamingSpec(pick.specIndex));
+  }
+  if (pick.mode === 'deconfliction') {
+    return buildDeconfliction(mustGetDeconflictionSpec(pick.specIndex));
   }
   const actor = mustGetActor(pick.groupId);
   switch (pick.mode) {
@@ -479,4 +664,16 @@ export function getThreatActorsQuestion(index: number): DrillQuestion {
   const len = PICKS.length;
   const pick = PICKS[((index % len) + len) % len];
   return buildQuestion(pick);
+}
+
+/**
+ * The whole bank, materialised into its JSON-safe form. Called ONCE, in
+ * /drills/threat-actors/'s frontmatter, and shipped to the client as a JSON
+ * island — which is what keeps THREAT_ACTORS out of the page bundle. Every
+ * `grade` closure is replaced by its `grader` descriptor; the 'match'
+ * (deconfliction) questions carry no closure at all (the engine grades them
+ * per-item against matchItems[].correctCategory) and serialise unchanged.
+ */
+export function threatActorsDrillQuestionBank(): SerialisableDrillQuestion[] {
+  return Array.from({ length: THREAT_ACTORS_DRILL_TOTAL }, (_, i) => toSerialisableQuestion(getThreatActorsQuestion(i)));
 }

@@ -1,0 +1,339 @@
+---
+// Glossary detail page — one prerendered page per term, with definition,
+// significance, an example, related terms, and DefinedTerm structured data.
+// Prerender to static HTML (required: getStaticPaths is ignored under output: 'server').
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Badge from '../../../components/Badge.astro';
+import Icon from '../../../components/Icon.astro';
+import Breadcrumbs from '../../../components/Breadcrumbs.astro';
+import EntryNav from '../../../components/EntryNav.astro';
+import { SITE } from '../../../consts';
+import {
+  SECURITY_TERMS,
+  CATEGORY_META,
+  termBySlug,
+} from '../../../data/securityTerms';
+import { CATEGORY_SOURCES, TERM_REFERENCES, ATTACK_TECHNIQUES } from '../../../data/references';
+import { toolsByGlossarySlug } from '../../../data/tools';
+import { getSortedPosts, getSortedLabs, termSlugsInBody } from '../../../utils/posts';
+
+export async function getStaticPaths() {
+  // Reverse-index the inline <Term slug="…"> mentions in post/lab bodies so each
+  // term knows which writeups reference it.
+  const [posts, labs] = await Promise.all([getSortedPosts(), getSortedLabs()]);
+  return SECURITY_TERMS.map((term) => {
+    const writeups = [
+      ...posts.filter((p) => termSlugsInBody(p.body).includes(term.slug)).map((p) => ({ title: p.data.title, href: `/blog/${p.id}/`, kind: 'Post' })),
+      ...labs.filter((l) => termSlugsInBody(l.body).includes(term.slug)).map((l) => ({ title: l.data.title, href: `/labs/${l.id}/`, kind: 'Lab' })),
+    ];
+    return { params: { slug: term.slug }, props: { term, writeups } };
+  });
+}
+
+const { term, writeups } = Astro.props;
+
+const idx = SECURITY_TERMS.findIndex((t) => t.slug === term.slug);
+const prev = idx > 0 ? SECURITY_TERMS[idx - 1] : null;
+const next = idx >= 0 && idx < SECURITY_TERMS.length - 1 ? SECURITY_TERMS[idx + 1] : null;
+const related = term.related.map((s) => termBySlug(s)).filter(Boolean);
+
+// Authoritative external references: the term's own canonical source (if any)
+// plus the category's standards bodies. De-duped so a shared URL isn't repeated.
+const termRef = TERM_REFERENCES[term.slug];
+const catSources = (CATEGORY_SOURCES[term.category] ?? []).filter((s) => !termRef || s.url !== termRef.url);
+
+// MITRE ATT&CK technique(s) this term maps to — links to the on-site coverage map.
+const techniques = ATTACK_TECHNIQUES.filter((t) => t.glossarySlug === term.slug);
+// Detection sources + real-world procedure examples, pulled straight from the
+// generated MITRE data for any mapped technique(s) — no new authoring, and the
+// content stays in sync whenever the ATT&CK dataset is regenerated.
+const detectionSources = Array.from(new Set(techniques.flatMap((t) => t.detection ?? [])));
+const realWorldExamples = Array.from(new Set(techniques.flatMap((t) => t.examples ?? [])));
+// Tools that directly implement this concept (curated, factual subset — see tools.ts).
+const matchingTools = toolsByGlossarySlug(term.slug);
+
+const jsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'DefinedTerm',
+  name: term.term,
+  ...(term.aka && term.aka.length ? { alternateName: term.aka } : {}),
+  description: term.definition,
+  inDefinedTermSet: `${SITE.url}/reference/glossary/`,
+  termCode: term.slug,
+  url: `${SITE.url}/reference/glossary/${term.slug}/`,
+  ...(termRef ? { sameAs: termRef.url } : {}),
+}).replace(/</g, '\\u003c'); // escape `<` so it can't break out of the <script> tag
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  fontSize: '1.2rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '0.75rem',
+});
+const para = css({ color: 'text', lineHeight: 1.8, fontSize: '1.02rem' });
+const refLink = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  fontSize: '0.92rem',
+  color: 'text',
+  transition: 'color 150ms ease',
+  _hover: { color: 'primary' },
+});
+const locationBlock = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  p: '0.6rem 0.9rem',
+  fontFamily: 'mono',
+  fontSize: '0.88rem',
+  color: 'text',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  wordBreak: 'break-all',
+});
+const attackChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  px: '0.6rem',
+  py: '0.3rem',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'color-mix(in srgb, token(colors.primary) 10%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.primary) 30%, transparent)',
+  borderRadius: 'full',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+---
+
+<BaseLayout title={term.term} description={`${term.term} — ${term.short}`}>
+  <Breadcrumbs
+    items={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Glossary', href: '/reference/glossary/' }, { label: term.term }]}
+  />
+
+  <header class={css({ mb: '1.5rem' })}>
+    <p class={css({ fontFamily: 'sans', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'primary', mb: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+      <Icon name={CATEGORY_META[term.category].icon} size={15} />
+      {term.category}
+    </p>
+    <h1 class={css({ fontSize: { base: '2.1rem', md: '2.75rem' }, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 })}>
+      {term.term}
+    </h1>
+    {
+      term.aka && term.aka.length > 0 && (
+        <p class={css({ mt: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' })}>
+          <span class={css({ fontSize: '0.8rem', color: 'textMuted' })}>Also known as</span>
+          {term.aka.map((a) => (
+            <Badge>{a}</Badge>
+          ))}
+        </p>
+      )
+    }
+    <p class={css({ fontSize: '1.2rem', color: 'textMuted', mt: '1rem', lineHeight: 1.6, maxW: '640px' })}>
+      {term.short}
+    </p>
+    {
+      techniques.length > 0 && (
+        <p class={css({ mt: '1.1rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' })}>
+          <span class={css({ fontSize: '0.75rem', fontFamily: 'sans', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted' })}>
+            MITRE ATT&CK
+          </span>
+          {techniques.map((t) => (
+            <a href={`/reference/attack-map/${t.id}/`} class={attackChip} title={`${t.id} ${t.name} — technique detail`}>
+              <Icon name="crosshair" size={13} />
+              <span class={css({ fontFamily: 'mono', fontWeight: 700 })}>{t.id}</span>
+              {t.name}
+            </a>
+          ))}
+        </p>
+      )
+    }
+  </header>
+
+  <h2 class={sectionH2}><Icon name="book-open" size={18} class={css({ color: 'primary' })} /> Definition</h2>
+  <p class={para}>{term.definition}</p>
+
+  {
+    term.location && (
+      <>
+        <h2 class={sectionH2}><Icon name="map-pin" size={18} class={css({ color: 'primary' })} /> Where to find it</h2>
+        <p class={locationBlock}>{term.location}</p>
+      </>
+    )
+  }
+
+  <h2 class={sectionH2}><Icon name="shield" size={18} class={css({ color: 'primary' })} /> Why it matters</h2>
+  <p class={para}>{term.significance}</p>
+
+  <h2 class={sectionH2}><Icon name="terminal" size={18} class={css({ color: 'primary' })} /> In practice</h2>
+  <p class={`${para} ${css({ borderLeft: '3px solid token(colors.primary)', pl: '1rem', color: 'textMuted', fontStyle: 'italic' })}`}>
+    {term.example}
+  </p>
+
+  {
+    detectionSources.length > 0 && (
+      <>
+        <h2 class={sectionH2}><Icon name="activity" size={18} class={css({ color: 'primary' })} /> Detection ideas</h2>
+        <p class={css({ color: 'textMuted', fontSize: '0.9rem', mb: '0.75rem', lineHeight: 1.6 })}>
+          Data sources MITRE ATT&CK lists for detecting the mapped technique{techniques.length > 1 ? 's' : ''}:
+        </p>
+        <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' })}>
+          {detectionSources.map((d) => (
+            <li class={css({ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.92rem', color: 'text', lineHeight: 1.6 })}>
+              <Icon name="check" size={14} class={css({ color: 'primary', flexShrink: 0, mt: '0.25rem' })} />
+              <span>{d}</span>
+            </li>
+          ))}
+        </ul>
+      </>
+    )
+  }
+
+  {
+    realWorldExamples.length > 0 && (
+      <>
+        <h2 class={sectionH2}><Icon name="target" size={18} class={css({ color: 'primary' })} /> Real-world examples</h2>
+        <p class={css({ color: 'textMuted', fontSize: '0.9rem', mb: '0.75rem', lineHeight: 1.6 })}>
+          Documented procedures from MITRE ATT&CK's knowledge base:
+        </p>
+        <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.55rem' })}>
+          {realWorldExamples.map((ex) => (
+            <li class={`${para} ${css({ fontSize: '0.92rem', pl: '1rem', borderLeft: '2px solid token(colors.border)' })}`}>{ex}</li>
+          ))}
+        </ul>
+      </>
+    )
+  }
+
+  {
+    related.length > 0 && (
+      <>
+        <h2 class={sectionH2}><Icon name="link" size={18} class={css({ color: 'primary' })} /> Related terms</h2>
+        <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' })}>
+          {related.map((r) => (
+            <a
+              href={`/reference/glossary/${r!.slug}/`}
+              class={css({
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                px: '0.8rem',
+                py: '0.45rem',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                bg: 'bgCard',
+                border: '1px solid token(colors.border)',
+                borderRadius: 'md',
+                transition: 'border-color 200ms ease, color 200ms ease',
+                _hover: { borderColor: 'primary', color: 'primary' },
+              })}
+            >
+              {r!.term}
+              <Icon name="arrow-right" size={13} />
+            </a>
+          ))}
+        </div>
+      </>
+    )
+  }
+
+  {
+    matchingTools.length > 0 && (
+      <>
+        <h2 class={sectionH2}><Icon name="wrench" size={18} class={css({ color: 'primary' })} /> Tools</h2>
+        <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' })}>
+          {matchingTools.map((t) => (
+            <a
+              href={`/reference/tool-catalog/${t.slug}/`}
+              class={css({
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                px: '0.8rem',
+                py: '0.45rem',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                bg: 'bgCard',
+                border: '1px solid token(colors.border)',
+                borderRadius: 'md',
+                transition: 'border-color 200ms ease, color 200ms ease',
+                _hover: { borderColor: 'primary', color: 'primary' },
+              })}
+            >
+              {t.name}
+              <Icon name="arrow-right" size={13} />
+            </a>
+          ))}
+        </div>
+      </>
+    )
+  }
+
+  {
+    writeups.length > 0 && (
+      <>
+        <h2 class={sectionH2}><Icon name="file-text" size={18} class={css({ color: 'primary' })} /> Mentioned in my writeups</h2>
+        <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+          {writeups.map((w) => (
+            <li>
+              <a href={w.href} class={`${refLink} ${css({ gap: '0.5rem' })}`}>
+                <Icon name="arrow-right" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span>{w.title}</span>
+                <span class={css({ fontFamily: 'sans', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'textMuted' })}>{w.kind}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </>
+    )
+  }
+
+  {
+    (termRef || catSources.length > 0) && (
+      <>
+        <h2 class={sectionH2}>
+          <Icon name="external-link" size={18} class={css({ color: 'primary' })} /> References &amp; sources
+        </h2>
+        <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.55rem' })}>
+          {termRef && (
+            <li>
+              <a href={termRef.url} target="_blank" rel="noopener" class={refLink}>
+                <Icon name="external-link" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span>{termRef.name}</span>
+              </a>
+            </li>
+          )}
+          {catSources.map((s) => (
+            <li>
+              <a href={s.url} target="_blank" rel="noopener" class={refLink}>
+                <Icon name="external-link" size={14} class={css({ color: 'textMuted', flexShrink: 0 })} />
+                <span>{s.name}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <p class={css({ fontSize: '0.78rem', color: 'textMuted', mt: '0.85rem', lineHeight: 1.6 })}>
+          Definitions cross-reference primary sources — MITRE ATT&amp;CK, OWASP, NIST, the RFC series, and
+          official vendor docs. Credit to those projects for the source material.
+        </p>
+      </>
+    )
+  }
+
+  <EntryNav
+    ariaLabel="More terms"
+    prev={prev ? { href: `/reference/glossary/${prev.slug}/`, label: prev.term } : null}
+    next={next ? { href: `/reference/glossary/${next.slug}/`, label: next.term } : null}
+  />
+
+  <script type="application/ld+json" is:inline set:html={jsonLd} />
+</BaseLayout>

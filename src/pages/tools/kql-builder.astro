@@ -15,6 +15,8 @@ import ExternalResources from '../../components/ExternalResources.astro';
 import { EXTERNAL_RESOURCES } from '../../data/externalResources';
 import { KQL_OPERATORS, KQL_TABLES } from '../../data/kql';
 import { KQL_EXAMPLE_HUNTS, buildKqlQuery } from '../../utils/kql';
+import { KQL_PACKAGES, queryPackageText, themesFor } from '../../data/queryPackages';
+import { ATTACK_TECHNIQUE_BY_ID } from '../../data/references';
 
 const sectionH2 = css({
   display: 'flex',
@@ -81,6 +83,28 @@ const exampleCode = css({
 // one of these strings is asserted character-for-character in test/kql.test.ts.
 const examples = KQL_EXAMPLE_HUNTS.map((e) => ({ ...e, query: buildKqlQuery(e.spec).query }));
 
+// Same derivation for the packages, so a package's printed query and the one
+// the builder produces when you load it are the same string by construction.
+const packages = KQL_PACKAGES.map((p) => ({
+  ...p,
+  query: queryPackageText(p),
+  technique: p.attack ? ATTACK_TECHNIQUE_BY_ID.get(p.attack) : undefined,
+}));
+const packageThemes = themesFor('kql');
+
+const themeH3 = css({
+  fontSize: '0.72rem',
+  fontFamily: 'sans',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+  mt: '1.75rem',
+  mb: '0.85rem',
+});
+const packageMeta = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.65, m: 0, mb: '0.4rem' });
+const metaKey = css({ fontFamily: 'sans', fontWeight: 700, color: 'text' });
+
 const defenderTables = KQL_TABLES.filter((t) => t.product === 'Microsoft Defender XDR');
 const sentinelTables = KQL_TABLES.filter((t) => t.product === 'Microsoft Sentinel');
 const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
@@ -91,7 +115,7 @@ const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
   description="Assemble a valid Kusto Query Language hunting query for Microsoft Defender XDR advanced hunting or Microsoft Sentinel against real, documented table columns — then copy it and run it in your own tenant."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'KQL Query Builder' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'KQL Query Builder' }]}
     eyebrow="Query Builders"
     title="KQL Query Builder"
     description="Pick a real Defender XDR or Sentinel table, add filters against its documented columns, and copy out valid KQL — a syntax builder, not a query engine."
@@ -144,17 +168,58 @@ const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
     <Icon name="target" size={20} class={css({ color: 'primary' })} /> Starter hunts
   </h2>
   <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1.25rem' })}>
-    Each of these is loadable from the <strong class={css({ color: 'text' })}>Starter hunt</strong> dropdown above.
-    They are starting points for an investigation, not finished detections — every one of them will return benign
-    activity in a real environment and needs tuning against your own baseline before it means anything.
+    Each of these is loadable from the <strong class={css({ color: 'text' })}>Load a hunt</strong> dropdown above. They
+    exist to show what the builder's own pipeline can express — filters, a summarize, a projection, a sort — rather than to
+    cover an investigation end to end. For that, see the packages in the next section.
   </p>
   {
     examples.map((example) => (
       <div class={exampleCard}>
         <h3 class={exampleTitle}>{example.title}</h3>
         <p class={exampleWhy}>{example.rationale}</p>
-        <pre class={exampleCode}><code>{example.query}</code></pre>
+        <pre class={exampleCode} tabindex="0" role="region" aria-label={`${example.title} — example KQL query`}><code>{example.query}</code></pre>
       </div>
+    ))
+  }
+
+  <h2 id="packages" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> DFIR packages
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1.25rem' })}>
+    Where the starter hunts above teach the builder, these are the queries a responder actually reaches for. Each one is
+    loadable from the same <strong class={css({ color: 'text' })}>Load a hunt</strong> dropdown and stays fully editable
+    once loaded. Same caveat, stated once and meant every time: these are starting points, not detections. The tuning line
+    on each says where its false positives come from, because that is the part that decides whether a hunt is usable in
+    your environment.
+  </p>
+  {
+    packageThemes.map((theme) => (
+      <>
+        <h3 class={themeH3}>{theme}</h3>
+        {packages
+          .filter((p) => p.theme === theme)
+          .map((p) => (
+            <div class={exampleCard}>
+              <h4 class={exampleTitle}>{p.title}</h4>
+              <p class={css({ color: 'text', fontSize: '0.9rem', lineHeight: 1.65, m: 0, mb: '0.6rem' })}>{p.finds}</p>
+              <p class={packageMeta}>
+                <span class={metaKey}>Needs</span> — {p.dataSource}
+              </p>
+              <p class={packageMeta}>
+                <span class={metaKey}>Tuning</span> — {p.tuning}
+              </p>
+              {p.technique && (
+                <p class={packageMeta}>
+                  <span class={metaKey}>ATT&amp;CK</span> —{' '}
+                  <a href={`/reference/attack-map/${p.technique.id}/`} class={linkStyle}>
+                    {p.technique.id} {p.technique.name}
+                  </a>
+                </p>
+              )}
+              <pre class={exampleCode} tabindex="0" role="region" aria-label={`${p.title} — detection package KQL query`}><code>{p.query}</code></pre>
+            </div>
+          ))}
+      </>
     ))
   }
 
@@ -167,7 +232,7 @@ const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
     name below links to its own Microsoft Learn schema page — that page, not this one, is the authority on the full
     column list.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Tables covered table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -207,7 +272,7 @@ const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
     hunt matches. The <strong class={css({ color: 'text' })}>Case</strong> column below is taken from Microsoft's own
     string-operator reference.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Filter operators table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -285,6 +350,16 @@ const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
   </h2>
   <div class={relatedList}>
     <div>
+      <a href="/reference/kql-cheatsheet/" class={toolChip}>
+        <Icon name="book-open" size={13} /> KQL Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The language reference behind this builder — every operator, the whole has/contains family, time functions,
+        aggregations and join flavors, each with a runnable example and cited to the Microsoft Learn page it was
+        verified against. Open it when you need a clause this builder does not assemble.
+      </p>
+    </div>
+    <div>
       <a href="/tools/sigma-tester/" class={toolChip}>
         <Icon name="shield" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
       </a>
@@ -295,7 +370,18 @@ const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
       </p>
     </div>
     <div>
-      <a href="/event-ids/" class={toolChip}>
+      <a href="/tools/s1-builder/" class={toolChip}>
+        <Icon name="shield" size={13} /> SentinelOne PowerQuery Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The same package library against SentinelOne's Deep Visibility schema. Worth reading side by side once: Defender
+        calls the parent <code class={inlineCode}>InitiatingProcessFileName</code> and SentinelOne calls it{' '}
+        <code class={inlineCode}>src.process.name</code>, which is the kind of detail that decides whether a translated
+        hunt returns anything.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/event-ids/" class={toolChip}>
         <Icon name="list" size={13} /> Windows Event ID Reference <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
@@ -305,7 +391,7 @@ const columnCount = KQL_TABLES.reduce((sum, t) => sum + t.columns.length, 0);
       </p>
     </div>
     <div>
-      <a href="/attack-map/" class={toolChip}>
+      <a href="/reference/attack-map/" class={toolChip}>
         <Icon name="crosshair" size={13} /> ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>

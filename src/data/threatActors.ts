@@ -1,6 +1,6 @@
 // MITRE ATT&CK Groups — the Threat Actor / APT reference. Drives the
-// /threat-actors/ index and the per-group /threat-actors/[slug]/ detail
-// pages. The dataset is generated from MITRE's official Enterprise ATT&CK
+// /reference/threat-actors/ index and the per-group /reference/threat-actors/[id]/
+// detail pages. The dataset is generated from MITRE's official Enterprise ATT&CK
 // STIX bundle (scripts/gen-threat-actors.mjs -> threat-actors.generated.ts,
 // re-run to refresh) — the same bundle the ATT&CK/D3FEND maps are generated
 // from (see the ATT&CK refresh process in CLAUDE.md), so all three stay in

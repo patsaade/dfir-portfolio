@@ -1,0 +1,29 @@
+---
+// DFIR topic hub — a thin wrapper around DomainHub, which renders every one of
+// the three hubs (/dfir/, /networking/, /systems/) from SITE_ENTRIES' `domains`
+// tags. Everything structural — the type bands, the section ids, the jump
+// strip, the stats line, the cards — lives there; this file exists only to own
+// the route, the prerender flag and the page's own <BaseLayout> metadata.
+//
+// Renders identically on patricksaade.com and cyberkit.win: a topic hub is
+// DFIR/IT content, not personal-identity content, so it carries no
+// [data-brand="cyberkit"] fork (invariant 14).
+export const prerender = true;
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import DomainHub from '../../components/DomainHub.astro';
+---
+
+<BaseLayout
+  title="DFIR"
+  description="Every DFIR page on the site in one place — Windows event ID and port lookups, the glossary and tool catalog, the MITRE ATT&CK and D3FEND maps, browser-based forensics tools, and practice drills."
+>
+  {/* The one piece of per-hub data: a curated first-visit path for the only hub
+      big enough to need one (37 entries). Each href is validated against this
+      domain's own entries at build. Four broad first-visit intents — browse the
+      toolkit, look a term up, pull indicators out of something in hand, check
+      technique coverage — carried over from the pre-migration /dfir/ page. */}
+  <DomainHub
+    domain="dfir"
+    startHere={['/reference/tool-catalog/', '/reference/glossary/', '/tools/ioc-extractor/', '/reference/attack-map/']}
+  />
+</BaseLayout>

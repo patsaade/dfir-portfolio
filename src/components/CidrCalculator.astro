@@ -32,7 +32,7 @@ const input = css({
   fontSize: '0.92rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.6rem 0.85rem',
   w: '100%',
@@ -127,6 +127,14 @@ const vlsmRowsWrap = css({ display: 'flex', flexDirection: 'column', gap: '0.5re
 const vlsmRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' });
 const vlsmLabelField = css({ flex: '2 1 200px', minW: '160px' });
 const vlsmHostsField = css({ flex: '1 1 120px', minW: '100px' });
+// Column headers above the label/hosts inputs — the "hosts needed" number
+// field only ever had an aria-label + a placeholder that vanishes once
+// filled in (e.g. "120"), so a sighted visitor had no persistent, visible
+// cue for what that number means. Mirrors vlsmRow's own field-width classes
+// so the two headers land above their matching inputs, plus a same-width
+// spacer over the remove-row button column so nothing shifts out of line.
+const vlsmColHeadRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' });
+const vlsmColHeadSpacer = css({ w: '2.1rem', flexShrink: 0 });
 const removeRowBtn = css({
   display: 'inline-flex',
   alignItems: 'center',
@@ -222,7 +230,7 @@ const planTextarea = css({
   fontSize: '0.88rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.6rem 0.85rem',
   w: '100%',
@@ -300,8 +308,19 @@ const planTextarea = css({
     </div>
 
     <div class={css({ mt: '0.85rem' })} data-vlsm-custom-panel hidden>
-      <label class={fieldLabel}>Subnets needed</label>
-      <div class={vlsmRowsWrap} data-vlsm-rows>
+      {/*
+        A <span>, not a <label>: this names the whole set of subnet-request rows
+        rather than any single control (each row's own inputs carry their own
+        numbered aria-labels), so it's wired to the rows container via
+        role="group" + aria-labelledby instead of an orphan `for`-less <label>.
+      */}
+      <span id="vlsm-custom-heading" class={fieldLabel}>Subnets needed</span>
+      <div class={`${vlsmColHeadRow} ${css({ mb: '0.35rem' })}`} aria-hidden="true">
+        <span class={`${fieldLabel} ${vlsmLabelField}`}>Label</span>
+        <span class={`${fieldLabel} ${vlsmHostsField}`}>Hosts needed</span>
+        <span class={vlsmColHeadSpacer}></span>
+      </div>
+      <div class={vlsmRowsWrap} data-vlsm-rows role="group" aria-labelledby="vlsm-custom-heading">
         <div class={vlsmRow} data-vlsm-request-row>
           <input type="text" class={`${input} ${vlsmLabelField}`} placeholder="Label, e.g. VLAN 10 – Servers" value="Engineering" data-vlsm-label aria-label="Subnet label 1" />
           <input type="number" class={`${input} ${vlsmHostsField}`} placeholder="Hosts needed" min="1" step="1" value="120" data-vlsm-hosts aria-label="Hosts needed 1" />
@@ -329,7 +348,7 @@ const planTextarea = css({
 
     <div class={css({ mt: '1rem' })} data-vlsm-results-wrap hidden>
       <p class={summaryText} data-vlsm-summary role="status" aria-live="polite"></p>
-      <div class={tableWrap}>
+      <div class={tableWrap} tabindex="0" role="region" aria-label="Subnet results table">
         <table class={vlsmTable}>
           <thead>
             <tr>

@@ -7,8 +7,7 @@
 // verified against). IT-fundamentals content: this page teaches cron
 // SYNTAX itself, with no attacker/defender framing — it deliberately does
 // NOT cover cron/scheduled-task persistence or abuse detection, which is a
-// different, DFIR-framed topic this site keeps separate (see consts.ts's
-// IT_GROUPS comment and CLAUDE.md's "Nav grouping" invariant for the
+// different, DFIR-framed topic this site keeps separate (see consts.ts's Domain notes for the
 // framing rule this page follows). Static page — prerender to HTML served
 // from the CDN.
 export const prerender = true;
@@ -87,7 +86,7 @@ const NICKNAME_REF: { nickname: string; equivalent: string; meaning: string }[] 
   description="Decode a 5-field crontab(5) cron expression into a plain-English sentence live as you type, or assemble one with a guided per-field builder. Covers cronie/vixie-cron syntax vs. bare POSIX."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Cron Expression Parser & Builder' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Cron Expression Parser & Builder' }]}
     eyebrow="Tools"
     title="Cron Expression Parser & Builder"
     description="Type a standard 5-field cron expression and read exactly what it schedules, in plain English — or build one field-by-field with guided dropdowns."
@@ -135,7 +134,7 @@ const NICKNAME_REF: { nickname: string; equivalent: string; meaning: string }[] 
   <h2 id="fields" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> The five fields
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="The five fields table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -166,7 +165,7 @@ const NICKNAME_REF: { nickname: string; equivalent: string; meaning: string }[] 
   <p class={sectionText}>
     Every one of these applies independently within each of the five fields — there's no cross-field syntax.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Syntax reference table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -220,7 +219,7 @@ const NICKNAME_REF: { nickname: string; equivalent: string; meaning: string }[] 
     widely supported (most cron implementations you'll actually meet accept them), but treat them as a convenience
     layer on top of the real syntax, not the syntax itself.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="'@'-nickname shortcuts table">
     <table class={refTable}>
       <thead>
         <tr>

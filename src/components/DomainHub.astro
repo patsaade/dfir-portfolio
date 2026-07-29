@@ -1,0 +1,428 @@
+---
+// Topic hub — the site's SECOND axis, cutting the catalog the other way from
+// /reference/ and /tools/.
+//
+// Those two pages answer "show me every page of one KIND" (everything you read;
+// everything you run). A hub answers "show me everything about ONE SUBJECT,
+// whatever kind of thing it is" — so a visitor on /networking/ gets the IP
+// reference, the OSI model guide, the MAC analyzer, the CIDR calculator and the
+// subnetting drill side by side, which no type-first page ever puts together.
+//
+// ONE component backs all three hubs (/dfir/, /networking/, /systems/); the
+// pages are thin wrappers passing `domain` plus their own <BaseLayout>
+// metadata. Three near-identical page files is exactly what this replaces.
+//
+// Structure, and why: type first (Reference -> Tools -> Drills), then
+// CATEGORIES' own order within each type. The visible type banding IS the point
+// of the page — without it, "every kind of thing about one subject" is just an
+// invisible sort order. Categories with no entries for this domain are skipped
+// outright (networking has nothing in Frameworks & Maps, for instance).
+//
+// Section ids are the CategoryId VERBATIM ('lookup-tables', 'artifact-parsers',
+// …). A category belongs to exactly one type, so two types can never collide on
+// an id and no type prefix is needed. The jump strip links `#<CategoryId>`.
+//
+// Deliberately NOT filterable: /reference/ and /tools/ already own the faceted
+// search role (both ship TagCombobox + ListFilter with a domain facet). A hub IS
+// that facet, pre-applied — a second filter on an already-narrowed 8-to-37 item
+// list would be a control with nothing left to do.
+//
+// Card hrefs come straight from SITE_ENTRIES — /reference/…, /tools/… and
+// /drills/….
+import { css } from 'styled-system/css';
+import { card, tag } from 'styled-system/recipes';
+import PageHeader from './PageHeader.astro';
+import GroupOverview from './GroupOverview.astro';
+import Icon from './Icon.astro';
+import type { IconName } from './Icon.astro';
+import { CATEGORIES, DOMAINS, SITE_ENTRIES } from '../consts';
+import type { Domain, EntryType, SiteEntry } from '../consts';
+
+interface Props {
+  domain: Domain;
+  /**
+   * Optional curated first-visit path, as hrefs that must already exist in
+   * SITE_ENTRIES *and* be tagged with this hub's domain. Only worth passing for
+   * a hub large enough to be daunting on arrival — /dfir/ at 37 entries. The
+   * 8-entry hubs show everything they have above the fold, so a shortcut strip
+   * there would just be a second copy of the page.
+   */
+  startHere?: readonly string[];
+}
+const { domain, startHere } = Astro.props;
+
+// Throws at build rather than rendering a headless page if a wrapper ever passes
+// a domain that isn't in DOMAINS.
+const meta = DOMAINS.find((d) => d.id === domain);
+if (!meta) throw new Error(`DomainHub: unknown domain "${domain}" — not present in DOMAINS.`);
+
+// DOMAINS marks which domains have earned a hub but carries no path, so the
+// id -> path mapping lives here, next to the component that renders them. The
+// assertion below means a domain promoted to `hub: true` in consts.ts fails the
+// build until its page actually exists, rather than shipping a dead sibling link.
+const HUB_HREFS: Partial<Record<Domain, string>> = {
+  dfir: '/dfir/',
+  networking: '/networking/',
+  systems: '/systems/',
+};
+const hubDomains = DOMAINS.filter((d) => d.hub);
+for (const d of hubDomains) {
+  if (!HUB_HREFS[d.id]) {
+    throw new Error(`DomainHub: DOMAINS marks "${d.id}" as a hub but no page path is registered in HUB_HREFS.`);
+  }
+}
+
+// Type display order — the hub's top-level grouping. Read first, run second,
+// practice third; the same order CATEGORIES itself is written in, restated
+// explicitly here so this page's structure survives a reorder there.
+const TYPE_ORDER = ['reference', 'tool', 'drill'] as const;
+const TYPE_META: Record<
+  EntryType,
+  // `label` is the plural section name (band heading, "All … →" links);
+  // `chip` is the SINGULAR form the per-card type badge shows, since a card is
+  // one Tool, not "TOOLS".
+  { label: string; icon: IconName; href: string; singular: string; plural: string; chip: string }
+> = {
+  reference: {
+    label: 'Reference',
+    icon: 'book-open',
+    href: '/reference/',
+    singular: 'reference page',
+    plural: 'reference pages',
+    chip: 'Reference',
+  },
+  tool: { label: 'Tools', icon: 'wrench', href: '/tools/', singular: 'tool', plural: 'tools', chip: 'Tool' },
+  drill: { label: 'Drills', icon: 'target', href: '/drills/', singular: 'drill', plural: 'drills', chip: 'Drill' },
+};
+
+const entries = SITE_ENTRIES.filter((e) => e.domains.includes(domain));
+const total = entries.length;
+
+const domainLabels = new Map(DOMAINS.map((d) => [d.id, d.label]));
+
+// Not new data — a re-pointer at entries already on the page. Throws at build
+// if an href stops resolving (a renamed page, a dropped domain tag), the same
+// fail-loudly discipline consts.ts's own `pick()` uses, rather than silently
+// rendering a shorter strip.
+const startHereLinks: SiteEntry[] = (startHere ?? []).map((href: string) => {
+  const entry = entries.find((e) => e.href === href);
+  if (!entry) {
+    throw new Error(`DomainHub(${domain}): startHere href "${href}" is not an entry tagged "${domain}".`);
+  }
+  return entry;
+});
+
+// type -> its non-empty categories, in CATEGORIES' own order.
+const bands = TYPE_ORDER.map((type) => {
+  const groups = CATEGORIES.filter((c) => c.type === type)
+    .map((c) => ({
+      id: c.id,
+      category: c.label,
+      blurb: c.blurb,
+      links: entries.filter((e) => e.category === c.id),
+    }))
+    .filter((g) => g.links.length > 0);
+  return {
+    type,
+    ...TYPE_META[type],
+    groups,
+    count: groups.reduce((n, g) => n + g.links.length, 0),
+  };
+}).filter((b) => b.groups.length > 0);
+
+const allGroups = bands.flatMap((b) => b.groups);
+
+// "11 reference pages, 20 tools, and 6 drills" — the type split in prose, used
+// by both the stats line and the header description.
+const listify = (items: string[]) =>
+  items.length <= 1
+    ? (items[0] ?? '')
+    : items.length === 2
+      ? `${items[0]} and ${items[1]}`
+      : `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+const typeSummary = listify(bands.map((b) => `${b.count} ${b.count === 1 ? b.singular : b.plural}`));
+
+// Header copy is DERIVED, never hand-written per hub: the domain's own `blurb`
+// from consts.ts plus one factual sentence built from the counts above. Three
+// hubs sharing one component should not mean three hand-maintained blurbs that
+// can drift out of step with the data.
+const headerDescription = `${meta.blurb} Everything on the site tagged ${meta.label}, gathered in one place regardless of what kind of page it is — ${typeSummary}.`;
+
+// Jump strip — one tile per rendered section, in the same type-first order the
+// page below uses. Representative icon = that section's first entry, the same
+// convention /reference/ and /tools/ use.
+const groupTiles = allGroups.map((g) => ({
+  id: g.id,
+  icon: g.links[0].icon,
+  title: g.category,
+  blurb: g.blurb,
+  count: g.links.length,
+}));
+
+// `!` is safe: the loop above throws at build if any hub domain lacks a path.
+const siblingHubs = hubDomains
+  .filter((d) => d.id !== domain)
+  .map((d) => ({ id: d.id, label: d.label, href: HUB_HREFS[d.id]! }));
+
+const asideBox = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+const asideText = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 });
+
+const stripLabel = css({
+  display: 'block',
+  fontFamily: 'sans',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.7rem',
+});
+const chipRowWrap = css({ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' });
+const navChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  px: '0.6rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  transition: 'border-color 200ms ease, color 200ms ease',
+  _hover: { borderColor: 'accent', color: 'accent', '& .chip-arrow': { transform: 'translateX(2px)' } },
+});
+const chipArrow = css({ transition: 'transform 200ms ease' });
+
+const statsLine = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.3rem 0.9rem',
+  color: 'textMuted',
+  fontSize: '0.9rem',
+  mt: '-0.5rem',
+  mb: '1.75rem',
+});
+
+// Type band — the hub's top-level divider. A heavier rule than the per-section
+// border below, so the three levels (band / section / card) stay legible. Its
+// "All tools" link is the in-context cross-link back to the type-first index:
+// you've just seen this domain's two networking tools, here are all twenty.
+const bandWrap = css({ mt: '2.5rem' });
+const bandRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  flexWrap: 'wrap',
+  gap: '0.4rem 1rem',
+  pb: '0.55rem',
+  borderBottom: '2px solid token(colors.primary)',
+});
+const bandHead = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.55rem',
+  flexWrap: 'wrap',
+  m: 0,
+  fontFamily: 'sans',
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'text',
+});
+const bandLink = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  transition: 'color 200ms ease',
+  _hover: { color: 'primary', '& .chip-arrow': { transform: 'translateX(3px)' } },
+});
+
+// The first section in a band sits directly under that band's own 2px rule, so
+// it drops its 1px top border rather than stacking two lines with no gap.
+const sectionWrap = css({
+  borderTop: '1px solid token(colors.border)',
+  py: '1.25rem',
+  scrollMarginTop: '90px',
+  '&:first-of-type': { borderTop: 'none' },
+});
+const sectionHead = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flexWrap: 'wrap',
+  m: 0,
+  fontSize: '1.25rem',
+  fontWeight: 700,
+});
+const countPill = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  px: '0.5rem',
+  py: '0.1rem',
+});
+// NOTE: a hub deliberately does NOT print each category's CATEGORIES.intro the
+// way /reference/ and /tools/ do. Those intros are written for the COMPLETE,
+// unfiltered category ("every Windows Security and Sysmon event ID…"), and a hub
+// renders a subset of it — on /networking/ the Lookup Tables intro would promise
+// four tables that aren't on the page. The jump-strip tile above already carries
+// the short `blurb`, so nothing is lost.
+const cardsGrid = css({ mt: '1rem' }); // columns/gap come from the shared .card-grid class
+// card()'s recipe already owns padding/height/background/border/hover; this only
+// appends a non-overlapping property, per the CSS-composition rule.
+const linkCard = `${card()} ${css({ _hover: { boxShadow: 'card' } })}`;
+const cardHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem' });
+const cardTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.9rem', color: 'text', lineHeight: 1.3 });
+// Unclamped, same as /reference/ and /tools/: a truncated description on a page
+// whose whole job is to tell you what something is defeats the purpose. The chip
+// row pins to the bottom so chips still line up across a grid row.
+const cardDesc = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.45, mt: '0.3rem', mb: 0 });
+const cardChips = css({ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', mt: 'auto', pt: '0.45rem' });
+// The accent chip is the cross-reference a hub exists to provide: which part of
+// the site this entry actually lives in. Its category is already the heading
+// directly above the grid, so the chip carries the TYPE — the half a visitor
+// can't infer from the surroundings ("the CIDR calculator is a Tool, not
+// something to read").
+const typeChip = tag({ tone: 'accent' });
+// Domain chips list the entry's OTHER tags only. Repeating this hub's own domain
+// on all 37 of its cards is noise; "…also Windows" is the useful signal.
+const domainChip = tag({ tone: 'muted' });
+
+const outroWrap = css({ mt: '2.5rem', pt: '1.5rem', borderTop: '1px solid token(colors.border)' });
+const outroText = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, mt: 0, mb: '0.9rem', maxW: '68ch' });
+---
+
+<PageHeader
+  breadcrumbs={[{ label: 'Home', href: '/' }, { label: meta.label }]}
+  eyebrow="Topic Hub"
+  title={meta.label}
+  description={headerDescription}
+/>
+
+<aside class={asideBox}>
+  <p class={asideText}>
+    This page cuts the site the other way from Reference and Tools. Those two gather every page of
+    one kind; this one gathers everything about {meta.label}, whatever kind of thing it is. The
+    bands below run in the order you tend to want them: the material you read, then the tools you
+    feed something to, then the drills you practice against.
+  </p>
+</aside>
+
+{
+  startHereLinks.length > 0 && (
+    <nav aria-label="Start here" class={css({ mb: '1.75rem' })}>
+      <span class={stripLabel}>New here? Start with one of these</span>
+      <div class={chipRowWrap}>
+        {startHereLinks.map((link) => (
+          <a href={link.href} class={navChip}>
+            <Icon name={link.icon} size={13} class={css({ color: 'accent' })} />
+            {link.label}
+            <Icon name="arrow-right" size={12} class={`chip-arrow ${chipArrow}`} />
+          </a>
+        ))}
+      </div>
+    </nav>
+  )
+}
+
+<p class={statsLine}>
+  <span>{total} destinations</span>
+  <span aria-hidden="true">·</span>
+  <span>{typeSummary}</span>
+  <span aria-hidden="true">·</span>
+  <span>{allGroups.length} sections</span>
+</p>
+
+<GroupOverview items={groupTiles} heading="Browse by section" />
+
+{
+  bands.map((b) => (
+    <div class={bandWrap}>
+      <div class={bandRow}>
+        <h2 class={bandHead}>
+          <Icon name={b.icon} size={17} class={css({ color: 'primary', flexShrink: 0 })} />
+          <span>{b.label}</span>
+          <span class={countPill}>{b.count}</span>
+        </h2>
+        <a href={b.href} class={bandLink}>
+          All {b.plural}
+          <Icon name="arrow-right" size={13} class={`chip-arrow ${chipArrow}`} />
+        </a>
+      </div>
+      {b.groups.map((g) => (
+        <section id={g.id} class={sectionWrap}>
+          <h3 class={sectionHead}>
+            <Icon name={g.links[0].icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+            <span>{g.category}</span>
+            <span class={countPill}>{g.links.length}</span>
+          </h3>
+          <div class={`card-grid ${cardsGrid}`}>
+            {g.links.map((link) => (
+              <a href={link.href} class={linkCard}>
+                <span class={cardHead}>
+                  <Icon name={link.icon} size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+                  <span class={cardTitle}>{link.label}</span>
+                </span>
+                <p class={cardDesc}>{link.description}</p>
+                <span class={cardChips}>
+                  <span class={typeChip}>{TYPE_META[link.type].chip}</span>
+                  {link.domains
+                    .filter((d) => d !== domain)
+                    .map((d) => (
+                      <span class={domainChip}>{domainLabels.get(d) ?? d}</span>
+                    ))}
+                </span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  ))
+}
+
+<nav aria-label="Other sections and topic hubs" class={outroWrap}>
+  <span class={stripLabel}>Where to next</span>
+  <p class={outroText}>The same catalog, cut two other ways — by kind, or by another subject.</p>
+  <div class={chipRowWrap}>
+    {
+      bands.map((b) => (
+        <a href={b.href} class={navChip}>
+          <Icon name={b.icon} size={13} class={css({ color: 'accent' })} />
+          All {b.plural}
+          <Icon name="arrow-right" size={12} class={`chip-arrow ${chipArrow}`} />
+        </a>
+      ))
+    }
+    {
+      siblingHubs.map((h) => (
+        <a href={h.href} class={navChip}>
+          <Icon name="layers" size={13} class={css({ color: 'accent' })} />
+          {h.label}
+          <Icon name="arrow-right" size={12} class={`chip-arrow ${chipArrow}`} />
+        </a>
+      ))
+    }
+  </div>
+</nav>

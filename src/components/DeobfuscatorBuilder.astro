@@ -39,7 +39,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.75rem',
   py: '0.6rem',
@@ -59,7 +59,7 @@ const selectInput = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.6rem',
   py: '0.45rem',
@@ -363,8 +363,16 @@ const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' 
           </button>
         </div>
         <div class={xorManualWrap} data-xor-manual-wrap>
-          <label class={fieldLabel}>Key (0-255, or 0x hex)</label>
-          <input type="text" class={inlineInput} placeholder="e.g. 42 or 0x2a" autocomplete="off" spellcheck="false" data-xor-key-input />
+          {/*
+            Deliberately a <span>, not a <label for="…">: this markup lives inside
+            the per-step <template> and is cloned once per pipeline step, so any
+            static id would be duplicated across steps (and `for` would then bind
+            every label to the first step's input). The input carries its own
+            aria-label instead, which repeats the visible text verbatim so
+            WCAG 2.5.3 (Label in Name) still holds.
+          */}
+          <span class={fieldLabel}>Key (0-255, or 0x hex)</span>
+          <input type="text" class={inlineInput} placeholder="e.g. 42 or 0x2a" aria-label="XOR key (0-255, or 0x hex)" autocomplete="off" spellcheck="false" data-xor-key-input />
         </div>
         <div class={xorManualWrap} data-xor-brute-wrap hidden>
           <p class={xorHint}>Ranked by printable-ASCII ratio of the decoded result — pick one to lock it in.</p>

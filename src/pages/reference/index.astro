@@ -1,0 +1,230 @@
+---
+// Reference section index — the "everything you READ or LOOK SOMETHING UP IN"
+// half of the site, as opposed to /tools/ (things you feed input to). Built
+// entirely from CATEGORIES + SITE_ENTRIES via groupsFor('reference'), so the
+// nav's Reference dropdown, the sidebar rail, the footer's Reference column and
+// this page can't drift apart — 16 entries across Lookup Tables, Guides &
+// Concepts, and Frameworks & Maps.
+//
+// Two structural rules this page is bound by:
+//   1. Each <section> id is the CategoryId VERBATIM ('lookup-tables',
+//      'guides-concepts', 'frameworks-maps'). The footer already ships
+//      /reference/#<category-id> anchors; a renamed id silently dead-ends
+//      every one of them.
+//   2. Sections are ALWAYS VISIBLE — no collapsible <details> (a deliberate
+//      divergence from tools.astro / glossary, which hide 50+ same-shaped
+//      filterable rows). 16 items across 3 groups is small enough that hiding
+//      any of it would defeat the point of an overview page.
+// ListFilter adds the search + domain facet on top; it hides a section only
+// when nothing inside it matches the current filter.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag, card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import Icon from '../../components/Icon.astro';
+import Term from '../../components/Term.astro';
+import { groupsFor, DOMAINS } from '../../consts';
+import type { Domain } from '../../consts';
+
+const groups = groupsFor('reference');
+const entries = groups.flatMap((g) => g.links);
+const total = entries.length;
+
+const domainLabels = new Map(DOMAINS.map((d) => [d.id, d.label]));
+
+// Domain facet options, in DOMAINS' own canonical order. Populated domains
+// only — same rule the D3FEND map applies to its tactic facet: an option that
+// can only ever resolve to the empty state isn't a filter, it's a dead end.
+// (`malware` has no reference entries today; it's a Tools-side domain.)
+const domainCounts = new Map<Domain, number>();
+for (const entry of entries) {
+  for (const d of entry.domains) domainCounts.set(d, (domainCounts.get(d) ?? 0) + 1);
+}
+const domainOptions = DOMAINS.filter((d) => domainCounts.has(d.id)).map((d) => ({
+  value: d.id,
+  label: d.label,
+  count: domainCounts.get(d.id)!,
+}));
+
+// Jump-strip tiles use each category's `blurb`; the section header below uses
+// its longer `intro`. Both fields exist precisely so the two read differently
+// even though they sit on the same page.
+const groupTiles = groups.map((g) => ({
+  id: g.id,
+  icon: g.links[0].icon,
+  title: g.category,
+  blurb: g.blurb,
+  count: g.links.length,
+}));
+
+const asideBox = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+const asideText = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 });
+
+const crossLink = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  mb: '1.5rem',
+  p: '0.7rem 1rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  fontSize: '0.9rem',
+  color: 'text',
+  transition: 'border-color 200ms ease, color 200ms ease',
+  _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+});
+
+const statsLine = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.3rem 0.9rem',
+  color: 'textMuted',
+  fontSize: '0.9rem',
+  mt: '0.85rem',
+  mb: '1.75rem',
+});
+
+const sectionWrap = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const sectionHead = css({ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', m: 0, fontSize: '1.25rem', fontWeight: 700 });
+const sectionCount = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  px: '0.5rem',
+  py: '0.1rem',
+});
+const sectionIntro = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, mt: '0.5rem', mb: 0, maxW: '68ch' });
+const cardsGrid = css({ mt: '1rem' }); // columns/gap come from the shared .card-grid class
+// card()'s recipe already owns padding/min-height/background/border/hover; this
+// only appends a non-overlapping property, per the CSS-composition rule.
+const linkCard = `${card()} ${css({ _hover: { boxShadow: 'card' } })}`;
+const cardHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem' });
+const cardTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.9rem', color: 'text', lineHeight: 1.3 });
+// Descriptions here run long (up to ~140 chars for the OSI model entry), so
+// they're deliberately NOT clamped — a truncated description on an index whose
+// whole job is to tell you what a page is defeats the purpose. The chip row
+// below pins to the bottom instead, so chips still line up across a grid row
+// even when one card's description runs a line longer.
+const cardDesc = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.45, mt: '0.3rem', mb: 0 });
+const chipRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', mt: 'auto', pt: '0.45rem' });
+const domainChip = tag({ tone: 'muted' });
+---
+
+<BaseLayout
+  title="Reference"
+  description="Every reference page on the site — Windows event ID, port, IP, HTTP status and DNS lookup tables, the glossary and cheat sheets, and the MITRE ATT&CK, D3FEND, kill chain and Pyramid of Pain maps."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference' }]}
+    eyebrow="Reference"
+    title="Reference"
+    description="Everything here is something you read, or look one value up in — as opposed to the tools, which you feed input to. Tables you scan for a single number or code, guides you read through and come back to, and the published frameworks the industry describes attacks and defenses in terms of."
+  />
+
+  <aside class={asideBox}>
+    <p class={asideText}>
+      Every page here is tagged by the domains it covers, so you can narrow the list to whatever
+      you're working in. The lookup tables are cited row by row rather than summarized, and the
+      framework maps —{' '}
+      <Term slug="mitre-attack">MITRE ATT&CK</Term> and <Term slug="mitre-d3fend">D3FEND</Term> —
+      are generated from MITRE's own published data rather than transcribed, so they don't drift
+      out of step with it.
+    </p>
+  </aside>
+
+  {/* Cross-link to the other half of the split */}
+  <a href="/tools/" class={crossLink}>
+    <Icon name="wrench" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>Looking for something to run instead of read? — <strong class={css({ fontWeight: 700 })}>Tools</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
+  {/* Search + domain filter */}
+  <TagCombobox
+    id="reference-cb"
+    options={domainOptions}
+    placeholder={`Search ${total} reference pages, or type a domain…`}
+    label="Search reference pages or filter by domain"
+  />
+
+  <p role="status" aria-live="polite" class={statsLine}>
+    <span><span id="reference-count">{total}</span> <span id="reference-count-word">pages</span></span>
+    <span aria-hidden="true">·</span>
+    <span>{groups.length} categories</span>
+  </p>
+
+  <GroupOverview items={groupTiles} heading="Browse by category" />
+
+  {
+    groups.map((g) => (
+      <section id={g.id} data-ref-group class={sectionWrap}>
+        <h2 class={sectionHead}>
+          <Icon name={g.links[0].icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+          <span>{g.category}</span>
+          <span class={sectionCount}>{g.links.length}</span>
+        </h2>
+        <p class={sectionIntro}>{g.intro}</p>
+        <div class={`card-grid ${cardsGrid}`}>
+          {g.links.map((link) => (
+            <a
+              href={link.href}
+              class={linkCard}
+              data-ref-card={`${link.label} ${link.description}`.toLowerCase()}
+              data-domain={`|${link.domains.join('|')}|`}
+            >
+              <span class={cardHead}>
+                <Icon name={link.icon} size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class={cardTitle}>{link.label}</span>
+              </span>
+              <p class={cardDesc}>{link.description}</p>
+              <span class={chipRow}>
+                {link.domains.map((d) => (
+                  <span class={domainChip}>{domainLabels.get(d) ?? d}</span>
+                ))}
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
+    ))
+  }
+
+  <p id="reference-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No reference pages match.
+  </p>
+
+  <ListFilter
+    config={{
+      comboboxId: 'reference-cb',
+      cardSelector: '[data-ref-card]',
+      searchAttr: 'data-ref-card',
+      groupSelector: '[data-ref-group]',
+      countId: 'reference-count',
+      countWordId: 'reference-count-word',
+      countWordSingular: 'page',
+      countWordPlural: 'pages',
+      emptyId: 'reference-empty',
+      facetAttr: 'data-domain',
+      facetMulti: true,
+      urlSync: { queryParam: 'q', facetParam: 'domain' },
+    }}
+  />
+</BaseLayout>

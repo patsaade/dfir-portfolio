@@ -93,4 +93,74 @@ describe('getRegexDrillQuestion (RegEx Range)', () => {
     const concepts = REGEX_RANGE_CHALLENGES.map((c) => c.concept);
     expect(new Set(concepts).size).toBe(concepts.length);
   });
+
+  it('every authored reference solution also passes its own hiddenTestCases, via the real validate() the UI calls', () => {
+    // A reference solution that only clears the VISIBLE cases but trips its
+    // own hidden generalization check would be a broken "correct answer" —
+    // this would show up as outcome.pass === false (with a
+    // generalizationGap) even though it's the authored right answer.
+    for (let i = 0; i < REGEX_DRILL_TOTAL; i++) {
+      const challenge = REGEX_RANGE_CHALLENGES[i];
+      const q = getRegexDrillQuestion(i);
+      const outcome = q.validate!(challenge.referenceSolution);
+      expect(outcome.ok).toBe(true);
+      if (outcome.ok) {
+        expect(outcome.pass, `challenge "${challenge.id}" reference pattern failed its own hidden generalization check: ${JSON.stringify(outcome.generalizationGap)}`).toBe(true);
+        expect(outcome.generalizationGap, `challenge "${challenge.id}" reference pattern unexpectedly flagged a generalization gap`).toBeUndefined();
+      }
+    }
+  });
+
+  it('every challenge with hiddenTestCases catches a pattern that only fits the visible samples (proves the generalization check actually discriminates)', () => {
+    // One concrete "wrong concept, but happens to fit every VISIBLE sample"
+    // pattern per challenge that ships hiddenTestCases — each was verified
+    // directly against this file's own compileRegexSafely/findAllMatches
+    // before being hardcoded here (see regexDrill.ts's own comments next to
+    // each hiddenTestCases entry for the reasoning).
+    const wrongButFitsVisible: Record<string, string> = {
+      literals: 'power',
+      'character-classes': '[CDE]',
+      quantifiers: String.raw`\d.*\d.*\d.*\d`,
+      alternation: 'vbs|ps|bat',
+      'word-boundaries': ' admin ',
+      'negated-classes': String.raw`\[(WARN|ERROR|CRIT)\]`,
+      backreferences: String.raw`\b(the the|user user|error error)\b`,
+      capstone: String.raw`\b(?!(?:300|256|999)\b)\d{1,3}(\.(?!(?:300|256|999)\b)\d{1,3}){3}\b`,
+    };
+    const withHidden = REGEX_RANGE_CHALLENGES.filter((c) => c.hiddenTestCases && c.hiddenTestCases.length > 0);
+    expect(withHidden.length).toBe(Object.keys(wrongButFitsVisible).length);
+
+    for (const challenge of withHidden) {
+      const wrongPattern = wrongButFitsVisible[challenge.id];
+      expect(wrongPattern, `no "wrong but fits visible" pattern authored for challenge "${challenge.id}"`).toBeDefined();
+      const index = REGEX_RANGE_CHALLENGES.indexOf(challenge);
+      const q = getRegexDrillQuestion(index);
+      const outcome = q.validate!(wrongPattern);
+      expect(outcome.ok, `challenge "${challenge.id}"'s wrong pattern failed to compile`).toBe(true);
+      if (!outcome.ok) continue;
+
+      // Must actually fit every VISIBLE sample — otherwise this isn't
+      // testing the generalization check at all, just an ordinary wrong answer.
+      const visiblePass = outcome.results!.every((r) => r.actualMatch === r.shouldMatch);
+      expect(visiblePass, `challenge "${challenge.id}"'s wrong pattern doesn't even fit the visible test cases — not a valid generalization-gap fixture`).toBe(true);
+
+      // But must NOT be reported as solved, and must carry a generalizationGap
+      // naming exactly the hidden case it tripped on.
+      expect(outcome.pass, `challenge "${challenge.id}"'s wrong pattern was incorrectly accepted as solved`).toBe(false);
+      expect(outcome.generalizationGap, `challenge "${challenge.id}" didn't report a generalizationGap for its wrong pattern`).toBeDefined();
+      const expectedHidden = challenge.hiddenTestCases![0];
+      expect(outcome.generalizationGap!.text).toBe(expectedHidden.text);
+      expect(outcome.generalizationGap!.shouldMatch).toBe(expectedHidden.shouldMatch);
+      expect(outcome.generalizationGap!.actualMatch).toBe(!expectedHidden.shouldMatch);
+    }
+  });
+
+  it('anchors, escaping, and lookahead were deliberately left without hiddenTestCases', () => {
+    const noHidden = ['anchors', 'escaping', 'lookahead'];
+    for (const id of noHidden) {
+      const challenge = REGEX_RANGE_CHALLENGES.find((c) => c.id === id);
+      expect(challenge, `challenge "${id}" not found`).toBeDefined();
+      expect(challenge!.hiddenTestCases, `challenge "${id}" unexpectedly has hiddenTestCases`).toBeUndefined();
+    }
+  });
 });

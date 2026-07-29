@@ -1,0 +1,303 @@
+---
+// MITRE D3FEND coverage map — the defensive counterpart to the ATT&CK Map. The full
+// D3FEND matrix (generated from MITRE's official ontology), grouped by defensive
+// tactic in matrix order. Each technique links to its MITRE D3FEND page, its own
+// detail page, and — where D3FEND maps it — the ATT&CK techniques it counters.
+// Searchable, with a tactic facet and a "maps to ATT&CK" filter. Same shape as the
+// ATT&CK Map (shared TagCombobox / CollapseAll / FilterToggle / .card-grid). Static.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/PageHeader.astro';
+import Icon from '../../../components/Icon.astro';
+import CollapseAll from '../../../components/CollapseAll.astro';
+import TagCombobox from '../../../components/TagCombobox.astro';
+import FilterToggle from '../../../components/FilterToggle.astro';
+import ListFilter from '../../../components/ListFilter.astro';
+import TacticStepper from '../../../components/TacticStepper.astro';
+import ViewToggle from '../../../components/ViewToggle.astro';
+import TacticMatrix from '../../../components/TacticMatrix.astro';
+import ExternalResources from '../../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
+import { tag, card } from 'styled-system/recipes';
+import { getSortedPosts, getSortedLabs, tagSlug } from '../../../utils/posts';
+import { D3FEND_TECHNIQUES, D3FEND_TACTIC_ORDER, D3FEND_TACTICS, D3FEND_VERSION, d3fendById } from '../../../data/d3fend';
+import { termBySlug } from '../../../data/securityTerms';
+
+// Techniques explicitly covered by a post/lab (via its `d3fend` frontmatter) —
+// mirrors the ATT&CK Map's `covered` set (attack-map.astro).
+const [posts, labs] = await Promise.all([getSortedPosts(), getSortedLabs()]);
+const covered = new Set([...posts, ...labs].flatMap((p) => p.data.d3fend ?? []));
+
+// Group techniques by tactic, in D3FEND matrix order, populated only.
+const byTactic: Record<string, typeof D3FEND_TECHNIQUES> = {};
+for (const t of D3FEND_TECHNIQUES) (byTactic[t.tactic] ??= []).push(t);
+const tactics = D3FEND_TACTIC_ORDER.filter((name) => byTactic[name]?.length);
+const tacticDefinitions = new Map(D3FEND_TACTICS.map((t) => [t.name, t.definition]));
+
+const total = D3FEND_TECHNIQUES.length;
+const mappedCount = D3FEND_TECHNIQUES.filter((t) => t.counters.length).length;
+const coveredCount = D3FEND_TECHNIQUES.filter((t) => covered.has(t.id)).length;
+
+// Defense-lifecycle stepper: one pill per tactic, in matrix order, sized by
+// technique count with the ATT&CK-mapped count highlighted.
+const stepperItems = tactics.map((name) => ({
+  id: tagSlug(name),
+  label: name,
+  count: byTactic[name].length,
+  highlight: byTactic[name].filter((t) => t.counters.length).length,
+}));
+
+// Tactic facet for the search combobox.
+const tacticOptions = tactics.map((name) => ({ value: tagSlug(name), label: name, count: byTactic[name].length }));
+
+// Matrix view (ViewToggle/TacticMatrix): the same byTactic grouping — each D3FEND
+// technique belongs to exactly one tactic, so no cross-column duplication needed
+// (unlike the ATT&CK Map). "Covered" drives the accent highlight, matching the
+// list view's left-border convention.
+const matrixColumns = tactics.map((name) => ({
+  tactic: name,
+  id: tagSlug(name),
+  cells: byTactic[name].map((t) => ({
+    id: t.id,
+    name: `${t.id} ${t.name}`,
+    href: `/reference/d3fend/${t.id}/`,
+    sub: Boolean(t.parentId),
+    accent: covered.has(t.id),
+  })),
+}));
+
+// Each tactic is a collapsible <details>, matching the ATT&CK Map / Glossary pages.
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .tactic-title': { color: 'primary' } },
+});
+const chevCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease', 'details[open] &': { transform: 'rotate(90deg)' } });
+const tacticHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', m: 0, fontSize: '1.05rem', fontWeight: 700 });
+const tacCount = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem' });
+const tacMappedCount = css({ fontFamily: 'sans', fontSize: '0.72rem', fontWeight: 600, color: 'accent' });
+// A <span> (not <p>) since it lives inside <summary>, whose content model is
+// phrasing content — display:block here is purely visual, not a flow element.
+const tacDefinitionP = css({ display: 'block', color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, mt: '0.4rem', ml: '2.55rem' });
+const chip = `${card()} ${css({
+  scrollMarginTop: '90px', // clear the sticky header when linked to via #<id>
+  // Left border marks "covered in a writeup" — same visual language as the ATT&CK
+  // Map's chip (data-mapped is toggle-only there, no unique border of its own).
+  '&[data-covered]': { borderLeftWidth: '3px', borderLeftColor: 'accent' },
+  '&:target': { borderColor: 'primary', boxShadow: 'cardHover' },
+})}`;
+const chipTop = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' });
+const chipId = css({ fontFamily: 'mono', fontSize: '0.72rem', fontWeight: 600, color: 'primary' });
+const mappedBadge = tag({ tone: 'primary' });
+const coveredBadge = tag({ tone: 'accent' });
+const chipName = css({ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600, fontSize: '0.9rem', color: 'text', lineHeight: 1.3, _hover: { color: 'primary' } });
+const chipParent = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem', fontWeight: 600, color: 'textMuted', mt: 'auto' });
+
+const statLink = css({ color: 'primary', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', _hover: { textDecoration: 'underline' } });
+const legendRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1.25rem', mb: '1.75rem', fontSize: '0.78rem', color: 'textMuted' });
+const legendItem = css({ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' });
+const legendSwatch = css({ display: 'inline-block', w: '14px', h: '14px', bg: 'bgCard', border: '1px solid token(colors.border)', borderLeftWidth: '3px', borderLeftColor: 'accent', borderRadius: '2px', flexShrink: 0 });
+
+// Anchor each technique's id to its first render only.
+const anchored = new Set<string>();
+---
+
+<BaseLayout
+  title="MITRE D3FEND Map"
+  description="The full MITRE D3FEND matrix of defensive techniques, by tactic — each linked to its official D3FEND page, a detail page, and the ATT&CK techniques it counters."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'MITRE D3FEND Map' }]}
+    eyebrow="Frameworks"
+    title="MITRE D3FEND Map"
+    description="The defensive counterpart to ATT&CK — defensive techniques grouped by tactic. Each links to its official D3FEND page and detail entry, and many map to the ATT&CK techniques they counter."
+  />
+
+  <aside
+    class={css({ bg: 'bgSubtle', border: '1px solid token(colors.border)', borderLeftWidth: '3px', borderLeftColor: 'primary', borderRadius: 'md', p: '1rem 1.25rem', mb: '1.5rem' })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      <strong class={css({ color: 'text' })}>MITRE D3FEND</strong> — a knowledge graph of <em>defensive</em>{' '}
+      techniques, the counterpart to ATT&CK's offensive one. <em>Tactics</em> are defensive goals
+      (Model, Harden, Detect, Isolate, Deceive, Evict, Restore); <em>techniques</em> are the specific
+      countermeasures. D3FEND ties each technique to the ATT&CK techniques it <em>counters</em>, so a
+      defender can move from "what the attacker did" to "what stops it."
+    </p>
+  </aside>
+
+  {/* Cross-link to the offensive counterpart */}
+  <a
+    href="/reference/attack-map/"
+    class={css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      mb: '1.5rem',
+      p: '0.7rem 1rem',
+      borderRadius: 'md',
+      border: '1px solid token(colors.border)',
+      bg: 'bgCard',
+      fontSize: '0.9rem',
+      color: 'text',
+      transition: 'border-color 200ms ease, color 200ms ease',
+      _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+    })}
+  >
+    <Icon name="crosshair" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>See the offensive techniques — <strong class={css({ fontWeight: 700 })}>MITRE ATT&CK Coverage Map</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
+  {/* Search + tactic filter */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="d3fend-cb"
+      options={tacticOptions}
+      placeholder={`Search ${total} techniques by name or ID, or type a tactic…`}
+      label="Search D3FEND techniques or filter by tactic"
+    />
+  </div>
+
+  {/* Stats + controls */}
+  <div class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem 1rem', flexWrap: 'wrap', mb: '0.85rem' })}>
+    <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.9rem', color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span><span id="d3fend-count">{total}</span> techniques</span>
+      <span aria-hidden="true">·</span>
+      <span class={css({ color: 'accent', fontWeight: 600 })}>{coveredCount} covered in writeups</span>
+      <span aria-hidden="true">·</span>
+      <span>{mappedCount} map to ATT&CK</span>
+      <span aria-hidden="true">·</span>
+      <a href="https://d3fend.mitre.org/" target="_blank" rel="noopener" class={statLink}>D3FEND v{D3FEND_VERSION} <Icon name="external-link" size={12} /></a>
+    </p>
+    <div class={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', w: '100%' })}>
+      {/* Same order and naming style as the ATT&CK map's own filter row, so
+          switching between the two maps doesn't move the controls around:
+          Covered, Glossary, then the ATT&CK<->D3FEND cross-link. */}
+      <FilterToggle id="d3fend-covered-toggle" icon="check" label="Covered" tone="accent" />
+      <FilterToggle id="d3fend-gloss-toggle" icon="book-open" label="Glossary" tone="primary" />
+      <FilterToggle id="d3fend-mapped-toggle" icon="crosshair" label="Counters ATT&CK" tone="primary" />
+      {/* Collapse-all and the List/Matrix toggle are the two right-aligned
+          controls, grouped so they WRAP AS A UNIT. Previously CollapseAll
+          carried the `ml: auto` itself, so when it and the toggle happened to
+          land on the same flex line the auto margin shoved both right and the
+          toggle overflowed the container. The group now owns the auto margin
+          and CollapseAll's own is neutralised inside it. */}
+      <div class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', ml: { sm: 'auto' } })}>
+        <CollapseAll target="[data-tactic-group]" class={css({ ml: 0 })} />
+        <ViewToggle listTarget="#d3fend-list-view" matrixTarget="#d3fend-matrix-view" storageKey="d3fend-map-view" />
+      </div>
+    </div>
+  </div>
+
+  {/* Defense-lifecycle stepper — the tactic sequence at a glance, jump to any section */}
+  <TacticStepper items={stepperItems} tone="accent" icon="shield" ariaLabel="Jump to D3FEND tactic" />
+
+  {/* Legend */}
+  <div class={legendRow}>
+    <span class={legendItem}><span class={legendSwatch} aria-hidden="true"></span> covered in a writeup</span>
+    <span class={legendItem}><Icon name="layers" size={13} class={css({ color: 'textMuted' })} /> sub-technique of a parent technique</span>
+    <span class={legendItem}><Icon name="arrow-right" size={13} class={css({ color: 'textMuted' })} /> opens the technique detail page</span>
+  </div>
+
+  <div id="d3fend-list-view" class={css({ display: 'flex', flexDirection: 'column' })}>
+    {
+      tactics.map((tactic) => {
+        const tacMapped = byTactic[tactic].filter((t) => t.counters.length).length;
+        const tacDefinition = tacticDefinitions.get(tactic);
+        return (
+          <details id={tagSlug(tactic)} data-tactic-group open class={groupDetails}>
+            <summary class={groupSummary}>
+              <h2 class={tacticHead}>
+                <Icon name="chevron-right" size={17} class={chevCls} />
+                <Icon name="shield" size={18} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class="tactic-title">{tactic}</span>
+                <span class={tacCount}>{byTactic[tactic].length}</span>
+                {tacMapped > 0 && <span class={tacMappedCount}>{tacMapped} mapped</span>}
+              </h2>
+              {tacDefinition && <span class={tacDefinitionP}>{tacDefinition}</span>}
+            </summary>
+            <div class={`card-grid ${css({ mt: '1rem' })}`}>
+              {byTactic[tactic].map((t) => {
+                const gloss = t.glossarySlug ? termBySlug(t.glossarySlug) : undefined;
+                const firstHere = !anchored.has(t.id);
+                if (firstHere) anchored.add(t.id);
+                const parent = t.parentId ? d3fendById(t.parentId) : undefined;
+                const mapped = t.counters.length > 0;
+                const isCovered = covered.has(t.id);
+                return (
+                  <div
+                    id={firstHere ? t.id : undefined}
+                    class={chip}
+                    data-d3fend-id={t.id}
+                    data-tactic={tagSlug(tactic)}
+                    data-d3fend-card={`${t.id} ${t.name} ${parent ? parent.name : ''}`.toLowerCase()}
+                    {...(mapped ? { 'data-mapped': true } : {})}
+                    {...(isCovered ? { 'data-covered': true } : {})}
+                    {...(gloss ? { 'data-has-gloss': true } : {})}
+                  >
+                    <div class={chipTop}>
+                      <span class={chipId}>{t.id}</span>
+                      {isCovered && <span class={coveredBadge}>covered</span>}
+                      {mapped && <span class={mappedBadge}>{t.counters.length} ATT&CK</span>}
+                    </div>
+                    <a href={`/reference/d3fend/${t.id}/`} class={chipName}>
+                      {t.name}
+                      <Icon name="arrow-right" size={12} class={css({ color: 'textMuted', flexShrink: 0 })} />
+                    </a>
+                    {parent && (
+                      <span class={chipParent}>
+                        <Icon name="layers" size={12} /> {parent.name}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        );
+      })
+    }
+  </div>
+
+  <div id="d3fend-matrix-view" hidden>
+    <p class={css({ color: 'textMuted', fontSize: '0.82rem', mb: '0.75rem' })}>
+      MITRE Navigator-style layout — one column per tactic, sub-techniques indented. Search and filters above apply to the list view only.
+    </p>
+    <TacticMatrix columns={matrixColumns} ariaLabel="MITRE D3FEND technique matrix" tone="accent" />
+  </div>
+
+  <p id="d3fend-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No techniques match.
+  </p>
+
+  <p class={css({ fontSize: '0.78rem', color: 'textMuted', mt: '2.5rem', pt: '1.5rem', borderTop: '1px solid token(colors.border)', lineHeight: 1.6 })}>
+    D3FEND™ is a trademark of The MITRE Corporation. Technique names, IDs, and ATT&CK mappings are drawn
+    from the public D3FEND knowledge base (v{D3FEND_VERSION}); this map links back to the canonical pages.
+  </p>
+
+  <ListFilter
+    config={{
+      comboboxId: 'd3fend-cb',
+      cardSelector: '[data-d3fend-card]',
+      searchAttr: 'data-d3fend-card',
+      groupSelector: '[data-tactic-group]',
+      countId: 'd3fend-count',
+      emptyId: 'd3fend-empty',
+      dedupeAttr: 'data-d3fend-id',
+      facetAttr: 'data-tactic',
+      toggles: [
+        { id: 'd3fend-covered-toggle', attr: 'data-covered' },
+        { id: 'd3fend-mapped-toggle', attr: 'data-mapped' },
+        { id: 'd3fend-gloss-toggle', attr: 'data-has-gloss' },
+      ],
+      urlSync: { queryParam: 'q', facetParam: 'tactic' },
+    }}
+  />
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['d3fend']} />
+</BaseLayout>

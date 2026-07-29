@@ -25,12 +25,22 @@
 // toggle, native fragment/`:target` auto-expand, exclusive accordion groups
 // closing a sibling) still just snap — animating every path that can change
 // `.open` isn't worth the added complexity for a decorative flourish.
-// motion/mini: the smaller WAAPI-only build — covers a plain height animation
-// just fine (invariant 5 in CLAUDE.md explains why the full `motion` build is
-// avoided).
-import { animate } from 'motion/mini';
+//
+// ZERO dependencies: this is a plain two-keyframe height tween, so it uses the
+// platform's own `Element.animate()` (WAAPI) directly. It used to import
+// `animate` from `motion/mini` — but that build is itself only a thin WAAPI
+// wrapper with no physics engine, so for a fixed-duration `height: [a, b]`
+// tween it added a bundled dependency and bought nothing the platform doesn't
+// already give us. `Element.animate()` returns an `Animation` exposing the
+// same `.finished` promise this file already relied on. See CLAUDE.md
+// invariant 5 for the standing "keep client JS minimal" rule this serves.
+//
+// `fill: 'forwards'` + an explicit `cancel()` reproduces what motion did with
+// `commitStyles()`: without the fill, the element would snap back to its
+// pre-animation height for one frame between the animation ending and the
+// `.finished` handler clearing the inline styles.
 
-const DURATION = 0.45; // seconds — see file header for why
+const DURATION_MS = 450; // see file header for why (0.45s)
 
 export function animateDetails(details) {
   if (details.__animatedDetails) return;
@@ -55,6 +65,27 @@ export function animateDetails(details) {
     busy = false;
   }
 
+  // A plain two-keyframe height tween on the platform's own WAAPI.
+  // `fill: 'forwards'` holds the end height until the caller has finished
+  // rearranging the DOM (flipping `.open`, clearing the inline height), then
+  // `cancel()` drops the animation's hold — do it in that order or the
+  // element flashes back to its start height for a frame in between.
+  function tweenHeight(from: number, to: number, done: () => void) {
+    const anim = details.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+      duration: DURATION_MS,
+      easing: 'ease',
+      fill: 'forwards',
+    });
+    anim.finished
+      .then(() => {
+        done();
+        anim.cancel();
+      })
+      .catch(() => {
+        /* cancelled out from under us — nothing to settle */
+      });
+  }
+
   function collapse() {
     busy = true;
     const startH = details.offsetHeight;
@@ -62,12 +93,10 @@ export function animateDetails(details) {
     details.style.height = `${startH}px`;
     details.offsetHeight; // force reflow so the browser registers the start height
     const endH = summary.offsetHeight;
-    animate(details, { height: [`${startH}px`, `${endH}px`] }, { duration: DURATION, easing: 'ease' }).finished.then(
-      () => {
-        details.open = false;
-        settle();
-      },
-    );
+    tweenHeight(startH, endH, () => {
+      details.open = false;
+      settle();
+    });
   }
 
   function expand() {
@@ -89,8 +118,6 @@ export function animateDetails(details) {
       heading.classList.add('declassify');
     }
 
-    animate(details, { height: [`${startH}px`, `${endH}px`] }, { duration: DURATION, easing: 'ease' }).finished.then(
-      settle,
-    );
+    tweenHeight(startH, endH, settle);
   }
 }

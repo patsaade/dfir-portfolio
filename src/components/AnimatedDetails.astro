@@ -1,17 +1,45 @@
 ---
 // Mounted once (BaseLayout): animates every <details> element's open/close
-// site-wide (Tools, Glossary, Certifications, ATT&CK/D3FEND maps, Cheat
-// Sheet, mobile nav accordion) instead of the native instant toggle. See
-// src/scripts/animatedDetails.ts for the behaviour and its guardrails
-// (reduced-motion no-op, doesn't intercept programmatic opens).
+// site-wide (Tools, Glossary, Certifications, ATT&CK/D3FEND maps, the Cheat
+// Sheets, the Event ID / Network Ports / HTTP Status / OSI reference pages,
+// and the artifact-parser tools that render a <details> results block)
+// instead of the native instant toggle. See src/scripts/animatedDetails.ts
+// for the behaviour and its guardrails (reduced-motion no-op, doesn't
+// intercept programmatic opens).
+//
+// PAY-FOR-WHAT-YOU-USE: BaseLayout wraps ~1,700 prerendered pages, but only
+// ~20 of them contain a <details> element at all — the overwhelming majority
+// are generated detail pages (glossary terms, ATT&CK/D3FEND techniques, event
+// IDs, blog/lab posts) with nothing collapsible on them. So the mount below is
+// a tiny gate: it checks for a single <details> in the document and only then
+// dynamically imports the animation module. Vite code-splits a dynamic import
+// into its own chunk, so the animation code is never fetched, parsed, or
+// executed on a page that has no <details> — only the few bytes of the gate
+// itself ship everywhere.
+//
+// The gate is a runtime DOM query on purpose rather than a per-page opt-in
+// prop: it is self-maintaining (a page that later grows a <details>, or a
+// shared component like RecycleBinParser/LnkParser/EmailHeaderAnalyzer/
+// DeobfuscatorBuilder that renders one, is covered automatically) and it
+// cannot drift out of sync with the markup the way a hand-maintained page
+// list would.
+//
+// Reduced motion is checked here too, ahead of the import — animateDetails()
+// already no-ops under it, but bailing first means reduced-motion visitors
+// never fetch the chunk at all. (Invariant 12: the native instant toggle is
+// itself a fully visible, settled state, so skipping this entirely is the
+// correct reduced-motion behaviour, not a degradation.) With JS disabled the
+// <details> elements are plain, fully-working native disclosure widgets.
 ---
 
 <script>
   // @ts-nocheck — vanilla DOM client script
-  import { animateDetails } from '../scripts/animatedDetails';
-
   function init() {
-    Array.prototype.forEach.call(document.querySelectorAll('details'), animateDetails);
+    if (!document.querySelector('details')) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    import('../scripts/animatedDetails').then(function (m) {
+      Array.prototype.forEach.call(document.querySelectorAll('details'), m.animateDetails);
+    });
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

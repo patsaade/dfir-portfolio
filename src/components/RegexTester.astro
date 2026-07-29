@@ -52,7 +52,7 @@ const patternInput = css({
   fontSize: '0.88rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.7rem',
   py: '0.5rem',
@@ -150,7 +150,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.75rem',
   py: '0.6rem',
@@ -266,7 +266,7 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
     <p class={paneLabel}>Pattern library — click to load</p>
     <p class={css({ fontFamily: 'sans', fontSize: '0.78rem', color: 'textMuted', mt: '-0.4rem', mb: '0.6rem' })}>
       Need the underlying syntax instead? See the{' '}
-      <a href="/tools/regex-cheatsheet/" class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>
+      <a href="/reference/regex-cheatsheet/" class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>
         full regex syntax reference
       </a>.
     </p>
@@ -313,14 +313,14 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
   <div>
     <p class={paneLabel}>Matches</p>
     <p class={summary} data-regex-summary role="status" aria-live="polite">Enter a pattern and some sample text above.</p>
-    <div class={highlightBox} data-regex-highlight></div>
+    <div class={highlightBox} data-regex-highlight tabindex="0" role="region" aria-label="Match highlights"></div>
   </div>
 
   {/* Capture groups */}
   <div>
     <p class={paneLabel}>Capture groups</p>
     <p class={groupsEmpty} data-regex-groups-empty>No capture groups to show yet.</p>
-    <div class={groupsWrap} data-regex-groups-wrap hidden>
+    <div class={groupsWrap} data-regex-groups-wrap hidden tabindex="0" role="region" aria-label="Capture groups table">
       <table class={groupsTable}>
         <thead>
           <tr>

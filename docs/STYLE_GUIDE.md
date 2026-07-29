@@ -192,7 +192,7 @@ still uses normal sentence case, e.g. "…detection-and-response and incident re
 - **Card:** `bg: 'bgCard'`, `border: '1px solid token(colors.border)'`, `borderRadius: 'lg'`,
   optional `boxShadow: 'card'`. Hover: `transform: 'translateY(-2px/-3px)'` +
   `borderColor: 'primary'` (+ `boxShadow: 'cardHover'`), `transition` ~200ms.
-- **One card size across listing pages.** The Glossary, Tools, Certifications, MITRE
+- **One card size across listing pages.** The Glossary, Tool Catalog, Certifications, MITRE
   ATT&CK Coverage Map, MITRE D3FEND Map, and Event ID Reference grids all use the single
   shared `.card-grid` class (in `global.css`: `repeat(auto-fill, minmax(min(100%, 232px),
   1fr))`, `gap: 0.65rem`) with `0.7rem 0.85rem` card padding and the `card()` recipe's
@@ -236,8 +236,9 @@ still uses normal sentence case, e.g. "…detection-and-response and incident re
   hit this for real (their `tagRow`s previously used `flexWrap: 'wrap'`), so treat this as
   the default for any row combining a variable-length tag with a fixed one.
 - **Reference and Framework pages share one feature set — ship it with the page, not as a
-  follow-up.** Glossary/Tools/Cheat Sheet/Event ID Reference (Reference) and ATT&CK
-  Map/D3FEND Map (Framework) are siblings in `DFIR_GROUPS`, and every one of them needs: (a)
+  follow-up.** Glossary/Tool Catalog/Command Cheat Sheet/Event ID Reference and ATT&CK
+  Map/D3FEND Map are all `type: 'reference'` entries in `SITE_ENTRIES` (across the
+  `guides-concepts`, `lookup-tables` and `frameworks-maps` categories), and every one needs: (a)
   a dedicated `z.array(z.string())` frontmatter field in `content.config.ts` (matching the
   `tools`/`attack`/`d3fend` pattern) that feeds a "Featured/Mentioned/Covered in my
   writeups" detail-page section plus a matching stat + `FilterToggle` on the index; (b) at
@@ -287,7 +288,7 @@ still uses normal sentence case, e.g. "…detection-and-response and incident re
 - **Links:** `color: 'primary'`, underline-on-hover (or persistent underline in prose).
   External links: `target="_blank" rel="noopener"` + an `external-link` icon when it aids clarity.
 - **Internal links must end with a trailing slash** — `/blog/`, `/tools/`, `` `/blog/${id}/` ``,
-  `` `/glossary/${slug}/` ``. The site sets `trailingSlash: 'always'`, so an unslashed internal link
+  `` `/reference/glossary/${slug}/` ``. The site sets `trailingSlash: 'always'`, so an unslashed internal link
   **404s in `astro dev`** and 308-redirects in production. File URLs keep their extension and no
   slash (`/rss.xml`). The site root is just `/`.
 - **Section heading:** an `<Icon>` (primary) + sentence-case title; see About/Tools.
@@ -297,12 +298,12 @@ still uses normal sentence case, e.g. "…detection-and-response and incident re
 - **Shared list/detail-page parts — reuse, don't rebuild.** `PageHeader` (eyebrow + title +
   description + breadcrumbs), `Breadcrumbs`, `CollapseAll` (expand/collapse a set of `<details>`),
   `TagCombobox` (typeahead search with removable facet tokens — suggestions appear at 2+ chars;
-  drives Blog, Glossary, Tools, Certifications, and both MITRE maps), `FilterToggle` (the pill
+  drives Blog, Glossary, Tool Catalog, Certifications, and both MITRE maps), `FilterToggle` (the pill
   filters — "Covered only", "In glossary", "Maps to ATT&CK"; `tone` `accent`|`primary`), `EntryNav`
   (prev/next on detail pages), and `ListFilter` — the config-driven controller that actually wires
   search + facet + toggles + collapsible groups together (each page just declares its selectors and
   toggle list; see the component's own doc comment for the config shape). `TagCombobox` drives all
-  six list pages (Blog, Labs, Glossary, Tools, Certifications, both MITRE maps), and `ListFilter` now
+  the list pages (Blog, Labs, Glossary, Tool Catalog, Certifications, both MITRE maps, and the /reference/ and /tools/ section indexes), and `ListFilter` now
   drives all six too — extend it, don't fork it. Blog and Labs needed two capabilities `ListFilter`
   didn't originally have (two-way URL sync via `history.replaceState`, read back on load; and
   AND-tag matching, where a card must carry *every* selected tag, vs. the OR-any matching the other
@@ -341,7 +342,7 @@ so the pixel-star mark and the OG cards can never drift into two different looks
   (so `<meta og:image>` always points at a slug the endpoint actually generated — it can never
   404). **When you add a new static page, add it to `STATIC_ENTRIES` in `og/routes.ts`** or it
   falls back to the home card. `ogSlugForPath()` is the one place that maps a live URL to its
-  OG slug — glossary term pages and the legacy `/word-of-the-day/`/`/term-of-the-day/` redirects
+  OG slug — glossary term pages and the legacy `/term-of-the-day/` redirect
   intentionally all resolve to the shared `glossary` card rather than one image each.
 - **Static brand assets.** `scripts/gen-brand.mjs` (`npm run gen:brand`) calls the same renderer
   to (re)generate `favicon.svg`, the favicon/apple-touch/PWA icon PNGs, and the static fallback

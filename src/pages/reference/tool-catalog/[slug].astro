@@ -1,0 +1,253 @@
+---
+// Tool detail page — one prerendered page per tool, in the glossary / ATT&CK
+// detail format (what it is, why it matters, in practice, reference) while staying
+// its own thing: a platform · function eyebrow, the function + cost tags, an
+// "in my kit" note, and a reference out to the tool's official site.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag } from 'styled-system/recipes';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Breadcrumbs from '../../../components/Breadcrumbs.astro';
+import Icon from '../../../components/Icon.astro';
+import EntryNav from '../../../components/EntryNav.astro';
+import { toolChip } from '../../../components/RelatedTools.astro';
+import { TOOLS, costTone } from '../../../data/tools';
+import { termBySlug } from '../../../data/securityTerms';
+import { getSortedPosts, getSortedLabs } from '../../../utils/posts';
+import { SITE } from '../../../consts';
+
+export async function getStaticPaths() {
+  // Reverse-link writeups whose `tools` frontmatter lists this tool (by name).
+  const [posts, labs] = await Promise.all([getSortedPosts(), getSortedLabs()]);
+  return TOOLS.map((tool) => {
+    const name = tool.name.toLowerCase();
+    const writeups = [
+      ...posts.filter((p) => (p.data.tools ?? []).some((n) => n.toLowerCase() === name)).map((p) => ({ title: p.data.title, href: `/blog/${p.id}/`, kind: 'Post' })),
+      ...labs.filter((l) => (l.data.tools ?? []).some((n) => n.toLowerCase() === name)).map((l) => ({ title: l.data.title, href: `/labs/${l.id}/`, kind: 'Lab' })),
+    ];
+    return { params: { slug: tool.slug }, props: { tool, writeups } };
+  });
+}
+
+const { tool, writeups } = Astro.props;
+
+const idx = TOOLS.findIndex((t) => t.slug === tool.slug);
+const prev = idx > 0 ? TOOLS[idx - 1] : null;
+const next = idx >= 0 && idx < TOOLS.length - 1 ? TOOLS[idx + 1] : null;
+// Other tools sharing this tool's function tag (exact, from the data).
+const similar = TOOLS.filter((t) => t.fn === tool.fn && t.slug !== tool.slug);
+// Curated glossary concept(s) this tool directly implements (see tools.ts).
+const glossaryTerms = (tool.glossarySlugs ?? []).map((s) => termBySlug(s)).filter(Boolean);
+
+const sectionH2 = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.2rem', fontWeight: 700, mt: '2.5rem', mb: '0.75rem' });
+const paraBase = { color: 'text', lineHeight: 1.8, fontSize: '1.02rem' } as const;
+const para = css(paraBase);
+// css(paraBase, exampleParaBase) — a plain object merge, not string
+// concatenation of two independently-atomized classes — so exampleParaBase's
+// color: 'textMuted' deterministically overrides paraBase's color: 'text'.
+// The two used to be composed as `${para} ${exampleP}`, which left the
+// winning color up to Panda's atomic-class ordering rather than authorial
+// intent (see STYLE_GUIDE.md "Buttons" for the exact failure mode — this was
+// a live instance of it: `text` was winning, so the example callout rendered
+// in full-contrast text instead of the intended muted/italic treatment).
+const exampleParaBase = { borderLeft: '3px solid token(colors.primary)', pl: '1rem', color: 'textMuted', fontStyle: 'italic' } as const;
+const exampleP = css(paraBase, exampleParaBase);
+const refLink = css({ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.92rem', color: 'text', transition: 'color 150ms ease', _hover: { color: 'primary' } });
+const glossCard = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.3rem',
+  p: '1rem 1.15rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  transition: 'border-color 200ms ease, transform 200ms ease',
+  _hover: { borderColor: 'primary', transform: 'translateY(-2px)' },
+});
+const codeBlock = css({
+  m: 0,
+  p: '0.6rem 0.9rem',
+  fontFamily: 'mono',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+});
+
+const jsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'DefinedTerm',
+  name: tool.name,
+  description: tool.what ?? tool.use,
+  inDefinedTermSet: `${SITE.url}/reference/tool-catalog/`,
+  termCode: tool.slug,
+  url: `${SITE.url}/reference/tool-catalog/${tool.slug}/`,
+  sameAs: tool.url,
+}).replace(/</g, '\\u003c'); // escape `<` so it can't break out of the <script> tag
+---
+
+<BaseLayout title={`${tool.name} — DFIR Tool`} description={tool.what ?? tool.use}>
+  <Breadcrumbs
+    items={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Tool Catalog', href: '/reference/tool-catalog/' }, { label: tool.name }]}
+  />
+
+  <header class={css({ mb: '1.5rem' })}>
+    <p class={css({ fontFamily: 'sans', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'primary', mb: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+      <Icon name="wrench" size={15} />
+      {tool.platform} · {tool.fn}
+    </p>
+    <h1 class={css({ fontSize: { base: '2.1rem', md: '2.75rem' }, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' })}>
+      {tool.core && <Icon name="star" size={20} strokeWidth={0} class={css({ color: 'accent', fill: 'token(colors.accent)' })} label="In my kit" />}
+      {tool.name}
+    </h1>
+    <p class={css({ fontSize: '1.15rem', color: 'textMuted', mt: '0.6rem' })}>{tool.use}</p>
+    <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', mt: '1rem' })}>
+      <span class={tag({ tone: costTone(tool.cost) })}>{tool.cost}</span>
+      <span class={tag({ tone: 'muted' })}>{tool.fn}</span>
+      <span class={tag({ tone: 'muted' })}>{tool.platform}</span>
+      {tool.core && <span class={tag({ tone: 'accent' })}>In my kit</span>}
+    </div>
+    {tool.tags.length > 0 && (
+      <div class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', mt: '0.85rem' })}>
+        <Icon name="tag" size={13} class={css({ color: 'textMuted', flexShrink: 0 })} label="Tags" />
+        {tool.tags.map((t) => (
+          <a href={`/reference/tool-catalog/?q=${encodeURIComponent(t)}`} class={`${tag({ tone: 'muted', mono: true })} ${css({ transition: 'color 150ms ease, border-color 150ms ease', _hover: { color: 'primary', borderColor: 'primary' } })}`}>
+            {t}
+          </a>
+        ))}
+      </div>
+    )}
+  </header>
+
+  {tool.what && (
+    <>
+      <h2 class={sectionH2}><Icon name="book-open" size={18} class={css({ color: 'primary' })} /> What it is</h2>
+      <p class={para}>{tool.what}</p>
+    </>
+  )}
+
+  {tool.install && (
+    <>
+      <h2 class={sectionH2}><Icon name="download" size={18} class={css({ color: 'primary' })} /> Install</h2>
+      <p class={para}>{tool.install}</p>
+    </>
+  )}
+
+  {tool.commands && tool.commands.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="terminal" size={18} class={css({ color: 'primary' })} /> Usage</h2>
+      <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.9rem' })}>
+        {tool.commands.map((c) => (
+          <div>
+            <p class={css({ color: 'textMuted', fontSize: '0.85rem', mb: '0.35rem' })}>{c.desc}</p>
+            <pre class={codeBlock}><code>{c.cmd}</code></pre>
+          </div>
+        ))}
+      </div>
+      <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.75rem' })}>
+        More usage examples across the whole toolkit are on the{' '}
+        <a href="/reference/command-cheatsheet/" class={css({ color: 'primary', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', _hover: { textDecoration: 'underline' } })}>
+          DFIR Command Cheat Sheet <Icon name="arrow-right" size={13} />
+        </a>.
+      </p>
+    </>
+  )}
+
+  {tool.why && (
+    <>
+      <h2 class={sectionH2}><Icon name="shield" size={18} class={css({ color: 'primary' })} /> Why it matters</h2>
+      <p class={para}>{tool.why}</p>
+    </>
+  )}
+
+  {tool.example && (
+    <>
+      <h2 class={sectionH2}><Icon name="terminal" size={18} class={css({ color: 'primary' })} /> In practice</h2>
+      <p class={exampleP}>{tool.example}</p>
+    </>
+  )}
+
+  {glossaryTerms.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="book-open" size={18} class={css({ color: 'primary' })} /> In the glossary</h2>
+      <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.6rem' })}>
+        {glossaryTerms.map((g) => (
+          <a href={`/reference/glossary/${g!.slug}/`} class={glossCard}>
+            <span class={css({ fontWeight: 700, color: 'text', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+              {g!.term} <Icon name="arrow-right" size={14} class={css({ color: 'primary' })} />
+            </span>
+            <span class={css({ fontSize: '0.9rem', color: 'textMuted', lineHeight: 1.5 })}>{g!.short}</span>
+          </a>
+        ))}
+      </div>
+    </>
+  )}
+
+  {writeups.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="file-text" size={18} class={css({ color: 'primary' })} /> Featured in my writeups</h2>
+      <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+        {writeups.map((w) => (
+          <li>
+            <a href={w.href} class={refLink}>
+              <Icon name="arrow-right" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+              <span>{w.title}</span>
+              <span class={css({ fontFamily: 'sans', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'textMuted' })}>{w.kind}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  {similar.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="layers" size={18} class={css({ color: 'primary' })} /> Similar tools</h2>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+        Other {tool.fn} tools in the toolkit:
+      </p>
+      <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' })}>
+        {similar.map((s) => (
+          <a href={`/reference/tool-catalog/${s.slug}/`} class={toolChip}>
+            {s.core && <Icon name="star" size={12} strokeWidth={0} class={css({ color: 'accent', fill: 'token(colors.accent)' })} label="In my kit" />}
+            {s.name}
+            <Icon name="arrow-right" size={13} />
+          </a>
+        ))}
+      </div>
+    </>
+  )}
+
+  <h2 class={sectionH2}><Icon name="external-link" size={18} class={css({ color: 'primary' })} /> References &amp; sources</h2>
+  <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.55rem' })}>
+    <li>
+      <a href={tool.url} target="_blank" rel="noopener" class={refLink}>
+        <Icon name="external-link" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+        <span>{tool.name} — official site</span>
+      </a>
+    </li>
+    {tool.references?.map((r) => (
+      <li>
+        <a href={r.url} target="_blank" rel="noopener" class={refLink}>
+          <Icon name="external-link" size={14} class={css({ color: 'textMuted', flexShrink: 0 })} />
+          <span>{r.name}</span>
+        </a>
+      </li>
+    ))}
+  </ul>
+  <p class={css({ fontSize: '0.78rem', color: 'textMuted', mt: '0.85rem', lineHeight: 1.6 })}>
+    Names and trademarks belong to their respective projects and vendors; links go to each tool's
+    canonical site. Cost reflects the free/open-source tier — some tools offer paid upgrades.
+  </p>
+
+  <EntryNav
+    ariaLabel="More tools"
+    prev={prev ? { href: `/reference/tool-catalog/${prev.slug}/`, label: prev.name } : null}
+    next={next ? { href: `/reference/tool-catalog/${next.slug}/`, label: next.name } : null}
+  />
+
+  <script type="application/ld+json" is:inline set:html={jsonLd} />
+</BaseLayout>

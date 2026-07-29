@@ -22,9 +22,24 @@ export default defineConfig({
     mdx(),
     sitemap({
       // Keep the sitemap free of pages that carry a noindex meta tag — listing a
-      // noindex URL in the sitemap sends crawlers a contradictory signal. Both
-      // legacy URLs meta-refresh to /glossary/ and are marked noindex there.
-      filter: (page) => !page.includes('/word-of-the-day/') && !page.includes('/term-of-the-day/'),
+      // noindex URL in the sitemap sends crawlers a contradictory signal, which
+      // is exactly the kind of noise to avoid while the whole site is being
+      // re-crawled after the URL migration. Three sources of noindex pages:
+      //
+      //  1. /term-of-the-day/ — legacy URL, meta-refreshes to /reference/glossary/.
+      //  2. /reference/event-ids/<digits>/ — bare-numeric convenience stubs that
+      //     redirect to the real `{source}-{id}` slug (see that route's own
+      //     getStaticPaths). Real slugs are never all-digits, so this pattern
+      //     can only ever match a stub.
+      //  3. /reference/network-ports/<digits>/ — the same bare-numeric stubs for
+      //     ports; real slugs are `{protocol}-{port}` / `port-{port}`.
+      //
+      // The 404 route is dropped defensively too (the integration already skips
+      // it, but it is noindex and must never appear here if that ever changes).
+      filter: (page) =>
+        !page.includes('/term-of-the-day/') &&
+        !/\/reference\/(?:event-ids|network-ports)\/\d+\/?$/.test(page) &&
+        !/\/404\/?$/.test(page),
     }),
   ],
   markdown: {

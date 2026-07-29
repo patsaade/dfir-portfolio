@@ -59,19 +59,19 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 
 <BaseLayout
   title="Subnetting Drill"
-  description="A knowledge-check drill for subnet arithmetic and special-use IPv4/IPv6 range recognition — every question is computed live from this site's own CIDR utilities and IANA-sourced range data, not hand-written trivia."
+  description="A knowledge-check drill for hands-on CIDR block building and special-use IPv4 range recognition — every question is computed live from this site's own CIDR utilities and IANA-sourced range data, not hand-written trivia."
 >
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Drills', href: '/drills/' }, { label: 'Subnetting' }]}
     eyebrow="Practice"
     title="Subnetting Drill"
-    description="Network/broadcast/usable-host math, special-use range recognition, and subnet sizing — ten questions computed live from the same CIDR arithmetic and IANA-sourced range data behind the CIDR & VLAN Calculator and IP & CIDR Reference."
+    description="Build a CIDR block that covers the addresses it must and excludes the ones it must not, plus special-use IPv4 range recognition — ten questions computed live from the same CIDR arithmetic and IANA-sourced range data behind the CIDR & VLAN Calculator and IP & CIDR Reference."
   />
 
   <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
     This is a quick recall drill, not a certification exam — ten questions pulled from a small curated bank, each
     graded against a value computed on the spot by this site's own <a href="/tools/cidr-calculator/" class={css({ color: 'primary', textDecoration: 'underline' })}>CIDR & VLAN Calculator</a> math
-    or read directly from the <a href="/ip-reference/" class={css({ color: 'primary', textDecoration: 'underline' })}>IP & CIDR Reference</a>'s IANA-sourced range data. Nothing here is
+    or read directly from the <a href="/reference/ip-cidr/" class={css({ color: 'primary', textDecoration: 'underline' })}>IP & CIDR Reference</a>'s IANA-sourced range data. Nothing here is
     hand-typed trivia; every correct answer traces back to a real function or a real registry entry.
   </p>
 
@@ -80,10 +80,10 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       <Icon name="grid" size={18} class={css({ color: 'primary' })} /> CIDR quick reference (IPv4)
     </h2>
     <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.7, mt: '0.6rem', mb: 0 })}>
-      Keep this open while you work through the drill below — the network/broadcast/usable-host questions all
-      reduce to this same prefix/netmask/host-count table.
+      Keep this open while you work through the drill below — every block you build reduces to this same
+      prefix/netmask/host-count table, and the builder's own live readout shows the same values as you drag.
     </p>
-    <div class={quickRefTableWrap}>
+    <div class={quickRefTableWrap} tabindex="0" role="region" aria-label="CIDR quick reference table">
       <table class={quickRefTable}>
         <thead>
           <tr>
@@ -110,7 +110,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   <DrillEngine
     drill="ip-cidr"
     heading="Subnetting Drill"
-    intro="Network and broadcast addresses, usable host counts, special-use range categories, and subnet sizing."
+    intro="Drag the octets and prefix to build a block that covers every required address and excludes the rest — the network, broadcast, netmask and host range update live."
     totalQuestions={TOTAL}
     firstQuestion={q0}
   />
@@ -128,7 +128,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </p>
     </div>
     <div>
-      <a href="/ip-reference/" class={toolChip}>
+      <a href="/reference/ip-cidr/" class={toolChip}>
         <Icon name="wifi" size={13} /> IP & CIDR Reference <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>

@@ -119,3 +119,6 @@ evidence/
 *.bak
 *.orig
 *.rej
+
+# ── Personal editor state (machine-specific, never shared) ──
+.obsidian/

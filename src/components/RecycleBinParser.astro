@@ -72,7 +72,7 @@ const textarea = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.7rem 0.85rem',
   minH: '7rem',
@@ -115,6 +115,10 @@ const fileBtn = css({
   cursor: 'pointer',
   transition: 'border-color 150ms ease',
   _hover: { borderColor: 'primary', color: 'primary' },
+  // The file input inside this label is visually hidden but focusable, so the
+  // label has to surface the focus ring on its behalf — otherwise tabbing to
+  // it puts focus somewhere with no visible indicator (WCAG 2.4.7).
+  '&:has(input:focus-visible)': { outline: '2px solid token(colors.primary)', outlineOffset: '2px', borderColor: 'primary' },
 });
 const fileNameText = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
 
@@ -298,7 +302,7 @@ const RAW_FIELDS = [
     <div class={fileRow} data-rbin-file-row>
       <label class={fileBtn}>
         <Icon name="download" size={15} /> Choose $I file
-        <input type="file" data-rbin-file class={css({ display: 'none' })} />
+        <input type="file" data-rbin-file class={css({ position: 'absolute', w: '1px', h: '1px', p: 0, m: '-1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 })} />
       </label>
       <span class={fileNameText} data-rbin-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
     </div>
@@ -342,7 +346,7 @@ const RAW_FIELDS = [
         <span class={`${tag({ tone: 'primary', mono: true })} ${versionChip}`} data-rbin-version-chip></span>
       </p>
       <div class={headlineWrap}>
-        <pre class={headlineBox} data-rbin-value="path">&nbsp;</pre>
+        <pre class={headlineBox} data-rbin-value="path" tabindex="0" role="region" aria-label="Parsed summary">&nbsp;</pre>
         <button type="button" class={rowCopyBtn} data-rbin-copy="path" data-copy-pop data-sound="copy" aria-label="Copy original path" title="Copy">
           <Icon name="copy" size={13} />
         </button>
@@ -356,7 +360,7 @@ const RAW_FIELDS = [
           DETAIL_FIELDS.map((f) => (
             <div class={resultRow}>
               <span class={resultBadge}>{f.label}</span>
-              <pre class={resultBox} data-rbin-value={f.id}>&nbsp;</pre>
+              <pre class={resultBox} data-rbin-value={f.id} tabindex="0" role="region" aria-label={f.label}>&nbsp;</pre>
               <button type="button" class={rowCopyBtn} data-rbin-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label}`} title="Copy">
                 <Icon name="copy" size={13} />
               </button>
@@ -396,7 +400,7 @@ const RAW_FIELDS = [
           RAW_FIELDS.map((f) => (
             <div class={resultRow}>
               <span class={resultBadge}>{f.label}</span>
-              <pre class={resultBox} data-rbin-value={f.id}>&nbsp;</pre>
+              <pre class={resultBox} data-rbin-value={f.id} tabindex="0" role="region" aria-label={f.label}>&nbsp;</pre>
               <button type="button" class={rowCopyBtn} data-rbin-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label}`} title="Copy">
                 <Icon name="copy" size={13} />
               </button>

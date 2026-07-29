@@ -50,7 +50,7 @@ const STRUCTURES: { name: string; note: string }[] = [
   description="Parse a local EXE/DLL's DOS header, COFF File Header, Optional Header, Section Table, Import/Export tables, and imphash — entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'PE Header Explorer' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'PE Header Explorer' }]}
     eyebrow="Artifact Parsers"
     title="PE Header Explorer"
     description="Load a local EXE or DLL and walk its Windows PE headers — DOS/COFF/Optional headers, sections, imports, exports, and a computed imphash."
@@ -97,7 +97,7 @@ const STRUCTURES: { name: string; note: string }[] = [
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Structure reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Structure reference table">
     <table class={refTable}>
       <thead>
         <tr>

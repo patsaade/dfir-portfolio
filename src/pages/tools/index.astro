@@ -1,0 +1,239 @@
+---
+// Tools section index — every `type: 'tool'` entry in SITE_ENTRIES, grouped by
+// its category (the VERB it applies to your input): artifact parsers, decoders
+// & extractors, converters & calculators, rule & query builders.
+//
+// Section ids are the CategoryId values verbatim (`artifact-parsers`,
+// `decoders-extractors`, `converters-calculators`, `rule-query-builders`) —
+// the footer already ships /tools/#<category-id> anchors, so renaming one here
+// dead-ends those links. Sections are always visible, never collapsible
+// <details> like tools.astro/glossary: an overview page whose whole job is to
+// show everything at a glance shouldn't hide any of it behind a click.
+//
+// Unlike /dfir/, this page IS filterable — the domain tag (dfir / networking /
+// systems / windows / web / malware) is the site's second axis, so a visitor
+// who only cares about Windows artifacts can narrow to those without the
+// taxonomy having to file each tool under a domain.
+//
+// Card hrefs come straight from SITE_ENTRIES — every interactive tool lives at
+// /tools/<name>/.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { card, tag } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import Icon from '../../components/Icon.astro';
+import Term from '../../components/Term.astro';
+import { groupsFor, DOMAINS } from '../../consts';
+
+const groups = groupsFor('tool');
+const allEntries = groups.flatMap((g) => g.links);
+const total = allEntries.length;
+
+// Domain facet — every DOMAINS tag, counted across this page's entries only, so
+// the dropdown count matches what selecting it actually leaves on screen.
+const crossLink = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  mb: '1.5rem',
+  p: '0.7rem 1rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'bgCard',
+  fontSize: '0.9rem',
+  color: 'text',
+  transition: 'border-color 200ms ease, color 200ms ease',
+  _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+});
+
+const domainLabels = new Map(DOMAINS.map((d) => [d.id, d.label]));
+const domainOptions = DOMAINS.map((d) => ({
+  value: d.id,
+  label: d.label,
+  count: allEntries.filter((e) => e.domains.includes(d.id)).length,
+})).filter((o) => o.count > 0);
+
+// Jump-strip tiles — representative icon = the category's first entry, same
+// convention as /dfir/'s own overview strip.
+const groupTiles = groups.map((g) => ({
+  id: g.id,
+  icon: g.links[0].icon,
+  title: g.category,
+  blurb: g.blurb,
+  count: g.links.length,
+}));
+
+const intro = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+const introP = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 });
+
+const sectionWrap = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const sectionHead = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flexWrap: 'wrap',
+  m: 0,
+  fontSize: '1.25rem',
+  fontWeight: 700,
+});
+const sectionCount = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  px: '0.5rem',
+  py: '0.1rem',
+});
+const sectionIntro = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, mt: '0.5rem', mb: 0 });
+const cardsGrid = css({ mt: '1rem' }); // columns/gap come from the shared .card-grid class
+// card()'s recipe already owns _hover.borderColor/_hover.transform — this only
+// adds a non-overlapping property, per the CSS-composition rule.
+const toolCard = `${card()} ${css({ _hover: { boxShadow: 'card' } })}`;
+const cardHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem' });
+const cardTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.9rem', color: 'text', lineHeight: 1.3 });
+// Descriptions here run 40-160 chars, so they wrap freely rather than being
+// clamped to a fixed two-line box (a cut-off sentence reads worse than an
+// uneven card). The chip row is pushed to the bottom so rows still line up.
+const cardDesc = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.45, mt: '0.3rem', mb: '0.5rem' });
+const chipRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', mt: 'auto' });
+const domainChip = tag({ tone: 'muted' });
+---
+
+<BaseLayout
+  title="Tools"
+  description="Browser-based DFIR and IT tools — artifact parsers, decoders and extractors, converters and calculators, and rule and query builders. Every one runs entirely in your browser."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools' }]}
+    eyebrow="Tools"
+    title="Tools"
+    description={`${total} tools you feed something to — a file, a block of text, a value — and get its structure, its conversion, or its math back. All of it runs in your browser: nothing you paste, drop in, or load is ever transmitted anywhere.`}
+  />
+
+  <aside class={intro}>
+    <p class={introP}>
+      Which one you want depends on what you're holding. A file — a <Term slug="portable-executable-format">PE
+      binary</Term>, a <Term slug="lnk-files">.lnk shortcut</Term>, a <Term slug="prefetch">Prefetch record</Term> —
+      goes to a parser. A block of text you pulled out of a log, a mail header, or a token goes to a decoder. A single
+      value you want in a different shape, or the arithmetic done on it, goes to a converter. And when you're writing
+      the thing you're about to run somewhere else — a <Term slug="sigma-rule">Sigma rule</Term>, a{' '}
+      <Term slug="yara">YARA</Term> rule, a <Term slug="siem">SIEM</Term> query — that's the last group.
+    </p>
+  </aside>
+
+  {/* Cross-link to the other half of the split */}
+  <a href="/reference/" class={crossLink}>
+    <Icon name="book-open" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>Looking for something to read instead of run? — <strong class={css({ fontWeight: 700 })}>Reference</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
+  {/* Search + domain filter */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="tools-cb"
+      options={domainOptions}
+      placeholder={`Search ${total} tools, or type a domain…`}
+      label="Search tools or filter by domain"
+    />
+  </div>
+
+  <p
+    role="status"
+    aria-live="polite"
+    class={css({
+      display: 'flex',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: '0.3rem 0.9rem',
+      color: 'textMuted',
+      fontSize: '0.9rem',
+      mt: 0,
+      mb: '1.5rem',
+    })}
+  >
+    <span><span id="tools-count">{total}</span> <span id="tools-count-word">tools</span></span>
+    <span aria-hidden="true">·</span>
+    <span>{groups.length} categories</span>
+    <span aria-hidden="true">·</span>
+    <span>{domainOptions.length} domains</span>
+  </p>
+
+  <GroupOverview items={groupTiles} heading="Browse by category" />
+
+  {
+    groups.map((g) => (
+      <section id={g.id} data-tool-group class={sectionWrap}>
+        <h2 class={sectionHead}>
+          <Icon name={g.links[0].icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+          <span>{g.category}</span>
+          <span class={sectionCount}>{g.links.length}</span>
+        </h2>
+        <p class={sectionIntro}>{g.intro}</p>
+        <div class={`card-grid ${cardsGrid}`}>
+          {g.links.map((entry) => (
+            <a
+              href={entry.href}
+              class={toolCard}
+              data-tool-card={`${entry.label} ${entry.description}`.toLowerCase()}
+              data-domain={`|${entry.domains.join('|')}|`}
+            >
+              <span class={cardHead}>
+                <Icon name={entry.icon} size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class={cardTitle}>{entry.label}</span>
+              </span>
+              <p class={cardDesc}>{entry.description}</p>
+              <span class={chipRow}>
+                {entry.domains.map((d) => (
+                  <span class={domainChip}>{domainLabels.get(d) ?? d}</span>
+                ))}
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
+    ))
+  }
+
+  <p
+    id="tools-empty"
+    hidden
+    role="status"
+    aria-live="polite"
+    class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}
+  >
+    No tools match.
+  </p>
+
+  <ListFilter
+    config={{
+      comboboxId: 'tools-cb',
+      cardSelector: '[data-tool-card]',
+      searchAttr: 'data-tool-card',
+      groupSelector: '[data-tool-group]',
+      countId: 'tools-count',
+      countWordId: 'tools-count-word',
+      countWordSingular: 'tool',
+      countWordPlural: 'tools',
+      emptyId: 'tools-empty',
+      facetAttr: 'data-domain',
+      facetMulti: true,
+      urlSync: { queryParam: 'q', facetParam: 'domain' },
+    }}
+  />
+</BaseLayout>

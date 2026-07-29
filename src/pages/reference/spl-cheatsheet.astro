@@ -1,0 +1,309 @@
+---
+// Splunk SPL Cheat Sheet — the command/function/modifier reference behind a
+// Splunk search bar, from src/data/splCheatSheet.ts's SPL_CHEAT_SHEET. Same
+// structural shape as the Regex Syntax Cheat Sheet (regex-cheatsheet.astro):
+// PageHeader -> GroupOverview jump-strip -> TagCombobox search -> one
+// collapsible <details> group per category -> ListFilter wiring, with a
+// per-category "verified against" source line (SPL_CATEGORY_SOURCES) since
+// every entry here is a vendor-documented fact rather than authored prose.
+// Static — prerendered.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import type { IconName } from '../../components/Icon.astro';
+import Term from '../../components/Term.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { toolChip } from '../../components/RelatedTools.astro';
+import { tagSlug } from '../../utils/posts';
+import { SPL_CHEAT_SHEET, SPL_CATEGORY_SOURCES } from '../../data/splCheatSheet';
+
+// Icon + one-line blurb per category — presentational metadata only, kept here
+// so splCheatSheet.ts stays pure content.
+const CATEGORY_META: Record<string, { icon: IconName; blurb: string }> = {
+  'Search Basics & the Pipeline': { icon: 'terminal', blurb: 'How a search is put together — default fields, booleans, wildcards, subsearches and the implicit search command.' },
+  'Filtering & Comparison': { icon: 'search', blurb: 'Narrowing results after the base search, including the field-to-field comparisons only where can do.' },
+  'Time Range Modifiers': { icon: 'clock', blurb: 'earliest, latest, the relative-time grammar and the snap-to operator that makes a window land on a clean boundary.' },
+  'Selecting & Shaping Fields': { icon: 'columns', blurb: 'Keeping, dropping, renaming, ordering and expanding the fields you want to read.' },
+  'Statistics & Aggregation': { icon: 'activity', blurb: 'stats and its function library, plus eventstats and streamstats for keeping the original events around.' },
+  'Time Series & Charting': { icon: 'gauge', blurb: 'timechart, chart and bin — turning a result set into a timeline or a distribution.' },
+  'Correlation: Joins, Lookups & Transactions': { icon: 'arrow-left-right', blurb: 'Stitching related events together: transactions, joins, appends, lookups and IP enrichment.' },
+  'Field Extraction & Regex': { icon: 'hash', blurb: 'rex, regex and spath — pulling structure out of raw events at search time.' },
+  'Eval Functions': { icon: 'rotate-cw', blurb: 'The expression language: conditionals, string work, time conversion, hashing and JSON.' },
+  'Accelerated & Metadata Searches': { icon: 'server', blurb: 'tstats and metadata — the fast paths that read indexed data instead of raw events.' },
+};
+const FALLBACK_META = { icon: 'list' as IconName, blurb: '' };
+
+interface CategoryGroup {
+  id: string;
+  title: string;
+  icon: IconName;
+  blurb: string;
+  source?: { name: string; url: string };
+  entries: typeof SPL_CHEAT_SHEET;
+}
+
+const categories: CategoryGroup[] = [];
+const byCategory = new Map<string, CategoryGroup>();
+for (const entry of SPL_CHEAT_SHEET) {
+  let group = byCategory.get(entry.category);
+  if (!group) {
+    const meta = CATEGORY_META[entry.category] ?? FALLBACK_META;
+    group = {
+      id: `splcheat-${tagSlug(entry.category)}`,
+      title: entry.category,
+      icon: meta.icon,
+      blurb: meta.blurb,
+      source: SPL_CATEGORY_SOURCES[entry.category],
+      entries: [],
+    };
+    byCategory.set(entry.category, group);
+    categories.push(group);
+  }
+  group.entries.push(entry);
+}
+
+const totalEntries = SPL_CHEAT_SHEET.length;
+const categoryTiles = categories.map((c) => ({ id: c.id, icon: c.icon, title: c.title, blurb: c.blurb, count: c.entries.length }));
+const categoryOptions = categories.map((c) => ({ value: tagSlug(c.title), label: c.title, count: c.entries.length }));
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const entryCard = `${card()} ${css({ gap: '0.5rem' })}`;
+const syntaxCode = css({
+  display: 'inline-block',
+  fontFamily: 'mono',
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  color: 'primary',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.55rem',
+  py: '0.15rem',
+  wordBreak: 'break-word',
+  alignSelf: 'flex-start',
+});
+const entryDesc = css({ fontSize: '0.88rem', color: 'text', lineHeight: 1.65, m: 0 });
+const entryExample = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.4rem',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  color: 'textMuted',
+  lineHeight: 1.6,
+  wordBreak: 'break-word',
+  pt: '0.45rem',
+  borderTop: '1px dashed token(colors.border)',
+  m: 0,
+});
+const entriesGrid = css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' });
+const sourceLine = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  fontSize: '0.75rem',
+  color: 'textMuted',
+  mt: '-0.35rem',
+  mb: '0.85rem',
+  '& a': { color: 'primary' },
+});
+
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .splcheat-grp-title': { color: 'primary' } },
+});
+const chevCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease', 'details[open] &': { transform: 'rotate(90deg)' } });
+const grpCount = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem' });
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' });
+const inlineLink = css({ color: 'primary' });
+---
+
+<BaseLayout
+  title="Splunk SPL Cheat Sheet"
+  description={`A Splunk Search Processing Language reference for responders — ${totalEntries} commands, time modifiers, stats functions, eval functions and correlation idioms, each with a runnable example and cited to Splunk's own Search Reference.`}
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Splunk SPL Cheat Sheet' }]}
+    eyebrow="Reference"
+    title="Splunk SPL Cheat Sheet"
+    description={`${totalEntries} SPL entries across ${categories.length} categories — the pipeline, filtering, time modifiers, field shaping, stats and eval functions, transactions and joins, field extraction, and the accelerated tstats path. Every entry carries a runnable example, and every section cites the Splunk Search Reference page it was verified against.`}
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      SPL is a pipeline language: a base search selects events, and every command after a pipe reshapes what the
+      previous one produced. Three habits do most of the work.{' '}
+      <strong class={css({ color: 'text' })}>Scope the base search</strong> — naming an{' '}
+      <code class={inlineCode}>index</code> and a <code class={inlineCode}>sourcetype</code> up front is the single
+      biggest performance lever you have.{' '}
+      <strong class={css({ color: 'text' })}>Filter before you transform</strong> — everything a command does, it does
+      to every row you handed it. And know that{' '}
+      <code class={inlineCode}>search</code> and <code class={inlineCode}>where</code> are not the same thing:{' '}
+      <code class={inlineCode}>where</code> reads an unquoted value as a FIELD NAME, which is what lets it compare two
+      fields against each other and what makes it silently match nothing if you forget the quotes. Field names in the
+      examples below are Splunk's own documentation fields — yours will differ. The{' '}
+      <a href="/tools/spl-builder/" class={inlineLink}>SPL Query Builder</a> composes the same pipeline shape stage by
+      stage.
+    </p>
+  </aside>
+
+  <GroupOverview items={categoryTiles} heading="Jump to category" />
+
+  {/* Search + category filter (typeahead combobox) */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="splcheat-cb"
+      options={categoryOptions}
+      placeholder={`Search ${totalEntries} SPL entries, or type a category…`}
+      label="Search the SPL cheat sheet or filter by category"
+    />
+  </div>
+
+  <div class={css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' })}>
+    <p role="status" aria-live="polite" class={css({ color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span id="splcheat-result-count">{totalEntries}</span> entries shown
+    </p>
+    <CollapseAll target="[data-splcheat-group]" class={css({ ml: { sm: 'auto' } })} />
+  </div>
+
+  <p id="splcheat-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No entries match your search.
+  </p>
+
+  {
+    categories.map((c) => (
+      <details id={c.id} data-splcheat-group open class={groupDetails}>
+        <summary class={groupSummary}>
+          <h2 class={sectionH2}>
+            <Icon name="chevron-right" size={17} class={chevCls} />
+            <Icon name={c.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+            <span class="splcheat-grp-title">{c.title}</span>
+            <span class={grpCount}>{c.entries.length}</span>
+          </h2>
+        </summary>
+        {c.source && (
+          <p class={sourceLine}>
+            <Icon name="external-link" size={12} />
+            <span>
+              Verified against{' '}
+              <a href={c.source.url} target="_blank" rel="noopener">
+                {c.source.name}
+              </a>
+            </span>
+          </p>
+        )}
+        <div class={entriesGrid}>
+          {c.entries.map((e) => (
+            <div
+              class={entryCard}
+              data-cat={tagSlug(c.title)}
+              data-splcheat-card={`${e.category} ${e.syntax} ${e.description} ${e.example}`.toLowerCase()}
+            >
+              <code class={syntaxCode}>{e.syntax}</code>
+              <p class={entryDesc}>{e.description}</p>
+              <p class={entryExample}>
+                <Icon name="arrow-right" size={12} class={css({ flexShrink: 0, mt: '0.2rem' })} />
+                <span>{e.example}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      </details>
+    ))
+  }
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/spl-builder/" class={toolChip}>
+        <Icon name="activity" size={13} /> Splunk SPL Query Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Compose a search stage by stage — base search plus stats, table, sort, where and eval — and copy out the
+        finished pipeline.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/kql-cheatsheet/" class={toolChip}>
+        <Icon name="terminal" size={13} /> KQL Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The same reference for Microsoft Defender XDR and Sentinel. Worth reading side by side if you are translating
+        a detection between an <Term slug="edr">EDR</Term> console and a <Term slug="siem">SIEM</Term>.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/regex-tester/" class={toolChip}>
+        <Icon name="search" size={13} /> DFIR Regex Tester &amp; Pattern Library <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        <code class={inlineCode}>rex</code> and <code class={inlineCode}>regex</code> take PCRE patterns. Build and
+        test one against sample text first — a named capture group that does not fire is much easier to spot here
+        than in a search that just returns nothing.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="target" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Writing the detection as a <Term slug="sigma-rule">Sigma rule</Term> first keeps it portable — the same logic
+        converts to SPL, KQL and a dozen other back ends instead of being locked to one search language.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['spl-cheatsheet']} />
+
+  <ListFilter
+    config={{
+      comboboxId: 'splcheat-cb',
+      cardSelector: '[data-splcheat-card]',
+      searchAttr: 'data-splcheat-card',
+      groupSelector: '[data-splcheat-group]',
+      countId: 'splcheat-result-count',
+      emptyId: 'splcheat-empty',
+      facetAttr: 'data-cat',
+      urlSync: { queryParam: 'q', facetParam: 'cat' },
+    }}
+  />
+</BaseLayout>

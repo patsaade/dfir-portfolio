@@ -46,7 +46,7 @@ const selectInput = css({
   fontSize: '0.88rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.6rem',
   py: '0.5rem',
@@ -135,7 +135,7 @@ const inlineInput = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.65rem',
   py: '0.5rem',
@@ -259,7 +259,7 @@ const defaultVector = buildCvssV31VectorString(DEFAULT_CVSS_METRICS);
       <div>
         <p class={fieldLabel}>Vector string</p>
         <div class={vectorRow}>
-          <pre class={vectorBox} data-cvss-vector>{defaultVector}</pre>
+          <pre class={vectorBox} data-cvss-vector tabindex="0" role="region" aria-label="CVSS vector string">{defaultVector}</pre>
           <button type="button" class={rowCopyBtn} data-cvss-copy-vector data-copy-pop data-sound="copy">
             <Icon name="copy" size={13} /> Copy
           </button>

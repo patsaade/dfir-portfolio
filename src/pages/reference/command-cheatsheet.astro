@@ -1,0 +1,302 @@
+---
+// DFIR command cheat sheet — genuinely useful operational commands (not install
+// steps) for every tool in the kit that has a real command-line/API surface,
+// grouped by platform, searchable by name or function. Pure derived content:
+// nothing here is authored beyond what already lives in tools.ts (`commands`),
+// so it stays accurate automatically as that data grows. Tools with no commands
+// (web/SaaS tools, GUI-only tools where a fabricated example would mislead) are
+// left out — this page is specifically a command reference, not a full tool list
+// (see /tools/ for that, including install instructions). Static — prerendered.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag, card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import FilterToggle from '../../components/FilterToggle.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { tagSlug, getSortedPosts, getSortedLabs } from '../../utils/posts';
+import { TOOL_PLATFORMS, costTone } from '../../data/tools';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+
+// Only tools with at least one real command — a platform disappears entirely
+// from this page if none of its tools qualify.
+const platforms = TOOL_PLATFORMS.map((p) => ({
+  ...p,
+  tools: p.tools.filter((t) => t.commands && t.commands.length > 0),
+})).filter((p) => p.tools.length > 0);
+
+const totalEntries = platforms.reduce((n, p) => n + p.tools.length, 0);
+const totalCommands = platforms.reduce((n, p) => n + p.tools.reduce((m, t) => m + (t.commands?.length ?? 0), 0), 0);
+
+const platformTiles = platforms.map((p) => ({
+  id: `cheat-${p.id}`,
+  icon: p.icon,
+  title: p.title,
+  blurb: p.blurb,
+  count: p.tools.length,
+}));
+
+const coreTools = platforms.flatMap((p) => p.tools).filter((t) => t.core);
+
+// Function facet for the search combobox — same tags used on the Tools page,
+// scoped to just the tools that qualify for this page.
+const fnCounts: Record<string, number> = {};
+for (const p of platforms) for (const t of p.tools) fnCounts[t.fn] = (fnCounts[t.fn] ?? 0) + 1;
+const fnOptions = Object.keys(fnCounts)
+  .sort()
+  .map((fn) => ({ value: tagSlug(fn), label: fn, count: fnCounts[fn] }));
+
+// Cost tier — a second, independent facet (chip row, ANDed with the function
+// combobox) so "just show me the open-source ones" is a click, not free text.
+const costCounts: Record<string, number> = {};
+for (const p of platforms) for (const t of p.tools) costCounts[t.cost] = (costCounts[t.cost] ?? 0) + 1;
+const costTiers = Object.keys(costCounts).sort();
+
+// Tools featured in a writeup (matched by name in post/lab `tools` frontmatter).
+const [cPosts, cLabs] = await Promise.all([getSortedPosts(), getSortedLabs()]);
+const featuredTools = new Set([...cPosts, ...cLabs].flatMap((p) => (p.data.tools ?? []).map((n) => n.toLowerCase())));
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const entryCard = `${card()} ${css({ gap: '0.5rem' })}`;
+const entryHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' });
+const entryName = css({ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'sans', fontWeight: 700, fontSize: '0.98rem', color: 'text', transition: 'color 150ms ease', _hover: { color: 'primary' } });
+const cmdDesc = css({ fontSize: '0.85rem', color: 'textMuted', mb: '0.3rem' });
+const codeBlock = css({
+  m: 0,
+  p: '0.6rem 0.85rem',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  color: 'text',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  overflowX: 'auto',
+  whiteSpace: 'pre',
+});
+const commandList = css({ display: 'flex', flexDirection: 'column', gap: '0.65rem' });
+
+// Same collapsible-<details>-per-platform idiom as the Tools page.
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .cheat-grp-title': { color: 'primary' } },
+});
+const chevCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease', 'details[open] &': { transform: 'rotate(90deg)' } });
+const grpCount = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem' });
+
+// Cost-tier chip row — same exclusive single-select chip pattern as the Tools page.
+const filterRow = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', mb: '0.75rem' });
+const rowLabel = css({ fontFamily: 'sans', fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'textMuted', mr: '0.1rem' });
+const costChip = css({
+  fontFamily: 'sans',
+  fontSize: '0.82rem',
+  px: '0.8rem',
+  py: '0.4rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'text' },
+  '&[data-active]': { bg: 'primary', color: 'onPrimary', borderColor: 'primary' },
+});
+
+// "Core kit" spotlight — a slim row of chip links to the tools flagged `core: true`,
+// mirroring the Tools page's spotlight row.
+const spotlightWrap = css({ mb: '2rem' });
+const spotlightLabel = css({
+  display: 'block',
+  fontFamily: 'sans',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.7rem',
+});
+const spotlightRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' });
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const spotlightChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  px: '0.6rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  transition: 'border-color 200ms ease, color 200ms ease',
+  _hover: { borderColor: 'accent', color: 'accent', '& svg': { transform: 'translateX(2px)' } },
+});
+---
+
+<BaseLayout
+  title="DFIR Command Cheat Sheet"
+  description="Genuinely useful, verified DFIR commands for every tool in the kit that has a real command-line or API surface — searchable by tool or function, grouped by platform."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Tool Catalog', href: '/reference/tool-catalog/' }, { label: 'Cheat Sheet' }]}
+    eyebrow="Reference"
+    title="DFIR Command Cheat Sheet"
+    description={`${totalCommands} verified, real-world commands across the ${totalEntries} tools in the kit that have a genuine command-line or API surface — not a full tool list (see the Tools page for that, including install steps). Every line comes straight from each tool's own detail page.`}
+  />
+
+  <GroupOverview items={platformTiles} heading="Jump to platform" />
+
+  {/* ── Core kit spotlight — the tools in day-to-day use ── */}
+  <div class={spotlightWrap}>
+    <span class={spotlightLabel}>In my day-to-day kit</span>
+    <div class={spotlightRow}>
+      {
+        coreTools.map((t) => (
+          <a href={`/reference/tool-catalog/${t.slug}/`} class={spotlightChip}>
+            <Icon name="star" size={12} strokeWidth={0} class={css({ color: 'accent', fill: 'token(colors.accent)' })} />
+            {t.name}
+            <Icon name="arrow-right" size={12} class={css({ transition: 'transform 200ms ease' })} />
+          </a>
+        ))
+      }
+    </div>
+  </div>
+
+  {/* Search + function filter (typeahead combobox) */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="cheat-cb"
+      options={fnOptions}
+      placeholder={`Search ${totalEntries} tools, or type a function…`}
+      label="Search cheat sheet tools or filter by function"
+    />
+  </div>
+
+  {/* Cost-tier chips — a click, not a typed guess, for "just show me the open-source ones" */}
+  <div class={filterRow}>
+    <span class={rowLabel}>Cost</span>
+    <button class={costChip} data-filter="all" data-active aria-pressed="true" type="button">All</button>
+    {
+      costTiers.map((c) => (
+        <button class={costChip} data-filter={c} aria-pressed="false" type="button">{c}</button>
+      ))
+    }
+  </div>
+
+  <div class={css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' })}>
+    <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.6rem', color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span><span id="cheat-result-count">{totalEntries}</span> tools shown</span>
+      <span aria-hidden="true">·</span>
+      <span>{totalCommands} commands</span>
+    </p>
+    <div class={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', ml: { sm: 'auto' } })}>
+      <FilterToggle id="cheat-writeup-toggle" icon="file-text" label="In a writeup" tone="primary" />
+      <FilterToggle id="cheat-core-toggle" icon="star" label="In my kit" tone="accent" />
+      <CollapseAll target="[data-cheat-group]" />
+    </div>
+  </div>
+
+  <p id="cheat-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No tools match your search.
+  </p>
+
+  {
+    platforms.map((p) => (
+      <details id={`cheat-${p.id}`} data-cheat-group open class={groupDetails}>
+        <summary class={groupSummary}>
+          <h2 class={sectionH2}>
+            <Icon name="chevron-right" size={17} class={chevCls} />
+            <Icon name={p.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+            <span class="cheat-grp-title">{p.title}</span>
+            <span class={grpCount}>{p.tools.length}</span>
+          </h2>
+        </summary>
+        <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' })}>
+          {p.tools.map((t) => (
+            <div
+              class={entryCard}
+              data-fn={tagSlug(t.fn)}
+              data-cost={t.cost}
+              data-cheat-card={`${t.name} ${t.use} ${t.fn} ${(t.commands ?? []).map((c) => c.desc).join(' ')}`.toLowerCase()}
+              {...(featuredTools.has(t.name.toLowerCase()) ? { 'data-in-writeup': true } : {})}
+              {...(t.core ? { 'data-core': true } : {})}
+            >
+              <div class={entryHead}>
+                <a href={`/reference/tool-catalog/${t.slug}/`} class={entryName}>
+                  {t.core && <Icon name="star" size={13} strokeWidth={0} class={css({ color: 'accent', fill: 'token(colors.accent)' })} label="In my kit" />}
+                  {t.name}
+                  <Icon name="arrow-right" size={13} class={css({ color: 'textMuted' })} />
+                </a>
+                <span class={tag({ tone: costTone(t.cost) })}>{t.cost}</span>
+              </div>
+              <div class={commandList}>
+                {t.commands!.map((c) => (
+                  <div>
+                    <p class={cmdDesc}>{c.desc}</p>
+                    <pre class={codeBlock} tabindex="0" role="region" aria-label={`${t.name} — ${c.desc}`}><code>{c.cmd}</code></pre>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+    ))
+  }
+
+  <h2 class={sectionH2}>
+    <Icon name="terminal" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/drills/commands/" class={toolChip}>
+        <Icon name="terminal" size={13} /> Terminal Commands Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Practice native bash/cmd.exe/PowerShell commands from memory — the terminal itself, not a tool.</p>
+    </div>
+  </div>
+
+  <ListFilter
+    config={{
+      comboboxId: 'cheat-cb',
+      cardSelector: '[data-cheat-card]',
+      searchAttr: 'data-cheat-card',
+      groupSelector: '[data-cheat-group]',
+      countId: 'cheat-result-count',
+      emptyId: 'cheat-empty',
+      facetAttr: 'data-fn',
+      chipGroup: { selector: '[data-filter]', attr: 'data-cost' },
+      toggles: [
+        { id: 'cheat-writeup-toggle', attr: 'data-in-writeup' },
+        { id: 'cheat-core-toggle', attr: 'data-core' },
+      ],
+      urlSync: { queryParam: 'q', facetParam: 'fn', chipParam: 'cost' },
+    }}
+  />
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['cheatsheet']} />
+</BaseLayout>

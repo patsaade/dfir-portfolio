@@ -52,7 +52,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.75rem',
   py: '0.6rem',
@@ -289,7 +289,7 @@ const rowCopyBtn = css({
       <div>
         <p class={paneLabel}>Registered claims (RFC 7519 §4.1) — present in this token's payload</p>
         <p class={caption} data-jwt-claims-empty hidden>No RFC 7519 registered claim names were found in the payload — every field here is a private/public claim this decoder doesn't have special-cased handling for (see the raw payload JSON below).</p>
-        <ul class={claimList} data-jwt-claims-list></ul>
+        <ul class={claimList} data-jwt-claims-list tabindex="0" aria-label="Decoded claims"></ul>
         <template data-jwt-claim-template>
           <li class={claimRow}>
             <div class={claimHead}>
@@ -314,7 +314,7 @@ const rowCopyBtn = css({
                 <Icon name="copy" size={13} />
               </button>
             </div>
-            <pre class={jsonBox} data-jwt-header-json>&nbsp;</pre>
+            <pre class={jsonBox} data-jwt-header-json tabindex="0" role="region" aria-label="Decoded header JSON">&nbsp;</pre>
           </div>
           <div class={jsonPane}>
             <div class={jsonPaneHead}>
@@ -323,7 +323,7 @@ const rowCopyBtn = css({
                 <Icon name="copy" size={13} />
               </button>
             </div>
-            <pre class={jsonBox} data-jwt-payload-json>&nbsp;</pre>
+            <pre class={jsonBox} data-jwt-payload-json tabindex="0" role="region" aria-label="Decoded payload JSON">&nbsp;</pre>
           </div>
         </div>
       </div>

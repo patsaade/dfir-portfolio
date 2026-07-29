@@ -1,0 +1,303 @@
+---
+// MITRE ATT&CK technique detail — one prerendered page per technique, following
+// the glossary term page's format (definition, why it matters, in practice,
+// related, reference) while staying its own thing: an ATT&CK tactic eyebrow,
+// the technique ID + sub-technique lineage, the linked glossary concept, and a
+// reference out to the canonical MITRE page.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Breadcrumbs from '../../../components/Breadcrumbs.astro';
+import Icon from '../../../components/Icon.astro';
+import EntryNav from '../../../components/EntryNav.astro';
+import RelatedTools from '../../../components/RelatedTools.astro';
+import { termBySlug } from '../../../data/securityTerms';
+import { ATTACK_TECHNIQUES } from '../../../data/references';
+import { d3fendCountering } from '../../../data/d3fend';
+import { toolsByGlossarySlug } from '../../../data/tools';
+import { getSortedPosts, getSortedLabs } from '../../../utils/posts';
+import { tag } from 'styled-system/recipes';
+import { SITE } from '../../../consts';
+
+export async function getStaticPaths() {
+  // Invert the posts' `attack` frontmatter so each technique knows which writeups cover it.
+  const [posts, labs] = await Promise.all([getSortedPosts(), getSortedLabs()]);
+  return ATTACK_TECHNIQUES.map((tech) => {
+    const writeups = [
+      ...posts.filter((p) => (p.data.attack ?? []).includes(tech.id)).map((p) => ({ title: p.data.title, href: `/blog/${p.id}/`, kind: 'Post' })),
+      ...labs.filter((l) => (l.data.attack ?? []).includes(tech.id)).map((l) => ({ title: l.data.title, href: `/labs/${l.id}/`, kind: 'Lab' })),
+    ];
+    return { params: { id: tech.id }, props: { tech, writeups } };
+  });
+}
+
+const { tech, writeups } = Astro.props;
+
+const idx = ATTACK_TECHNIQUES.findIndex((t) => t.id === tech.id);
+const prev = idx > 0 ? ATTACK_TECHNIQUES[idx - 1] : null;
+const next = idx >= 0 && idx < ATTACK_TECHNIQUES.length - 1 ? ATTACK_TECHNIQUES[idx + 1] : null;
+const gloss = tech.glossarySlug ? termBySlug(tech.glossarySlug) : null;
+// Tools that implement the mapped glossary concept — derived purely from the
+// already-curated, already-verified tool<->glossary links (tools.ts), not a new
+// heuristic: technique -> glossary term -> tools whose glossarySlugs include it.
+const relatedTools = gloss ? toolsByGlossarySlug(gloss.slug) : [];
+const parentId = tech.id.includes('.') ? tech.id.split('.')[0] : null;
+const parent = parentId ? ATTACK_TECHNIQUES.find((t) => t.id === parentId) : null;
+// Lineage (exact, from the IDs): a parent's sub-techniques, or a sub's siblings.
+const subTechniques = ATTACK_TECHNIQUES.filter((t) => t.id.startsWith(`${tech.id}.`));
+const siblings = parentId ? ATTACK_TECHNIQUES.filter((t) => t.id.startsWith(`${parentId}.`) && t.id !== tech.id) : [];
+// D3FEND defensive techniques that counter this technique (reverse cross-link).
+const defenses = d3fendCountering(tech.id);
+
+// Same DefinedTerm shape as the Glossary/Event ID detail pages — a technique is
+// just as well-defined and individually addressable as a glossary term.
+const jsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'DefinedTerm',
+  name: `${tech.id} ${tech.name}`,
+  description: tech.description || tech.summary,
+  inDefinedTermSet: `${SITE.url}/reference/attack-map/`,
+  termCode: tech.id,
+  url: `${SITE.url}/reference/attack-map/${tech.id}/`,
+  sameAs: tech.url,
+}).replace(/</g, '\\u003c'); // escape `<` so it can't break out of the <script> tag
+
+const sectionH2 = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.2rem', fontWeight: 700, mt: '2.5rem', mb: '0.75rem' });
+const paraBase = { color: 'text', lineHeight: 1.8, fontSize: '1.02rem' } as const;
+const para = css(paraBase);
+// css(paraBase, exampleParaBase) — a plain object merge, not string
+// concatenation of two independently-atomized classes — so exampleParaBase's
+// color: 'textMuted' deterministically overrides paraBase's color: 'text'.
+// The two used to be composed as `${para} ${exampleP}`, which left the
+// winning color up to Panda's atomic-class ordering rather than authorial
+// intent (see STYLE_GUIDE.md "Buttons" for the exact failure mode — this was
+// a live instance of it: `text` was winning, so the example callout rendered
+// in full-contrast text instead of the intended muted/italic treatment).
+const exampleParaBase = { borderLeft: '3px solid token(colors.primary)', pl: '1rem', color: 'textMuted', fontStyle: 'italic' } as const;
+const exampleP = css(paraBase, exampleParaBase);
+const glossCard = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.3rem',
+  p: '1rem 1.15rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  transition: 'border-color 200ms ease, transform 200ms ease',
+  _hover: { borderColor: 'primary', transform: 'translateY(-2px)' },
+});
+const refLink = css({ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.92rem', color: 'text', transition: 'color 150ms ease', _hover: { color: 'primary' } });
+---
+
+<BaseLayout title={`${tech.id} ${tech.name} — MITRE ATT&CK`} description={tech.summary}>
+  <Breadcrumbs
+    items={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'MITRE ATT&CK Coverage Map', href: '/reference/attack-map/' }, { label: tech.id }]}
+  />
+
+  <header class={css({ mb: '1.5rem' })}>
+    <p class={css({ fontFamily: 'sans', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'primary', mb: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+      <Icon name="crosshair" size={15} />
+      {tech.tactics.join(' · ')} · MITRE ATT&CK
+    </p>
+    <h1 class={css({ fontSize: { base: '2.1rem', md: '2.75rem' }, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 })}>
+      {tech.name}
+    </h1>
+    <p class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', mt: '0.6rem' })}>
+      {tech.id}
+      {parent && (
+        <>
+          {' · sub-technique of '}
+          <a href={`/reference/attack-map/${parent.id}/`} class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>{parent.id} {parent.name}</a>
+        </>
+      )}
+    </p>
+  </header>
+
+  <h2 class={sectionH2}><Icon name="book-open" size={18} class={css({ color: 'primary' })} /> Definition</h2>
+  <p class={para}>{tech.description || tech.summary}</p>
+  {tech.platforms && tech.platforms.length > 0 && (
+    <div class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', mt: '1rem' })}>
+      <span class={css({ fontSize: '0.72rem', fontWeight: 700, color: 'textMuted', textTransform: 'uppercase', letterSpacing: '0.07em', mr: '0.2rem' })}>Platforms</span>
+      {tech.platforms.map((p) => <span class={tag({ tone: 'muted' })}>{p}</span>)}
+    </div>
+  )}
+
+  {tech.significance && (
+    <>
+      <h2 class={sectionH2}><Icon name="shield" size={18} class={css({ color: 'primary' })} /> Why it matters</h2>
+      <p class={para}>{tech.significance}</p>
+    </>
+  )}
+
+  {tech.example && (
+    <>
+      <h2 class={sectionH2}><Icon name="terminal" size={18} class={css({ color: 'primary' })} /> In practice</h2>
+      <p class={exampleP}>{tech.example}</p>
+    </>
+  )}
+
+  {tech.detection && tech.detection.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="search" size={18} class={css({ color: 'primary' })} /> How it's detected</h2>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+        Telemetry that surfaces this technique, from MITRE's detection strategies:
+      </p>
+      <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' })}>
+        {tech.detection.map((d) => <span class={tag({ tone: 'primary' })}>{d}</span>)}
+      </div>
+    </>
+  )}
+
+  {tech.examples && tech.examples.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="crosshair" size={18} class={css({ color: 'primary' })} /> Seen in the wild</h2>
+      <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.7rem' })}>
+        {tech.examples.map((ex) => (
+          <li class={css({ borderLeft: '3px solid token(colors.border)', pl: '1rem', color: 'text', lineHeight: 1.7, fontSize: '0.95rem' })}>{ex}</li>
+        ))}
+      </ul>
+      {tech.examplesTotal && tech.examplesTotal > tech.examples.length && (
+        <p class={css({ fontSize: '0.8rem', color: 'textMuted', mt: '0.85rem' })}>
+          A sample of {tech.examplesTotal} documented uses — the{' '}
+          <a href={tech.url} target="_blank" rel="noopener" class={css({ color: 'primary', mx: '0.25rem', _hover: { textDecoration: 'underline' } })}>MITRE page</a>{' '}
+          has the full list.
+        </p>
+      )}
+    </>
+  )}
+
+  {tech.mitigations && tech.mitigations.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="wrench" size={18} class={css({ color: 'primary' })} /> Mitigations</h2>
+      <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' })}>
+        {tech.mitigations.map((mit) => (
+          <li class={css({ color: 'textMuted', lineHeight: 1.6, fontSize: '0.95rem' })}>
+            {mit.url ? (
+              <a href={mit.url} target="_blank" rel="noopener" class={css({ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'text', fontWeight: 700, _hover: { color: 'primary', textDecoration: 'underline' } })}>
+                {mit.name} <Icon name="external-link" size={11} />
+              </a>
+            ) : (
+              <strong class={css({ color: 'text' })}>{mit.name}</strong>
+            )}
+            {mit.text ? ` — ${mit.text}` : ''}
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  {subTechniques.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="layers" size={18} class={css({ color: 'primary' })} /> Sub-techniques</h2>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+        Specific ways {tech.name} is carried out:
+      </p>
+      <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+        {subTechniques.map((s) => (
+          <li>
+            <a href={`/reference/attack-map/${s.id}/`} class={`${refLink} ${css({ gap: '0.5rem' })}`}>
+              <Icon name="arrow-right" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+              <span class={css({ fontFamily: 'mono', fontWeight: 700, color: 'primary' })}>{s.id}</span>
+              <span>{s.name}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  {siblings.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="layers" size={18} class={css({ color: 'primary' })} /> Sibling sub-techniques</h2>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+        Other sub-techniques of{' '}
+        {parent ? <a href={`/reference/attack-map/${parent.id}/`} class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>{parent.id} {parent.name}</a> : parentId}:
+      </p>
+      <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+        {siblings.map((s) => (
+          <li>
+            <a href={`/reference/attack-map/${s.id}/`} class={`${refLink} ${css({ gap: '0.5rem' })}`}>
+              <Icon name="arrow-right" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+              <span class={css({ fontFamily: 'mono', fontWeight: 700, color: 'primary' })}>{s.id}</span>
+              <span>{s.name}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  {gloss && (
+    <>
+      <h2 class={sectionH2}><Icon name="book-open" size={18} class={css({ color: 'primary' })} /> In the glossary</h2>
+      <a href={`/reference/glossary/${gloss.slug}/`} class={glossCard}>
+        <span class={css({ fontWeight: 700, color: 'text', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+          {gloss.term} <Icon name="arrow-right" size={14} class={css({ color: 'primary' })} />
+        </span>
+        <span class={css({ fontSize: '0.9rem', color: 'textMuted', lineHeight: 1.5 })}>{gloss.short}</span>
+      </a>
+    </>
+  )}
+
+  {gloss && <RelatedTools tools={relatedTools} conceptTerm={gloss.term.toLowerCase()} relevantTo="investigating this technique" />}
+
+  {defenses.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="shield" size={18} class={css({ color: 'primary' })} /> D3FEND countermeasures</h2>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+        Defensive techniques that counter this, from the MITRE D3FEND map:
+      </p>
+      <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+        {defenses.map((d) => (
+          <li>
+            <a href={`/reference/d3fend/${d.id}/`} class={`${refLink} ${css({ gap: '0.5rem' })}`}>
+              <Icon name="arrow-right" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+              <span class={css({ fontFamily: 'mono', fontWeight: 700, color: 'primary' })}>{d.id}</span>
+              <span>{d.name}</span>
+              <span class={css({ fontFamily: 'sans', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'textMuted' })}>{d.tactic}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  {writeups.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="file-text" size={18} class={css({ color: 'primary' })} /> Covered in my writeups</h2>
+      <ul class={css({ listStyle: 'none', m: 0, p: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' })}>
+        {writeups.map((w) => (
+          <li>
+            <a href={w.href} class={`${refLink} ${css({ gap: '0.5rem' })}`}>
+              <Icon name="arrow-right" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+              <span>{w.title}</span>
+              <span class={css({ fontFamily: 'sans', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'textMuted' })}>{w.kind}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
+  )}
+
+  <h2 class={sectionH2}><Icon name="external-link" size={18} class={css({ color: 'primary' })} /> Reference</h2>
+  <ul class={css({ listStyle: 'none', m: 0, p: 0 })}>
+    <li>
+      <a href={tech.url} target="_blank" rel="noopener" class={refLink}>
+        <Icon name="external-link" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+        <span>MITRE ATT&CK — {tech.id}: {tech.name}</span>
+      </a>
+    </li>
+  </ul>
+  <p class={css({ fontSize: '0.78rem', color: 'textMuted', mt: '0.85rem', lineHeight: 1.6 })}>
+    ATT&CK® is a registered trademark of The MITRE Corporation; technique names and IDs come from the
+    public ATT&CK knowledge base.
+  </p>
+
+  <EntryNav
+    ariaLabel="More techniques"
+    prev={prev ? { href: `/reference/attack-map/${prev.id}/`, label: `${prev.id} ${prev.name}` } : null}
+    next={next ? { href: `/reference/attack-map/${next.id}/`, label: `${next.id} ${next.name}` } : null}
+  />
+
+  <script type="application/ld+json" is:inline set:html={jsonLd} />
+</BaseLayout>

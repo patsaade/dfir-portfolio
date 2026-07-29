@@ -1,10 +1,10 @@
 ---
 // Compatibility redirect. The glossary page briefly lived at /term-of-the-day/
-// before being renamed to /glossary/ ("Term of the Day" now names only the ticker).
+// before being renamed to /reference/glossary/ ("Term of the Day" now names only the ticker).
 // A meta-refresh is used so it composes cleanly with trailingSlash: 'always'.
 // Static page — prerender to HTML served from the CDN (output: 'server' is on-demand by default).
 export const prerender = true;
-const dest = '/glossary/';
+const dest = '/reference/glossary/';
 ---
 
 <!doctype html>

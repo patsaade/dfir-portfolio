@@ -52,7 +52,7 @@ const CONDITION_NOTES: Record<string, string> = {
   description="Build or paste a Sigma detection rule and test it live against sample log events, with per-condition match highlighting — entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Sigma Rule Tester' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Sigma Rule Tester' }]}
     eyebrow="Query Builders"
     title="Sigma Rule Tester & Builder"
     description="Build a Sigma detection rule field by field, or read its generated YAML, and test it live against sample log events — entirely local."
@@ -97,7 +97,7 @@ const CONDITION_NOTES: Record<string, string> = {
   <h2 id="modifiers" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Supported field modifiers
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Supported field modifiers table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -125,7 +125,7 @@ const CONDITION_NOTES: Record<string, string> = {
   <h2 id="conditions" class={sectionH2}>
     <Icon name="link" size={20} class={css({ color: 'primary' })} /> Supported condition forms
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Supported condition forms table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -160,7 +160,7 @@ const CONDITION_NOTES: Record<string, string> = {
     field mapping each rule to one or more <Term slug="mitre-attack">MITRE ATT&amp;CK</Term> technique IDs (e.g.{' '}
     <code class={css({ fontFamily: 'mono', color: 'primary' })}>attack.t1059.001</code>) — metadata this tool's
     scope deliberately excludes (see above), but worth cross-referencing by hand against the{' '}
-    <a href="/attack-map/" class={css({ color: 'primary' })}>ATT&amp;CK coverage map</a> when building a rule for
+    <a href="/reference/attack-map/" class={css({ color: 'primary' })}>ATT&amp;CK coverage map</a> when building a rule for
     real use.
   </p>
 
@@ -187,7 +187,7 @@ const CONDITION_NOTES: Record<string, string> = {
       </p>
     </div>
     <div>
-      <a href="/tools/regex-cheatsheet/" class={toolChip}>
+      <a href="/reference/regex-cheatsheet/" class={toolChip}>
         <Icon name="list" size={13} /> Regex Syntax Cheat Sheet <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>

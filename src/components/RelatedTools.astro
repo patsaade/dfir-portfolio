@@ -47,7 +47,7 @@ export const toolChip = css({
       </p>
       <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' })}>
         {tools.map((t) => (
-          <a href={`/tools/${t.slug}/`} class={toolChip}>
+          <a href={`/reference/tool-catalog/${t.slug}/`} class={toolChip}>
             {t.core && <Icon name="star" size={12} strokeWidth={0} class={css({ color: 'accent', fill: 'token(colors.accent)' })} label="In my kit" />}
             {t.name}
             <Icon name="arrow-right" size={13} />

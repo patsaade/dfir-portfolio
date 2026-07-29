@@ -66,7 +66,7 @@ const attackChip = css({
   description="Parse a single, already-carved-out NTFS MFT FILE record or USN journal record and compare $STANDARD_INFORMATION vs $FILE_NAME timestamps to flag timestomping — entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'MFT & USN Journal Timestomp Analyzer' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'MFT & USN Journal Timestomp Analyzer' }]}
     eyebrow="Artifact Parsers"
     title="MFT & USN Journal Timestomp Analyzer"
     description="Parse one already-carved-out MFT FILE record or USN journal record and compare $STANDARD_INFORMATION against $FILE_NAME to spot the classic timestomping indicator — entirely local."
@@ -143,7 +143,7 @@ const attackChip = css({
     documentation (winioctl.h <code class={css({ fontFamily: 'mono', fontSize: '0.82rem' })}>USN_REASON_*</code>{' '}
     constants).
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="USN Reason flag reference table">
     <table class={refTable}>
       <thead>
         <tr>

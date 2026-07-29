@@ -151,7 +151,9 @@ const terminalInputCss = css({
 // terminalDrill.ts sets on every cloned line: "cmd" (echoed input),
 // "out"/"error" (simulated output, plain vs. a not-recognized message),
 // "hint" (the static welcome line), "correct"/"correct-explain" (the
-// distinct solved-challenge callout).
+// distinct solved-challenge callout), "nudge" (the destructive-challenge
+// investigate gate's "check this first" line — see terminalChallenges.ts's
+// own `investigate` field doc and terminalDrill.ts's checkChallenge()).
 const terminalLineCss = css({
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
@@ -161,10 +163,14 @@ const terminalLineCss = css({
   // Raw `red` (not a semantic token — this palette has no dedicated
   // error/danger color), same convention as DrillEngine's own
   // `&[data-incorrect]` rule.
-  '&[data-kind="error"]': { color: 'red' },
+  '&[data-kind="error"]': { color: 'danger' },
   '&[data-kind="hint"]': { color: 'textMuted', fontStyle: 'italic' },
   '&[data-kind="correct"]': { color: 'accent', fontWeight: 700, mt: '0.3rem' },
   '&[data-kind="correct-explain"]': { color: 'textMuted', fontSize: '0.78rem' },
+  // Same italic treatment as "hint" (this is also guidance, not output),
+  // but in `primary` and bold so it reads as an active nudge rather than
+  // the passive, muted static welcome line.
+  '&[data-kind="nudge"]': { color: 'primary', fontWeight: 600, fontStyle: 'italic', mt: '0.3rem' },
 });
 const terminalLineLinkCss = css({
   display: 'inline-flex',
@@ -228,7 +234,7 @@ const summaryCss = css({ fontFamily: 'sans', fontSize: '0.95rem', fontWeight: 60
       <span class={terminalDotsCss} aria-hidden="true"><span></span><span></span><span></span></span>
       <span class={terminalTitleTextCss}>{shellName} — simulated, runs entirely in your browser</span>
     </div>
-    <div data-terminal-output role="log" aria-live="polite" aria-label="Terminal output" class={terminalOutputCss}>
+    <div data-terminal-output tabindex="0" role="log" aria-live="polite" aria-label="Terminal output" class={terminalOutputCss}>
       <div data-kind="hint" class={terminalLineCss}>{welcomeText}</div>
     </div>
     <div class={terminalInputRowCss}>

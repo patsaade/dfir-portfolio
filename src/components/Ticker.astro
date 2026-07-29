@@ -1,5 +1,5 @@
 ---
-// Site-wide "Term of the Day" ticker — a scrolling monospace banner pinned to the
+// Site-wide "Term of the Day" ticker — a scrolling banner pinned to the
 // top of every page. The term is chosen SERVER-SIDE at build by termForDate()
 // (keyed to the UTC calendar day), so it's baked into the HTML — identical for
 // every visitor, no client JS, no flash. A daily redeploy (00:10 UTC, see
@@ -11,7 +11,7 @@ import Icon from './Icon.astro';
 import { termForDate } from '../data/securityTerms';
 
 const today = termForDate(new Date());
-const href = `/glossary/${today.slug}/`;
+const href = `/reference/glossary/${today.slug}/`;
 
 // Identical copies; -50% translate lands on a matching frame. Enough copies to
 // span ultra-wide viewports without a gap.
@@ -24,10 +24,45 @@ const termClass = css({ color: 'primary', fontWeight: 700, letterSpacing: '0.03e
 const dashClass = css({ color: 'textMuted', opacity: 0.7 });
 const shortClass = css({ color: 'text', fontWeight: 500 });
 const sepClass = css({ color: 'primary', opacity: 0.4, px: '1.1rem', fontSize: '0.7em' });
+
+// Pause/play control (WCAG 2.2.2 Pause, Stop, Hide, Level A). The marquee is
+// auto-starting, runs indefinitely and sits alongside other content on every
+// page, so it needs a real mechanism to stop it — the pre-existing `_hover`
+// pause below is mouse-only and does nothing for a keyboard or touch visitor.
+// It's a sibling of the link, never a child: a <button> nested inside an <a>
+// is invalid HTML and unusable with assistive tech.
+//
+// It ships `hidden` and is un-hidden by the script (the same armed-by-script
+// pattern BackToTop/Search use), so a no-JS visitor never gets an inert
+// control — for them the ticker simply scrolls as it always has, which is the
+// accepted limit of a static, prerendered page. The explicit `&[hidden]`
+// override is required: the native `hidden` attribute loses to this element's
+// own unconditional `display` (see CLAUDE.md → Debugging gotchas).
+const pauseBtnClass = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  alignSelf: 'stretch',
+  flexShrink: 0,
+  w: { base: '30px', sm: '34px' },
+  p: 0,
+  bg: 'transparent',
+  border: 'none',
+  borderLeft: '1px solid token(colors.border)',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'color 150ms ease, background 150ms ease',
+  _hover: { color: 'primary', bg: 'color-mix(in srgb, token(colors.primary) 13%, transparent)' },
+  '&[hidden]': { display: 'none' },
+});
+// Same `&[hidden]` reasoning — the script swaps which glyph is showing.
+const pauseIconClass = css({ display: 'block', '&[hidden]': { display: 'none' } });
 ---
 
-<aside aria-label="Cybersecurity term of the day" class={css({
+<aside data-totd aria-label="Cybersecurity term of the day" class={css({
   position: 'relative',
+  display: 'flex',
+  alignItems: 'stretch',
   w: '100%',
   bg: 'bgSubtle',
   borderBottom: '1px solid token(colors.border)',
@@ -41,6 +76,8 @@ const sepClass = css({ color: 'primary', opacity: 0.4, px: '1.1rem', fontSize: '
     class={css({
       display: 'flex',
       alignItems: 'stretch',
+      flex: 1,
+      minW: 0,
       h: { base: '34px', sm: '36px' },
       color: 'text',
       _hover: {
@@ -126,4 +163,113 @@ const sepClass = css({ color: 'primary', opacity: 0.4, px: '1.1rem', fontSize: '
       <Icon name="chevron-right" size={14} strokeWidth={2.5} />
     </span>
   </a>
+
+  {/* Pause/play. The label flips between "Pause…"/"Resume…" (the standard
+      media-control convention) rather than carrying a fixed label plus
+      aria-pressed — one unambiguous statement of what activating it does,
+      instead of two overlapping ones. Icons are inline here because Icon.astro
+      has no pause/play glyph. */}
+  <button
+    type="button"
+    data-totd-toggle
+    hidden
+    class={pauseBtnClass}
+    aria-label="Pause the scrolling term of the day"
+    title="Pause the scrolling term of the day"
+    data-sound="tick"
+  >
+    <svg data-totd-icon="pause" class={pauseIconClass} viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true" focusable="false">
+      <rect x="7" y="5" width="3.6" height="14" rx="1"></rect>
+      <rect x="13.4" y="5" width="3.6" height="14" rx="1"></rect>
+    </svg>
+    {/* `hidden` is spread rather than written literally: it is an HTMLElement
+        IDL property and Astro's JSX types reject it on <svg>. The ATTRIBUTE
+        still applies, which is all the `&[hidden]` CSS rule and the script's
+        setAttribute/removeAttribute toggling need. */}
+    <svg data-totd-icon="play" class={pauseIconClass} {...{ hidden: true }} viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true" focusable="false">
+      <path d="M8 5.2v13.6L19 12z"></path>
+    </svg>
+  </button>
 </aside>
+
+<script is:inline>
+  // @ts-nocheck — vanilla DOM client script. `is:inline` (not a bundled
+  // module) so it runs during parse, right after the bar it controls: a
+  // deferred module would let a stored "paused" preference flash a frame or
+  // two of scrolling before it applied.
+  (function () {
+    var bar = document.querySelector('[data-totd]');
+    if (!bar) return;
+    var btn = bar.querySelector('[data-totd-toggle]');
+    if (!btn) return;
+    var iconPause = btn.querySelector('[data-totd-icon="pause"]');
+    var iconPlay = btn.querySelector('[data-totd-icon="play"]');
+    var KEY = 'totd-paused';
+    var PAUSE_LABEL = 'Pause the scrolling term of the day';
+    var PLAY_LABEL = 'Resume the scrolling term of the day';
+    var COOLDOWN = 150; // matches the button's own longest transition
+    var paused = false;
+    var busy = false;
+
+    function reduced() {
+      try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
+    }
+    function read() {
+      try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; }
+    }
+    function save() {
+      try {
+        if (paused) localStorage.setItem(KEY, '1');
+        else localStorage.removeItem(KEY);
+      } catch (e) { /* private mode / storage disabled — the control still works for this page */ }
+    }
+    function render() {
+      // The attribute drives both infinite animations at once (the marquee
+      // track and the "live" pulse dot) via one flat rule in global.css.
+      if (paused) bar.setAttribute('data-totd-paused', '');
+      else bar.removeAttribute('data-totd-paused');
+      var label = paused ? PLAY_LABEL : PAUSE_LABEL;
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+      // setAttribute, NOT the `.hidden` IDL property: these are <svg> elements,
+      // and `hidden` is defined on HTMLElement — assigning `svg.hidden = true`
+      // silently sets a plain JS property that reflects to no attribute and
+      // therefore matches no CSS.
+      showIcon(iconPause, !paused);
+      showIcon(iconPlay, paused);
+    }
+    function showIcon(el, show) {
+      if (!el) return;
+      if (show) el.removeAttribute('hidden');
+      else el.setAttribute('hidden', '');
+    }
+    function arm() {
+      // Under reduced motion global.css already stops the marquee and the
+      // pulse dot outright, so there is nothing left to pause — don't offer a
+      // control that would do nothing.
+      if (reduced()) btn.setAttribute('hidden', '');
+      else btn.removeAttribute('hidden');
+    }
+
+    // Debounced the same way ToolSidebar's `debounceClick` does it (ignore
+    // while busy + a cooldown, not a trailing-edge debounce that delays the
+    // first click), so a rapid double-click can't land mid-transition and
+    // thrash the state back to where it started.
+    btn.addEventListener('click', function () {
+      if (busy) return;
+      busy = true;
+      setTimeout(function () { busy = false; }, COOLDOWN);
+      paused = !paused;
+      save();
+      render();
+    });
+
+    paused = read();
+    render();
+    arm();
+    try {
+      var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (mq.addEventListener) mq.addEventListener('change', arm);
+    } catch (e) { /* no matchMedia — the button stays armed, which is the safe default */ }
+  })();
+</script>

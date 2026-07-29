@@ -1,0 +1,309 @@
+---
+// KQL Cheat Sheet — the operator/function/schema reference behind Microsoft
+// Defender XDR advanced hunting and Microsoft Sentinel, from
+// src/data/kqlCheatSheet.ts's KQL_CHEAT_SHEET. Same structural shape as the
+// Regex Syntax Cheat Sheet (regex-cheatsheet.astro): PageHeader ->
+// GroupOverview jump-strip -> TagCombobox search -> one collapsible <details>
+// group per category -> ListFilter wiring, with a per-category "verified
+// against" source line (KQL_CATEGORY_SOURCES) since every entry here is a
+// vendor-documented fact rather than authored prose. Static — prerendered.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import type { IconName } from '../../components/Icon.astro';
+import Term from '../../components/Term.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { toolChip } from '../../components/RelatedTools.astro';
+import { tagSlug } from '../../utils/posts';
+import { KQL_CHEAT_SHEET, KQL_CATEGORY_SOURCES } from '../../data/kqlCheatSheet';
+
+// Icon + one-line blurb per category — presentational metadata only, kept here
+// so kqlCheatSheet.ts stays pure content. Keyed by that file's own `category`
+// strings, so a rename there surfaces as a missing tile rather than silently.
+const CATEGORY_META: Record<string, { icon: IconName; blurb: string }> = {
+  'Query Shape & Statements': { icon: 'terminal', blurb: 'How a query is put together — the pipeline, comments, let statements, and the operators that stand alone.' },
+  'Filtering & Searching': { icon: 'search', blurb: 'Cutting a table down to the rows that matter, plus the IP-aware predicates worth knowing.' },
+  'String Matching Operators': { icon: 'hash', blurb: 'The full has / contains / startswith family, and which of them can use the term index.' },
+  'Time Windows': { icon: 'clock', blurb: 'Scoping and bucketing by time — the first filter in almost every hunting query.' },
+  'Shaping & Ordering Results': { icon: 'columns', blurb: 'Choosing, renaming, computing and ordering the columns you actually want to read.' },
+  Aggregation: { icon: 'activity', blurb: 'summarize and the aggregate functions that turn a pile of events into a finding.' },
+  'Joins, Unions & Lookups': { icon: 'arrow-left-right', blurb: 'Correlating two tables — including the default join flavor that surprises people.' },
+  'Scalar & Parsing Functions': { icon: 'rotate-cw', blurb: 'Per-row functions: conditionals, string work, regex extraction, JSON and command-line parsing.' },
+  'Tables & Schema': { icon: 'layers', blurb: 'The advanced hunting tables a responder lives in, and the two Sentinel workspace tables alongside them.' },
+};
+const FALLBACK_META = { icon: 'list' as IconName, blurb: '' };
+
+interface CategoryGroup {
+  id: string;
+  title: string;
+  icon: IconName;
+  blurb: string;
+  source?: { name: string; url: string };
+  entries: typeof KQL_CHEAT_SHEET;
+}
+
+// Group by category, preserving first-occurrence order — the data file's own
+// order IS the pedagogical order, so no separate ordering list is needed.
+const categories: CategoryGroup[] = [];
+const byCategory = new Map<string, CategoryGroup>();
+for (const entry of KQL_CHEAT_SHEET) {
+  let group = byCategory.get(entry.category);
+  if (!group) {
+    const meta = CATEGORY_META[entry.category] ?? FALLBACK_META;
+    group = {
+      id: `kqlcheat-${tagSlug(entry.category)}`,
+      title: entry.category,
+      icon: meta.icon,
+      blurb: meta.blurb,
+      source: KQL_CATEGORY_SOURCES[entry.category],
+      entries: [],
+    };
+    byCategory.set(entry.category, group);
+    categories.push(group);
+  }
+  group.entries.push(entry);
+}
+
+const totalEntries = KQL_CHEAT_SHEET.length;
+const categoryTiles = categories.map((c) => ({ id: c.id, icon: c.icon, title: c.title, blurb: c.blurb, count: c.entries.length }));
+const categoryOptions = categories.map((c) => ({ value: tagSlug(c.title), label: c.title, count: c.entries.length }));
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const entryCard = `${card()} ${css({ gap: '0.5rem' })}`;
+const syntaxCode = css({
+  display: 'inline-block',
+  fontFamily: 'mono',
+  fontSize: '0.95rem',
+  fontWeight: 700,
+  color: 'primary',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.55rem',
+  py: '0.15rem',
+  wordBreak: 'break-word',
+  alignSelf: 'flex-start',
+});
+const entryDesc = css({ fontSize: '0.88rem', color: 'text', lineHeight: 1.65, m: 0 });
+const entryExample = css({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.4rem',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  color: 'textMuted',
+  lineHeight: 1.6,
+  wordBreak: 'break-word',
+  pt: '0.45rem',
+  borderTop: '1px dashed token(colors.border)',
+  m: 0,
+});
+const entriesGrid = css({ display: 'flex', flexDirection: 'column', gap: '0.75rem' });
+const sourceLine = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  fontSize: '0.75rem',
+  color: 'textMuted',
+  mt: '-0.35rem',
+  mb: '0.85rem',
+  '& a': { color: 'primary' },
+});
+
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .kqlcheat-grp-title': { color: 'primary' } },
+});
+const chevCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease', 'details[open] &': { transform: 'rotate(90deg)' } });
+const grpCount = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem' });
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'primary' });
+const inlineLink = css({ color: 'primary' });
+---
+
+<BaseLayout
+  title="KQL Cheat Sheet"
+  description={`A Kusto Query Language reference for Microsoft Defender XDR advanced hunting and Microsoft Sentinel — ${totalEntries} operators, string predicates, time functions, aggregations, joins and schema tables, each with a runnable example and cited to Microsoft's own documentation.`}
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'KQL Cheat Sheet' }]}
+    eyebrow="Reference"
+    title="KQL Cheat Sheet"
+    description={`${totalEntries} Kusto Query Language entries across ${categories.length} categories — the pipeline, filtering, the has/contains family, time windows, column shaping, aggregation, joins, scalar functions and the advanced hunting schema. Every entry carries a runnable example, and every section cites the Microsoft Learn page it was verified against.`}
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      KQL is the language behind <strong class={css({ color: 'text' })}>Microsoft Defender XDR</strong> advanced hunting,{' '}
+      <strong class={css({ color: 'text' })}>Microsoft Sentinel</strong>, Azure Data Explorer and Azure Monitor — one
+      grammar, four surfaces. Two things bite newcomers and are worth internalising before anything else on this page.{' '}
+      <strong class={css({ color: 'text' })}>Everything is case-sensitive</strong> — table names, column names,
+      operators and functions alike. And the event-time column is not the same everywhere: Defender advanced hunting
+      tables use <code class={inlineCode}>Timestamp</code>, while Azure Monitor and Sentinel workspace tables use{' '}
+      <code class={inlineCode}>TimeGenerated</code>. A query that returns nothing across products is usually one of
+      those two. Once you have a query you like, the{' '}
+      <a href="/tools/kql-builder/" class={inlineLink}>KQL Query Builder</a> assembles the same shape against real,
+      documented table columns.
+    </p>
+  </aside>
+
+  <GroupOverview items={categoryTiles} heading="Jump to category" />
+
+  {/* Search + category filter (typeahead combobox) */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="kqlcheat-cb"
+      options={categoryOptions}
+      placeholder={`Search ${totalEntries} KQL entries, or type a category…`}
+      label="Search the KQL cheat sheet or filter by category"
+    />
+  </div>
+
+  <div class={css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' })}>
+    <p role="status" aria-live="polite" class={css({ color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span id="kqlcheat-result-count">{totalEntries}</span> entries shown
+    </p>
+    <CollapseAll target="[data-kqlcheat-group]" class={css({ ml: { sm: 'auto' } })} />
+  </div>
+
+  <p id="kqlcheat-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No entries match your search.
+  </p>
+
+  {
+    categories.map((c) => (
+      <details id={c.id} data-kqlcheat-group open class={groupDetails}>
+        <summary class={groupSummary}>
+          <h2 class={sectionH2}>
+            <Icon name="chevron-right" size={17} class={chevCls} />
+            <Icon name={c.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+            <span class="kqlcheat-grp-title">{c.title}</span>
+            <span class={grpCount}>{c.entries.length}</span>
+          </h2>
+        </summary>
+        {c.source && (
+          <p class={sourceLine}>
+            <Icon name="external-link" size={12} />
+            <span>
+              Verified against{' '}
+              <a href={c.source.url} target="_blank" rel="noopener">
+                {c.source.name}
+              </a>
+            </span>
+          </p>
+        )}
+        <div class={entriesGrid}>
+          {c.entries.map((e) => (
+            <div
+              class={entryCard}
+              data-cat={tagSlug(c.title)}
+              data-kqlcheat-card={`${e.category} ${e.syntax} ${e.description} ${e.example}`.toLowerCase()}
+            >
+              <code class={syntaxCode}>{e.syntax}</code>
+              <p class={entryDesc}>{e.description}</p>
+              <p class={entryExample}>
+                <Icon name="arrow-right" size={12} class={css({ flexShrink: 0, mt: '0.2rem' })} />
+                <span>{e.example}</span>
+              </p>
+            </div>
+          ))}
+        </div>
+      </details>
+    ))
+  }
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related tools
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/kql-builder/" class={toolChip}>
+        <Icon name="terminal" size={13} /> KQL Query Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Assemble a hunting query clause by clause against seven real Defender XDR and Sentinel tables, with the
+        documented column list and data type for each — then paste the result straight into the portal.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/spl-cheatsheet/" class={toolChip}>
+        <Icon name="activity" size={13} /> Splunk SPL Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The same reference for Splunk. Most <Term slug="threat-hunting">threat hunting</Term> ideas port between the
+        two languages; the operator names and the pipeline semantics do not.
+      </p>
+    </div>
+    <div>
+      <a href="/reference/event-ids/" class={toolChip}>
+        <Icon name="list" size={13} /> Windows Event ID Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        What the <code class={inlineCode}>EventID</code> values in a{' '}
+        <code class={inlineCode}>SecurityEvent</code> query actually mean — 125 cited Security and Sysmon events with
+        their triggers and ATT&amp;CK mappings.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/sigma-tester/" class={toolChip}>
+        <Icon name="target" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        A <Term slug="sigma-rule">Sigma rule</Term> is the vendor-neutral way to express a detection once and convert
+        it into KQL, SPL or anything else — worth writing the rule first when a hunt is going to outlive one{' '}
+        <Term slug="siem">SIEM</Term>.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['kql-cheatsheet']} />
+
+  <ListFilter
+    config={{
+      comboboxId: 'kqlcheat-cb',
+      cardSelector: '[data-kqlcheat-card]',
+      searchAttr: 'data-kqlcheat-card',
+      groupSelector: '[data-kqlcheat-group]',
+      countId: 'kqlcheat-result-count',
+      emptyId: 'kqlcheat-empty',
+      facetAttr: 'data-cat',
+      urlSync: { queryParam: 'q', facetParam: 'cat' },
+    }}
+  />
+</BaseLayout>

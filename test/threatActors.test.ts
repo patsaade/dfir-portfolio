@@ -87,7 +87,7 @@ describe('cross-links into the ATT&CK map', () => {
       for (const t of a.techniques) {
         const link = resolveAttackLink(t);
         expect(link.href.length).toBeGreaterThan(0);
-        if (link.onSite) expect(link.href).toBe(`/attack-map/${t}/`);
+        if (link.onSite) expect(link.href).toBe(`/reference/attack-map/${t}/`);
         else expect(link.href).toMatch(/^https:\/\/attack\.mitre\.org\/techniques\//);
       }
     }

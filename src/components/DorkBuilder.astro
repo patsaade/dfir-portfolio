@@ -15,7 +15,8 @@
 import { css } from 'styled-system/css';
 import Icon from './Icon.astro';
 import WorkspaceShell from './WorkspaceShell.astro';
-import type { SearchEngine, DorkOperator, DorkFocus } from '../data/osint';
+import type { SearchEngine, DorkOperator, DorkFocus, FocusGroup } from '../data/osint';
+import { FOCUS_GROUPS } from '../data/osint';
 
 interface Props {
   engines: SearchEngine[];
@@ -23,6 +24,17 @@ interface Props {
   focuses: DorkFocus[];
 }
 const { engines, operators, focuses } = Astro.props;
+
+// The Focus list outgrew a flat <select> once the response-side focuses landed
+// (16 entries), so it renders as <optgroup>s. Grouping happens here rather than
+// in the data file's own array order: FOCUS_GROUPS fixes the group order, so a
+// focus appended to the end of DORK_FOCUSES lands in the right group without
+// reshuffling anything, and the option *values* stay the focus ids the client
+// script and the session-persistence layer already key off.
+const focusGroups: { label: FocusGroup; focuses: DorkFocus[] }[] = FOCUS_GROUPS.map((label) => ({
+  label,
+  focuses: focuses.filter((f) => f.group === label),
+})).filter((g) => g.focuses.length > 0);
 
 // The literal syntax fragment shown on each block's badge — matches the
 // "Syntax" column on the Operator Reference table below, for consistency.
@@ -67,7 +79,7 @@ const selectInput = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.6rem',
   py: '0.45rem',
@@ -76,6 +88,12 @@ const selectInput = css({
   _focus: { outline: 'none', borderColor: 'primary' },
   '&:disabled': { opacity: 0.5, cursor: 'not-allowed' },
 });
+// Standing scope note under the engine switch. The toolkit also ships queries
+// for Shodan, Censys, crt.sh, GitHub code search, urlscan.io and VirusTotal,
+// none of which share this operator family — so the builder says out loud what
+// it does and does not speak, rather than leaving a reader to discover that a
+// Shodan filter pasted in here silently returns plausible-looking nonsense.
+const scopeNote = css({ fontSize: '0.76rem', color: 'textMuted', lineHeight: 1.5, m: 0, mt: '-0.25rem' });
 const captionBox = css({ display: 'flex', flexDirection: 'column', gap: '0.15rem' });
 const caption = css({ fontSize: '0.8rem', color: 'textMuted', lineHeight: 1.5, m: 0, minH: '1.2em' });
 const tipCaption = css({ fontSize: '0.76rem', color: 'accent', lineHeight: 1.5, m: 0 });
@@ -234,7 +252,13 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
         <label class={fieldLabel} for="dork-focus">Focus</label>
         <select id="dork-focus" class={selectInput} data-dork-focus data-session-field="focus">
           <option value="">— Manual (no focus) —</option>
-          {focuses.map((f) => <option value={f.id}>{f.label}</option>)}
+          {
+            focusGroups.map((g) => (
+              <optgroup label={g.label}>
+                {g.focuses.map((f) => <option value={f.id}>{f.label}</option>)}
+              </optgroup>
+            ))
+          }
         </select>
       </div>
 
@@ -245,6 +269,13 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
         </select>
       </div>
     </div>
+
+    <p class={scopeNote}>
+      Web search engines only. Shodan, Censys, crt.sh, GitHub code search, urlscan.io and
+      VirusTotal each use their own query language — those live in{' '}
+      <a href="#pivot" class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>Pivot queries</a>{' '}
+      further down, ready to copy.
+    </p>
 
     <div class={captionBox}>
       <p class={caption} data-dork-caption role="status" aria-live="polite"></p>
@@ -283,7 +314,7 @@ const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
 
       <div class={stage}>
         <p class={paneLabel}>Recipe</p>
-        <pre class={outputBox}><code data-dork-output>&nbsp;</code></pre>
+        <pre class={outputBox} tabindex="0" role="region" aria-label="Generated search query"><code data-dork-output>&nbsp;</code></pre>
         <div class={actionCol}>
           <button type="button" class={primaryActionBtn} data-dork-copy data-sound="copy">
             <Icon name="copy" size={15} /> Copy

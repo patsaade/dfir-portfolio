@@ -1298,7 +1298,7 @@ export interface AttackLink {
  */
 export function resolveAttackLink(id: string): AttackLink {
   const a = ATTACK_TECHNIQUE_BY_ID.get(id);
-  if (a) return { id, name: a.name, href: `/attack-map/${id}/`, onSite: true };
+  if (a) return { id, name: a.name, href: `/reference/attack-map/${id}/`, onSite: true };
   const [base, sub] = id.split('.');
   return { id, name: id, href: `https://attack.mitre.org/techniques/${base}/${sub ? `${sub}/` : ''}`, onSite: false };
 }

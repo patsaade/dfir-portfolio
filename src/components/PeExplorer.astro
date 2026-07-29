@@ -71,12 +71,16 @@ const fileBtn = css({
   px: '0.8rem',
   py: '0.45rem',
   borderRadius: 'md',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   bg: 'bgSubtle',
   color: 'text',
   cursor: 'pointer',
   transition: 'border-color 150ms ease',
   _hover: { borderColor: 'primary', color: 'primary' },
+  // The file input inside this label is visually hidden but focusable, so the
+  // label has to surface the focus ring on its behalf — otherwise tabbing to
+  // it puts focus somewhere with no visible indicator (WCAG 2.4.7).
+  '&:has(input:focus-visible)': { outline: '2px solid token(colors.primary)', outlineOffset: '2px', borderColor: 'primary' },
 });
 const fileName = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
 const dropHint = css({ fontFamily: 'sans', fontSize: '0.78rem', color: 'textMuted' });
@@ -206,7 +210,7 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
     <div class={fileRow} data-pe-drop-zone>
       <label class={fileBtn}>
         <Icon name="download" size={15} /> Choose file
-        <input type="file" data-pe-file class={css({ display: 'none' })} accept=".exe,.dll,.sys,.ocx,.scr,.cpl,.efi" />
+        <input type="file" data-pe-file class={css({ position: 'absolute', w: '1px', h: '1px', p: 0, m: '-1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 })} accept=".exe,.dll,.sys,.ocx,.scr,.cpl,.efi" />
       </label>
       <span class={fileName} data-pe-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
       <span class={dropHint}>or drag a file here</span>
@@ -251,7 +255,7 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
     {/* Section table */}
     <div>
       <p class={sectionLabel}><Icon name="layers" size={15} /> Section table</p>
-      <div class={scrollBox}>
+      <div class={scrollBox} tabindex="0" role="region" aria-label="Section table">
         <table class={table}>
           <thead>
             <tr>
@@ -270,7 +274,7 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
     {/* Imports */}
     <div>
       <p class={sectionLabel}><Icon name="download" size={15} /> Import directory table</p>
-      <div class={scrollBox} data-pe-imports-box>
+      <div class={scrollBox} data-pe-imports-box tabindex="0" role="region" aria-label="Import directory table">
         <div data-pe-imports-list></div>
         <p class={emptyNote} data-pe-imports-empty hidden>No import directory table found.</p>
       </div>
@@ -279,7 +283,7 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
     {/* Exports */}
     <div>
       <p class={sectionLabel}><Icon name="list" size={15} /> Export table</p>
-      <div class={scrollBox} data-pe-exports-box>
+      <div class={scrollBox} data-pe-exports-box tabindex="0" role="region" aria-label="Export table">
         <table class={table} data-pe-exports-table hidden>
           <thead>
             <tr>
@@ -297,7 +301,7 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
     {/* Resource directory */}
     <div>
       <p class={sectionLabel}><Icon name="grid" size={15} /> Resource directory (.rsrc)</p>
-      <div class={scrollBox} data-pe-resources-box>
+      <div class={scrollBox} data-pe-resources-box tabindex="0" role="region" aria-label="Resource directory">
         <table class={table} data-pe-resources-table hidden>
           <thead>
             <tr>
@@ -317,7 +321,7 @@ const emptyNote = css({ color: 'textMuted', fontSize: '0.82rem', fontStyle: 'ita
     <div>
       <p class={sectionLabel}><Icon name="lock" size={15} /> Imphash</p>
       <div class={imphashRow}>
-        <pre class={imphashBox} data-pe-imphash>&nbsp;</pre>
+        <pre class={imphashBox} data-pe-imphash tabindex="0" role="region" aria-label="Import hash">&nbsp;</pre>
         <button type="button" class={imphashCopyBtn} data-pe-imphash-copy data-copy-pop data-sound="copy" aria-label="Copy imphash" title="Copy">
           <Icon name="copy" size={13} />
         </button>

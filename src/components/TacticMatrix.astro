@@ -28,8 +28,16 @@ interface Props {
   columns: MatrixColumn[];
   ariaLabel: string;
   tone?: 'primary' | 'accent';
+  /**
+   * What `cell.accent` actually MEANS, in words. Used verbatim for the
+   * accented cell's visually-hidden suffix and its hover title, so the
+   * highlight isn't conveyed by the left border's color alone (WCAG 1.4.1).
+   * Both current callers (the ATT&CK Map and the D3FEND Map) mean the same
+   * thing by it, hence the default.
+   */
+  accentLabel?: string;
 }
-const { columns, ariaLabel, tone = 'primary' } = Astro.props;
+const { columns, ariaLabel, tone = 'primary', accentLabel = 'covered in a writeup' } = Astro.props;
 
 const scroller = css({
   display: 'flex',
@@ -84,6 +92,33 @@ const cellBase = css({
 });
 const cellSub = css({ ml: '0.6rem', opacity: 0.82, fontSize: '0.7rem' });
 const cellAccent = css({ borderLeftWidth: '3px', borderLeftColor: tone });
+// The accent border stays as reinforcement, but it can't be the ONLY signal
+// that a technique is covered — a colored left edge is invisible to a screen
+// reader and unreliable for a color-blind reader (WCAG 1.4.1 Use of Color).
+// A ✓ rides along at the end of the label, deliberately setting no color of
+// its own so it inherits the cell's (including the hover tint) rather than
+// depending on the runtime `tone` value Panda can't statically resolve. The
+// matrix is dense, so the mark is smaller than the label and nothing else —
+// the meaning is carried by the visually-hidden suffix and the hover title.
+const cellMark = css({
+  display: 'inline-block',
+  ml: '0.3rem',
+  fontSize: '0.66rem',
+  fontWeight: 700,
+  lineHeight: 1,
+  opacity: 0.9,
+});
+const srOnly = css({
+  position: 'absolute',
+  w: '1px',
+  h: '1px',
+  p: 0,
+  m: '-1px',
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  border: 0,
+  clipPath: 'inset(50%)',
+});
 ---
 
 <div class={scroller} role="group" aria-label={ariaLabel}>
@@ -99,9 +134,15 @@ const cellAccent = css({ borderLeftWidth: '3px', borderLeftColor: tone });
             <a
               href={cell.href}
               class={`${cellBase} ${cell.sub ? cellSub : ''} ${cell.accent ? cellAccent : ''}`}
-              title={cell.name}
+              title={cell.accent ? `${cell.name} — ${accentLabel}` : cell.name}
             >
               {cell.name}
+              {cell.accent && (
+                <Fragment>
+                  <span aria-hidden="true" class={cellMark}>✓</span>
+                  <span class={srOnly}>{` — ${accentLabel}`}</span>
+                </Fragment>
+              )}
             </a>
           ))}
         </div>

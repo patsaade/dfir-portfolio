@@ -26,6 +26,29 @@ import { css } from 'styled-system/css';
 import Icon from './Icon.astro';
 import WorkspaceShell from './WorkspaceShell.astro';
 import { SPL_AGG_FUNCTIONS, SPL_PRESETS, SPL_SEARCH_OPERATORS, SPL_WHERE_OPERATORS, buildSplQuery } from '../utils/spl';
+import { SPL_PACKAGES } from '../data/queryPackages';
+
+// DFIR packages ride the SAME loader as the worked examples rather than a
+// second control beside it: both are "fill the form in with something real,
+// then keep editing", and the existing preset machinery below already does
+// exactly that. Each package is normalized into the preset shape the script
+// already understands ({id, label, description, spec}) so applyPreset() needs
+// no changes at all — the description carries the package's own context (what
+// it finds, the telemetry it needs, where the false positives come from),
+// which is the part a responder has to read before running it anywhere real.
+const packageOptions = SPL_PACKAGES.map((p) => ({
+  id: p.id,
+  label: p.title,
+  theme: p.theme,
+  description: `${p.finds} Needs: ${p.dataSource} Tuning: ${p.tuning}`,
+  spec: p.spec,
+}));
+const packageThemes = packageOptions.reduce<{ theme: string; packages: typeof packageOptions }[]>((groups, p) => {
+  const existing = groups.find((g) => g.theme === p.theme);
+  if (existing) existing.packages.push(p);
+  else groups.push({ theme: p.theme, packages: [p] });
+  return groups;
+}, []);
 
 // The builder opens pre-filled with the first preset so the tool renders a
 // real, runnable query on first paint instead of an empty shell. These same
@@ -79,7 +102,7 @@ const textInput = css({
   fontSize: '0.82rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.55rem',
   py: '0.38rem',
@@ -236,13 +259,22 @@ const note = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.6, m: 
   hook="data-spl-builder"
   gap="1.25rem"
   noJsMessage="The interactive SPL query builder needs JavaScript enabled. The command reference and worked examples below this tool are plain HTML and work either way."
-  attrs={{ 'data-spl-presets': JSON.stringify(SPL_PRESETS) }}
+  attrs={{ 'data-spl-presets': JSON.stringify([...SPL_PRESETS, ...packageOptions]) }}
 >
   <div class={topRow}>
     <div class={presetField}>
-      <label class={fieldLabel} for="spl-preset">Start from a worked example</label>
+      <label class={fieldLabel} for="spl-preset">Load a search</label>
       <select id="spl-preset" class={sansSelect} data-spl-preset data-session-field="preset">
-        {SPL_PRESETS.map((p) => <option value={p.id}>{p.label}</option>)}
+        <optgroup label="Worked examples">
+          {SPL_PRESETS.map((p) => <option value={p.id}>{p.label}</option>)}
+        </optgroup>
+        {
+          packageThemes.map((group) => (
+            <optgroup label={`Packages — ${group.theme}`}>
+              {group.packages.map((p) => <option value={p.id}>{p.label}</option>)}
+            </optgroup>
+          ))
+        }
       </select>
     </div>
     <p class={note} data-spl-preset-desc>{starter.description}</p>
@@ -461,7 +493,7 @@ const note = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.6, m: 
 
     <div class={stage}>
       <p class={paneLabel}>Assembled query</p>
-      <pre class={outputBox}><code data-spl-output>{starterQuery}</code></pre>
+      <pre class={outputBox} tabindex="0" role="region" aria-label="Generated SPL query"><code data-spl-output>{starterQuery}</code></pre>
       {/* data-item-class carries the Panda-generated class for the <li>s the
           script creates — Panda only emits classes it can see at build, so a
           runtime-built element has to be handed its class name this way. */}

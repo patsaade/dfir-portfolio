@@ -4,9 +4,19 @@
 # search/answer assistant (so the site can be found and cited), while opting the
 # content out of AI model-training crawls.
 
-# Default — all crawlers may index everything.
+# Default — all crawlers may index every PAGE.
 User-agent: *
 Allow: /
+
+# Two build-time JSON data files are excluded. They are not pages: they exist
+# only to feed the ⌘K search palette and the glossary hover cards, both of
+# which fetch them lazily on interaction (never on page load), so blocking them
+# cannot affect how a crawler renders any page. Excluding them keeps duplicated,
+# unreadable blobs of page titles/definitions out of search results and out of
+# the crawl budget — which matters more than usual right now, with the whole
+# site being re-crawled after the URL migration.
+Disallow: /search-index.json
+Disallow: /reference/glossary/bank.json
 
 # ───────────────── AI search & answer assistants — allowed ─────────────────
 # These fetch pages to cite them in live answers / search results. Keeping them

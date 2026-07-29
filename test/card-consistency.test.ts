@@ -13,15 +13,21 @@ import { resolve } from 'node:path';
 const root = resolve(__dirname, '..');
 
 const PAGES = [
-  { name: 'DFIR landing page', path: 'src/pages/dfir.astro' },
-  { name: 'IT landing page', path: 'src/pages/it.astro' },
-  { name: 'Glossary', path: 'src/pages/glossary/index.astro' },
-  { name: 'Tools', path: 'src/pages/tools.astro' },
+  // The three topic hubs (/dfir/, /networking/, /systems/) are thin wrappers —
+  // all of their card markup lives in this one shared component.
+  { name: 'Topic hub', path: 'src/components/DomainHub.astro' },
+  { name: 'Glossary', path: 'src/pages/reference/glossary/index.astro' },
+  { name: 'Tools', path: 'src/pages/reference/tool-catalog.astro' },
   { name: 'Certifications', path: 'src/pages/certifications.astro' },
-  { name: 'ATT&CK map', path: 'src/pages/attack-map.astro' },
-  { name: 'D3FEND map', path: 'src/pages/d3fend/index.astro' },
-  { name: 'Event ID Reference', path: 'src/pages/event-ids.astro' },
-  { name: 'Regex Syntax Cheat Sheet', path: 'src/pages/tools/regex-cheatsheet.astro' },
+  { name: 'ATT&CK map', path: 'src/pages/reference/attack-map.astro' },
+  { name: 'D3FEND map', path: 'src/pages/reference/d3fend/index.astro' },
+  { name: 'Event ID Reference', path: 'src/pages/reference/event-ids.astro' },
+  { name: 'Regex Syntax Cheat Sheet', path: 'src/pages/reference/regex-cheatsheet.astro' },
+  { name: 'KQL Cheat Sheet', path: 'src/pages/reference/kql-cheatsheet.astro' },
+  { name: 'SPL Cheat Sheet', path: 'src/pages/reference/spl-cheatsheet.astro' },
+  { name: 'SentinelOne Cheat Sheet', path: 'src/pages/reference/s1-cheatsheet.astro' },
+  { name: 'Reference index', path: 'src/pages/reference/index.astro' },
+  { name: 'Tools index', path: 'src/pages/tools/index.astro' },
 ];
 
 describe('card-grid size consistency', () => {

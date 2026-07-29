@@ -24,6 +24,15 @@
 //         import { digestHex } from './src/utils/hashes.ts';
 //         console.log(await digestHex('sha256', new TextEncoder().encode('root')));"
 //     (after transpiling with esbuild, since this is a plain node -e run).
+//   - Q11-Q13 are 'match' "triage batch" questions (the drillEngine.ts/
+//     DrillEngine.astro answerType added alongside 'construct'/'extract'/
+//     'sequence') — sort several real hash strings into categories at once
+//     instead of one text recall at a time. Every correctCategory is either
+//     a literal HASH_ALGORITHMS label or the live output of identifyHash()/
+//     BY_HEX_LENGTH, computed at module load the same way Q6-Q9 already do
+//     — never a separate hand-typed guess. See the "'match' triage-batch
+//     questions" block below for the three batches (core algorithm ID by
+//     length, confidence tier, and the MD5/NTLM/LM context-dependent batch).
 //
 // formatHex() inserts a space every 8 hex characters purely so the digest
 // wraps inside DrillEngine's prompt <p> (a plain textContent node with no
@@ -111,6 +120,79 @@ const SHA512_CRYPT_SAMPLE =
   '$6$rounds=656000$abcXYZ123saltHere$Qk9z5W8n1JlY0m0uOe3z7Q4rXk9pC2mN6sT1vB5dF7gH8jK0m0uOe3z7Q4rXk9pC2mN6sT1vB5dF7gH8jK.';
 const sha512CryptCandidates = identifyHash(SHA512_CRYPT_SAMPLE);
 
+// --- 'match' triage-batch questions (additive to the 10 'text' recall
+// questions above, per this drill's own no-fabrication discipline: every
+// correctCategory below is either a literal HASH_ALGORITHMS label or the
+// real, live output of this repo's own identifyHash()/BY_HEX_LENGTH logic —
+// never a separate hand-typed guess that could quietly drift from it). ---
+
+// (a) Core algorithm ID, batched: the same five real digests from
+// DIGEST_SAMPLES (Q1-Q5 above), sorted all at once by length instead of one
+// at a time — same underlying skill, a more realistic "triage dump"
+// framing. The item order is deliberately NOT DIGEST_SAMPLES' own
+// ascending-length order, so position alone gives no hint.
+const CORE_ALGO_MATCH_ORDER = [2, 0, 4, 1, 3] as const; // sha256, md5, sha512, sha1, sha384
+const coreAlgorithmMatchQuestion: DrillQuestion = {
+  prompt:
+    'A batch of five digests just came off a triage script with no labels attached. Sort each one into the algorithm that produced it, using nothing but digest length.',
+  explanation: `Every algorithm in the reference table has one fixed output length — ${HASH_ALGORITHMS.map((a) => `${a.label} is always ${a.hexLength} hex chars`).join(', ')} — so length alone is enough to sort a whole batch at once, the same way you'd triage a real dump of unlabeled hashes.`,
+  answerType: 'match',
+  matchItems: CORE_ALGO_MATCH_ORDER.map((i) => ({ text: DIGEST_SAMPLES[i].hex, correctCategory: DIGEST_SAMPLES[i].label })),
+  matchCategories: HASH_ALGORITHMS.map((a) => a.label),
+  ...REF,
+};
+
+// (b) Confidence-tier batch: sort a mix of digests and prefixed formats by
+// how confidently identifyHash() can name their source. Reuses the bcrypt/
+// $6$ samples from Q8/Q9 above (rather than inventing new prefixed strings)
+// plus a genuine substring of the real SHA-384 digest from Q4 — shown with
+// no claimed origin, exactly the "too short to mean much on its own" case
+// BY_HEX_LENGTH's own note for 8-char hex describes.
+function topConfidenceLabel(raw: string): string {
+  const top = identifyHash(raw)[0];
+  const tier = top ? top.confidence : 'low';
+  return tier === 'high' ? 'High confidence' : tier === 'medium' ? 'Medium confidence' : 'Low confidence';
+}
+const SHORT_HEX_SAMPLE = DIGEST_SAMPLES[3].hex.slice(0, 8); // first 8 hex chars of the real SHA-384 digest, shown with no claimed source
+const confidenceMatchItems = [
+  { text: DIGEST_SAMPLES[0].hex, correctCategory: topConfidenceLabel(DIGEST_SAMPLES[0].hex) },
+  { text: DIGEST_SAMPLES[1].hex, correctCategory: topConfidenceLabel(DIGEST_SAMPLES[1].hex) },
+  { text: BCRYPT_SAMPLE, correctCategory: topConfidenceLabel(BCRYPT_SAMPLE) },
+  { text: SHA512_CRYPT_SAMPLE, correctCategory: topConfidenceLabel(SHA512_CRYPT_SAMPLE) },
+  { text: SHORT_HEX_SAMPLE, correctCategory: topConfidenceLabel(SHORT_HEX_SAMPLE) },
+];
+const confidenceMatchQuestion: DrillQuestion = {
+  prompt:
+    "Same idea, different sort: these five strings are labeled only by how confidently the Hash Calculator's Identify panel can name their source. Sort each into its real confidence tier.",
+  explanation: `High confidence means the format is either distinctive (a $2b$/$6$ prefix) or overwhelmingly the most common source at that length (a bare 40-hex digest is almost always SHA-1). Medium means a genuine tie — ${noteFor(md5AdminCandidates, 'NTLM')} And Low means the string is too short or generic to mean much on its own — ${noteFor(identifyHash(SHORT_HEX_SAMPLE), 'CRC32')}`,
+  answerType: 'match',
+  matchItems: confidenceMatchItems,
+  matchCategories: ['High confidence', 'Medium confidence', 'Low confidence'],
+  ...REF,
+};
+
+// (c) Same 32-hex digest (DIGEST_SAMPLES[0], the real MD5 of "admin"), four
+// different stated sources — drilling the exact point Q6 above already
+// makes: the hex itself never disambiguates MD5/NTLM/the legacy LM hash
+// (identifyHash() really does tie all three at that length, read live off
+// md5AdminCandidates rather than hand-typed), only where you found it does.
+// Where a scenario gives no source at all, the only defensible answer is
+// the same "can't tell" tie identifyHash() itself reports.
+const MD5_NTLM_HEX = DIGEST_SAMPLES[0].hex;
+const contextMatchQuestion: DrillQuestion = {
+  prompt: `The exact same 32-character hex string — ${MD5_NTLM_HEX} — turns up in four different places during an investigation. Sort each occurrence by what it most likely is, given where it was found.`,
+  explanation: `Format alone can't tell these apart — ${noteFor(md5AdminCandidates, 'MD5')} ${noteFor(md5AdminCandidates, 'NTLM')} ${noteFor(md5AdminCandidates, 'LM hash (legacy)')} A file-hash-lookup context points to MD5 (the overwhelmingly common use of a bare 32-hex digest); a dumped NTDS.dit database means the value is a Windows password hash, i.e. NTLM (or, if it's specifically from the legacy LM-hash column of a pre-2000-era SAM dump, the older LM format); with no context at all, the honest answer is that it's ambiguous — exactly the tie identifyHash() itself reports.`,
+  answerType: 'match',
+  matchItems: [
+    { text: `An antivirus engine's file-hash lookup flags a sample by this value: ${MD5_NTLM_HEX}`, correctCategory: 'MD5' },
+    { text: `Pulled from a dumped NTDS.dit database, sitting in the same row as a username: ${MD5_NTLM_HEX}`, correctCategory: 'NTLM' },
+    { text: `Recovered from the LM-hash column of a legacy, pre-2000-era Windows SAM dump: ${MD5_NTLM_HEX}`, correctCategory: 'LM hash (legacy)' },
+    { text: `Pasted into a ticket with no other context at all: ${MD5_NTLM_HEX}`, correctCategory: 'Ambiguous — needs more context' },
+  ],
+  matchCategories: ['MD5', 'NTLM', 'LM hash (legacy)', 'Ambiguous — needs more context'],
+  ...REF,
+};
+
 const QUESTIONS: DrillQuestion[] = [
   ...DIGEST_SAMPLES.map(digestQuestion),
 
@@ -165,6 +247,11 @@ const QUESTIONS: DrillQuestion[] = [
     correctAnswer: String(bitsFor('sha384')),
     ...REF,
   },
+
+  // Q11-Q13 — 'match' triage-batch questions (additive, see the block above).
+  coreAlgorithmMatchQuestion,
+  confidenceMatchQuestion,
+  contextMatchQuestion,
 ];
 
 /** Deterministic — every index maps to the same fixed question, so

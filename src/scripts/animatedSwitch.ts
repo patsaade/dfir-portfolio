@@ -96,10 +96,25 @@
 // means the fallback stays visible right up until the thumb has something
 // real to show, so there is never a frame with no visible indicator at all.
 //
-// motion/mini: the smaller WAAPI-only build (see CLAUDE.md invariant 5).
-import { animate } from 'motion/mini';
+// ZERO dependencies: the thumb's slide is a plain two-keyframe transform/size
+// tween, so it uses the platform's own `Element.animate()` (WAAPI) directly.
+// This used to import `animate` from `motion/mini` — but that build is itself
+// only a thin WAAPI wrapper with no physics engine, so for a fixed-duration
+// tween it added a bundled dependency and bought nothing the platform doesn't
+// already provide. Everything below that depends on WAAPI semantics works
+// identically on a native Animation: `thumb.getAnimations()` still returns it,
+// `.finish()` still forces it to its end value, and getComputedStyle() still
+// reflects the live interpolated value of a running animation (which is what
+// makes a mid-flight retarget redirect smoothly rather than jumping).
+//
+// One deliberate difference from motion: motion committed the final value to
+// inline style and dropped the animation on finish (`commitStyles()`), whereas
+// a bare native animation reverts to the underlying inline style the instant
+// it ends. So the tween below runs with `fill: 'forwards'` (holds the end
+// value, no one-frame snap-back) and `settleThumb()` does the commit-then-
+// `cancel()` by hand — see that function.
 
-const DURATION = 0.15; // seconds — see file header for why this differs from the ~0.45-0.5s reveals
+const DURATION_MS = 150; // see file header for why this differs from the ~450-500ms reveals
 const EASING = 'ease-out';
 
 export function animateSwitch(group) {
@@ -224,7 +239,51 @@ export function animateSwitch(group) {
     return (vertical ? parts[5] : parts[4]) || 0;
   }
   function currentSizePx() {
-    return parseFloat(getComputedStyle(thumb)[vertical ? 'height' : 'width']) || 0;
+    // getBoundingClientRect(), not getComputedStyle(): border-box, matching
+    // the offsetWidth/offsetHeight values place() writes.
+    return thumb.getBoundingClientRect()[vertical ? 'height' : 'width'] || 0;
+  }
+
+  // Native equivalent of what motion/mini used to do for us on finish
+  // (`commitStyles()` + drop the animation). A `fill: 'forwards'` animation
+  // keeps overriding the element's own inline style forever once it ends, so
+  // it MUST be cancelled — but cancelling first would snap the thumb back to
+  // whatever stale inline transform/size predates it. So: force the animation
+  // to its end value, read that settled value back off the computed style,
+  // write it to inline style, and only then cancel. Net effect is identical
+  // to the old commitStyles() behaviour, with no intermediate frame.
+  //
+  // Deliberately synchronous — place() calls this and then immediately either
+  // reads the position (animated branch) or writes new inline values
+  // (unanimated branch); doing the commit in an async `.finished` handler
+  // instead would let a stale handler land *after* those writes and clobber
+  // them.
+  function settleThumb() {
+    const anims = thumb.getAnimations();
+    if (!anims.length) return;
+    anims.forEach(function (a) {
+      try {
+        // Same orphaned-animation guard as before: an animate() call started
+        // around a View Transition capture can get stuck mid-flight and never
+        // reach its target (observed frozen at a fixed frame indefinitely).
+        // Finishing here guarantees each placement starts from a real,
+        // settled position rather than a frozen midpoint.
+        // finish() then commitStyles() writes the animation's own COMPUTED end
+        // values to inline style — which is exactly what motion/mini's
+        // commitStyles did, and why this must not be hand-rolled as a
+        // getComputedStyle() read/write instead: `boxSizing: border-box` is
+        // global (panda.config.ts), so `getComputedStyle(thumb).width` resolves
+        // to the CONTENT box while every value place() writes is
+        // `btn.offsetWidth`, a BORDER-box value. syncColors() clones the active
+        // button's 1px border onto the thumb, so reading computed style back
+        // would shrink the thumb by 2px on every settle.
+        a.finish();
+        a.commitStyles();
+        a.cancel();
+      } catch (e) {
+        /* ignore */
+      }
+    });
   }
 
   function place(animated) {
@@ -233,24 +292,20 @@ export function animateSwitch(group) {
     if (!size) return; // group is currently hidden (display:none) — ResizeObserver retries
     const pos = vertical ? btn.offsetTop : btn.offsetLeft;
     // Same family of bug as syncColors()'s transition-bypass above, applied to
-    // the thumb's OWN slide animation instead of the button's color transition: a
-    // motion/mini animate() call started around the same time as a View Transition
-    // capture can get orphaned mid-flight and never reach its target — observed
-    // stuck indefinitely at a fixed intermediate frame (e.g. 43ms into a 150ms
-    // animation, forever). Without this, currentTranslate()/currentSizePx() below
-    // would keep reading that frozen midpoint as the "from" position for every
-    // subsequent placement, so the thumb could drift to or stay at the wrong spot
-    // across clicks instead of reliably landing on the active segment — this is
-    // the actual mechanics behind the toggle's thumb not tracking the current
-    // selection. Finishing here guarantees each placement starts from a real,
-    // settled position.
-    thumb.getAnimations().forEach(function (a) {
-      try {
-        a.finish();
-      } catch (e) {
-        /* ignore */
-      }
-    });
+    // the thumb's OWN slide animation instead of the button's color transition: an
+    // animate() call started around the same time as a View Transition capture can
+    // get orphaned mid-flight and never reach its target — observed stuck
+    // indefinitely at a fixed intermediate frame (e.g. 43ms into a 150ms
+    // animation, forever). Without settling it here, currentTranslate()/
+    // currentSizePx() below would keep reading that frozen midpoint as the "from"
+    // position for every subsequent placement, so the thumb could drift to or stay
+    // at the wrong spot across clicks instead of reliably landing on the active
+    // segment — this is the actual mechanics behind the toggle's thumb not
+    // tracking the current selection. settleThumb() guarantees each placement
+    // starts from a real, settled position (and, since the tween now runs with
+    // `fill: 'forwards'`, that the previous animation is no longer overriding the
+    // inline styles the unanimated branch below writes).
+    settleThumb();
     syncColors(btn);
     // Suppresses each button's own (now-redundant) [data-active] background —
     // see file header's "IMPORTANT" section. Set only here, on the thumb's
@@ -271,14 +326,18 @@ export function animateSwitch(group) {
     if (animated) {
       const from = currentTranslate();
       const fromSize = currentSizePx();
-      animate(
-        thumb,
-        {
-          transform: [`translate${axis}(${from}px)`, `translate${axis}(${pos}px)`],
-          [dim]: [`${fromSize}px`, `${size}px`],
-        },
-        { duration: DURATION, easing: EASING },
-      );
+      const fromFrame = { transform: `translate${axis}(${from}px)` };
+      const toFrame = { transform: `translate${axis}(${pos}px)` };
+      fromFrame[dim] = `${fromSize}px`;
+      toFrame[dim] = `${size}px`;
+      // `fill: 'forwards'` holds the end value instead of reverting to the
+      // (now stale) inline style for a frame — see settleThumb() above, which
+      // is what eventually commits it and drops the animation.
+      thumb.animate([fromFrame, toFrame], {
+        duration: DURATION_MS,
+        easing: EASING,
+        fill: 'forwards',
+      });
     } else {
       thumb.style.transform = `translate${axis}(${pos}px)`;
       thumb.style[dim] = `${size}px`;
@@ -363,8 +422,9 @@ export function animateSwitch(group) {
   // that doesn't trigger a page-wide transition never showed this bug: their
   // click listener's own next-frame callback never had anything else in
   // flight to race against. A rapid repeat click retargeting the thumb
-  // mid-flight is still correct, expected UX (motion/mini's animate()
-  // naturally redirects from the thumb's current live position — see
+  // mid-flight is still correct, expected UX (the next place() settles the
+  // in-flight animation and re-reads the thumb's current live position, so
+  // the new tween starts from wherever it actually was — see
   // currentTranslate()/currentSizePx() above) — no debounce here; that hard
   // rule (CLAUDE.md invariant 12) is for toggles that fully reverse each
   // other, not a multi-position switch redirecting mid-slide.

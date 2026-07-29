@@ -1,5 +1,20 @@
-// OSINT / search-engine "dorking" data for the interactive Dork Builder
-// (/osint/) — modeled as a recipe: a Focus (culinary "style") highlights
+// OSINT data for /tools/osint/, in two halves.
+//
+// The first half (SEARCH_ENGINES / DORK_OPERATORS / DORK_FOCUSES) drives the
+// interactive recipe builder and speaks web-search syntax only — the four
+// engines listed below all accept the same literal site:/filetype:/intitle:
+// operator family, which is the assumption the whole single-`prefix`-per-
+// operator schema rests on.
+//
+// The second half (PIVOT_PLATFORMS / PIVOT_TRACKS, at the bottom of this file)
+// covers the specialist platforms a DFIR responder actually pivots through —
+// Shodan, Censys, crt.sh, GitHub code search, urlscan.io, VirusTotal
+// Intelligence — whose query languages share nothing with the above. They are
+// deliberately kept OUT of the builder's engine switch: pasting Shodan syntax
+// into Google returns confident-looking garbage rather than an error, so every
+// query there names its target platform and links its own vendor docs.
+//
+// Recipe-builder model, unchanged: a Focus (culinary "style") highlights
 // which Ingredients (operator fields) matter and offers a few named Presets;
 // picking a Preset fills those ingredients, and the live-assembled Recipe is
 // the final query. Every operator's syntax and support status is verified
@@ -206,6 +221,13 @@ export interface DorkFocus {
   id: string;
   label: string;
   desc: string;
+  /**
+   * Which <optgroup> this focus sits under in the builder's Focus dropdown.
+   * Must be one of FOCUS_GROUPS — the builder renders groups in that array's
+   * order, not in DORK_FOCUSES' own order, so a focus can be appended to the
+   * end of the list below without disturbing where it appears in the UI.
+   */
+  group: FocusGroup;
   /** Ingredient (operator) ids to visually highlight while this focus is active. */
   highlight: string[];
   presets: DorkPreset[];
@@ -213,9 +235,23 @@ export interface DorkFocus {
   tip?: string;
 }
 
+/**
+ * The three shapes of work this builder gets used for, in the order the Focus
+ * dropdown shows them. Kept as an explicit ordered list rather than derived
+ * from first-appearance order in DORK_FOCUSES, so appending a focus never
+ * silently reshuffles the dropdown.
+ */
+export const FOCUS_GROUPS = [
+  'Your own exposure',
+  'Live investigation',
+  'People & organizations',
+] as const;
+export type FocusGroup = (typeof FOCUS_GROUPS)[number];
+
 export const DORK_FOCUSES: DorkFocus[] = [
   {
     id: 'files',
+    group: 'Your own exposure',
     label: 'Exposed Files & Documents',
     desc: 'Publicly indexed files that may have been published by mistake — reports, contracts, or logs never meant for a public page.',
     highlight: ['site', 'filetype', 'intext'],
@@ -242,6 +278,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'directories',
+    group: 'Your own exposure',
     label: 'Directory Listings',
     desc: "A web server's directory-listing feature left enabled, exposing the raw file/folder structure instead of a proper index page.",
     highlight: ['site', 'intitle', 'inurl'],
@@ -262,6 +299,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'panels',
+    group: 'Your own exposure',
     label: 'Login & Admin Panels',
     desc: 'Administrative or database-management interfaces that are internet-facing and discoverable when they should be restricted to a VPN or internal network.',
     highlight: ['site', 'intitle', 'inurl'],
@@ -294,6 +332,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'credentials',
+    group: 'Your own exposure',
     label: 'Credentials & Backups',
     desc: 'Config, backup, and dump files that frequently contain database credentials, API keys, and secret tokens.',
     highlight: ['site', 'filetype'],
@@ -314,6 +353,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'cloud',
+    group: 'Your own exposure',
     label: 'Cloud Storage',
     desc: "Publicly readable cloud storage buckets tied to an organization's name — a very common real-world misconfiguration.",
     highlight: ['site', 'phrase'],
@@ -328,6 +368,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'assets',
+    group: 'Your own exposure',
     label: 'Subdomains, Assets & Source Code',
     desc: 'External asset inventory — forgotten staging hosts, default install pages, and source code or credentials leaked to public repos.',
     highlight: ['site', 'inurl', 'intitle'],
@@ -361,6 +402,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'person',
+    group: 'People & organizations',
     label: 'Find a Person',
     desc: 'Cross-reference a name against professional, social, and document sources — verifying a claimed identity, vetting a candidate or vendor, or confirming the registrant behind a suspicious contact during an authorized investigation. Type the name into the phrase field below.',
     highlight: ['phrase', 'site'],
@@ -388,6 +430,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'business',
+    group: 'People & organizations',
     label: 'Find a Business',
     desc: "Verify a company's public footprint for vendor risk assessments, threat-actor attribution, or confirming the organization behind a suspicious domain or claimed employer. Type the company name into the phrase field below.",
     highlight: ['phrase', 'site', 'filetype'],
@@ -414,6 +457,7 @@ export const DORK_FOCUSES: DorkFocus[] = [
   },
   {
     id: 'breach',
+    group: 'Your own exposure',
     label: 'Paste Sites & Breach Exposure',
     desc: "Indexed mentions of your organization on public paste sites, or paired with breach/leak vocabulary anywhere on the web — the same low-effort first move a threat actor makes after a suspected compromise, useful defensively to catch exposure early. Type your company name or domain into the phrase field below.",
     highlight: ['site', 'phrase', 'or'],
@@ -430,11 +474,18 @@ export const DORK_FOCUSES: DorkFocus[] = [
         queryTemplate: '"<company name>" (breach OR leak OR dump OR compromised OR exposed)',
         values: { or: 'breach leak dump compromised exposed' },
       },
+      {
+        title: 'Your email domain in indexed credential dumps',
+        desc: 'Pairs your own email domain with the vocabulary credential dumps get posted under. Type "@yourdomain.com" — with the @ — into the phrase field, so it matches addresses rather than mentions of the company. A hit here is an immediate forced-reset decision, not a research finding.',
+        queryTemplate: '"@<domain>" (site:pastebin.com OR site:github.com OR site:gist.github.com) password OR credentials OR combolist',
+        values: { site: 'pastebin.com OR github.com OR gist.github.com', or: 'password credentials combolist' },
+      },
     ],
-    tip: 'Search-engine indexing of paste sites can lag by hours to days, so this is a periodic spot-check, not real-time monitoring — a dedicated paste/leak-monitoring feed complements rather than replaces it for time-sensitive credential-leak detection.',
+    tip: 'Search-engine indexing of paste sites lags by hours to days, so this is a periodic spot-check rather than monitoring — a dedicated paste/leak feed complements it for anything time-sensitive. For the specific question "are my users\' addresses in a known breach", Have I Been Pwned (haveibeenpwned.com) answers it directly: a single address is a free lookup, and searching every address at a domain requires proving you control that domain first.',
   },
   {
     id: 'executive',
+    group: 'People & organizations',
     label: 'Executive & VIP Exposure',
     desc: "Assesses a named executive or public figure's protective-intelligence exposure — publicly aggregated personal data and predictable public appearances — distinct from the Find a Person focus above, which is about verifying a claimed identity rather than assessing exposure risk for someone already known. Type the individual's full name into the phrase field below.",
     highlight: ['phrase', 'site', 'intitle'],
@@ -453,5 +504,666 @@ export const DORK_FOCUSES: DorkFocus[] = [
       },
     ],
     tip: "To narrow a common name to the specific individual, pair it with a known employer or city as a second exact phrase — the same two-phrase-clause technique noted under Find a Person above.",
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Response-side focuses. Everything above starts from "here is my estate,
+  // what leaked"; everything below starts from "here is an indicator or an
+  // actor, what is already known about it". Same ingredients, same four
+  // engines, different direction of travel — which is why they're a separate
+  // FOCUS_GROUP in the dropdown rather than more entries in the same list.
+  //
+  // Every third-party hostname used in a `site:` value below was fetched and
+  // confirmed live before being written here, same discipline as tools.ts and
+  // eventIds.ts: cloud.google.com/blog/topics/threat-intelligence (Google
+  // Threat Intelligence Group / Mandiant), unit42.paloaltonetworks.com,
+  // blog.talosintelligence.com, securelist.com, malpedia.caad.fkie.fraunhofer.de,
+  // hybrid-analysis.com, app.any.run, otx.alienvault.com (now LevelBlue-branded,
+  // same host), bazaar.abuse.ch, urlscan.io, cisa.gov, ncsc.gov.uk,
+  // attack.mitre.org, github.io (GitHub Pages' documented default domain),
+  // pages.dev (Cloudflare Pages' documented default domain), jotform.com.
+  // Vendor URL paths are cited the same way — /RDWeb from Microsoft Learn's RD
+  // Web Access docs, /owa from Exchange's own virtual-directory docs, /dana-na
+  // from CISA's Pulse/Ivanti Connect Secure exploitation advisories.
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    id: 'phishing',
+    group: 'Live investigation',
+    label: 'Phishing & Lookalike Pages',
+    desc: 'Brand-impersonation pages and credential-harvest kits that name your organization. Type the brand or organization name into the phrase field below.',
+    highlight: ['phrase', 'intitle', 'site', 'after'],
+    presets: [
+      {
+        title: 'Credential-harvest pages naming the brand',
+        desc: 'A phishing page almost always claims the brand in its title and asks for a sign-in, so searching indexed titles for that pairing surfaces impersonation pages a takedown request can act on. Put your own domain in the Exclude field as "site:yourdomain.com" so your real login page drops out of the results.',
+        queryTemplate: '"<brand>" (intitle:login OR intitle:"sign in" OR intitle:"verify your account")',
+        values: { intitle: 'login OR sign in OR verify your account' },
+      },
+      {
+        title: 'Brand pages on free hosting',
+        desc: "Phishing kits are cheap to stand up on free hosting, where the operator never registers a lookalike domain at all — so domain-monitoring feeds miss them entirely. github.io and pages.dev are the documented default domains for GitHub Pages and Cloudflare Pages; add whichever hosts your own user reports keep naming.",
+        queryTemplate: '"<brand>" (site:github.io OR site:pages.dev)',
+        values: { site: 'github.io OR pages.dev' },
+      },
+      {
+        title: 'Brand pages on hosted form services',
+        desc: 'Same idea one layer down: the credential capture is a hosted form, so there is no attacker-controlled page to scan and no domain to seize. Worth knowing what is already indexed, because these are the reports that arrive with nothing for a takedown request to point at.',
+        queryTemplate: '"<brand>" (site:docs.google.com/forms OR site:forms.office.com OR site:jotform.com)',
+        values: { site: 'docs.google.com/forms OR forms.office.com OR jotform.com' },
+      },
+      {
+        title: 'Recently updated pages naming the brand',
+        desc: "Narrows to pages Google last saw updated after a date you set — not a registration date, and not a discovery date. Set it to the start of your incident window and it becomes a cheap way to spot pages that changed around the same time as a campaign.",
+        queryTemplate: '"<brand>" after:2026-01-01',
+        values: { after: '2026-01-01' },
+      },
+    ],
+    tip: 'Search engines only index what they can reach, so a phishing site that is geo-fenced, one-time-token gated, or taken down inside a few hours will never show up here at all. Pair this with certificate transparency (crt.sh, in the Pivot queries section below) — a certificate is logged at issuance whether or not the page was ever crawled.',
+  },
+  {
+    id: 'ioc-context',
+    group: 'Live investigation',
+    label: 'IOC Context & Reputation',
+    desc: 'Take one indicator — a domain, IP, hash, or URL — and find out who has already written about it. Type the indicator into the phrase field below.',
+    highlight: ['phrase', 'site'],
+    presets: [
+      {
+        title: 'Indicator across public sandboxes and reputation sites',
+        desc: 'Each of these publishes a per-indicator page that search engines index, so one query tells you whether an IOC has already been submitted, detonated, or bundled into somebody else\'s report. A hit gives you context for free; a miss usually means you are early.',
+        queryTemplate: '"<indicator>" (site:urlscan.io OR site:otx.alienvault.com OR site:app.any.run OR site:hybrid-analysis.com)',
+        values: { site: 'urlscan.io OR otx.alienvault.com OR app.any.run OR hybrid-analysis.com' },
+      },
+      {
+        title: 'Indicator in public code, gists, and pastes',
+        desc: 'Detection rules, IR notes, and blocklists get committed to public repos constantly. An indicator that turns up inside somebody\'s Sigma rule or hosts file names the family faster than a sandbox run will.',
+        queryTemplate: '"<indicator>" (site:github.com OR site:gist.github.com OR site:pastebin.com)',
+        values: { site: 'github.com OR gist.github.com OR pastebin.com' },
+      },
+      {
+        title: 'Indicator named in vendor research',
+        desc: 'Restricts to four vendor research blogs that publish full IOC lists alongside their write-ups. If an indicator appears in one, you inherit the attribution, the TTPs, and usually a set of sibling indicators to pivot on.',
+        queryTemplate: '"<indicator>" (site:cloud.google.com/blog/topics/threat-intelligence OR site:unit42.paloaltonetworks.com OR site:blog.talosintelligence.com OR site:securelist.com)',
+        values: { site: 'cloud.google.com/blog/topics/threat-intelligence OR unit42.paloaltonetworks.com OR blog.talosintelligence.com OR securelist.com' },
+      },
+    ],
+    tip: 'Pasting a live indicator into a public search engine is itself a disclosure — the query is logged, and an actor watching for their own infrastructure to be looked up can read that as notice. During an active intrusion, decide deliberately whether the lookup is worth the tip-off before you run it.',
+  },
+  {
+    id: 'malware-hunt',
+    group: 'Live investigation',
+    label: 'Malware & Sample Hunting',
+    desc: 'Write-ups, sandbox reports, and staging infrastructure for a file you are already holding. Type the hash or family name into the phrase field below.',
+    highlight: ['phrase', 'site', 'intitle', 'inurl'],
+    presets: [
+      {
+        title: 'Hash across public sample repositories',
+        desc: 'A full SHA-256 is unique enough that one query resolves it across every public repository that indexes per-sample pages. Use SHA-256 rather than MD5 or SHA-1 — both of those collide, and a same-hash page is not necessarily the same file.',
+        queryTemplate: '"<sha256>" (site:virustotal.com OR site:bazaar.abuse.ch OR site:app.any.run OR site:hybrid-analysis.com)',
+        values: { site: 'virustotal.com OR bazaar.abuse.ch OR app.any.run OR hybrid-analysis.com' },
+      },
+      {
+        title: 'Family write-ups and alias tracking',
+        desc: 'Every vendor names things differently. Malpedia and MITRE both maintain alias lists per family and per group, which makes this the fastest way to turn one vendor\'s name for something into every other name the same activity is tracked under.',
+        queryTemplate: '"<family>" (site:malpedia.caad.fkie.fraunhofer.de OR site:attack.mitre.org)',
+        values: { site: 'malpedia.caad.fkie.fraunhofer.de OR attack.mitre.org' },
+      },
+      {
+        title: 'Open directories staging payloads',
+        desc: 'Commodity loaders routinely pull their next stage from a plain open directory, and those get crawled like any other page. Once you have a staging host out of a sample, put it in the Site field and you often get the rest of the campaign\'s payload set with it.',
+        queryTemplate: 'intitle:"index of" (inurl:.exe OR inurl:.ps1 OR inurl:.hta OR inurl:.bin)',
+        values: { intitle: 'index of', inurl: '.exe OR .ps1 OR .hta OR .bin' },
+      },
+    ],
+    tip: 'Do not submit a sample or a URL from a live intrusion to a public sandbox — the submission is public, and adversaries watch for their own tooling appearing there. Search first, and submit only once you have decided the disclosure is acceptable.',
+  },
+  {
+    id: 'threat-intel',
+    group: 'Live investigation',
+    label: 'Threat Actor & Campaign Research',
+    desc: 'Pull together what is already published about a named actor, malware family, or campaign. Type the name into the phrase field below.',
+    highlight: ['phrase', 'site', 'filetype'],
+    presets: [
+      {
+        title: 'Vendor research naming the actor',
+        desc: 'Four research teams that publish long-form campaign analysis with the indicators attached. Start here when you have a name from an alert or a colleague and need the primary source behind it rather than a summary of a summary.',
+        queryTemplate: '"<actor>" (site:cloud.google.com/blog/topics/threat-intelligence OR site:unit42.paloaltonetworks.com OR site:blog.talosintelligence.com OR site:securelist.com)',
+        values: { site: 'cloud.google.com/blog/topics/threat-intelligence OR unit42.paloaltonetworks.com OR blog.talosintelligence.com OR securelist.com' },
+      },
+      {
+        title: 'Government and national CERT advisories',
+        desc: 'CISA and the UK NCSC publish joint advisories with detection guidance and mitigations that vendor blogs often omit. These also carry the authority you need when the write-up has to go to somebody outside the security team.',
+        queryTemplate: '"<actor>" (site:cisa.gov OR site:ncsc.gov.uk)',
+        values: { site: 'cisa.gov OR ncsc.gov.uk' },
+      },
+      {
+        title: 'Full reports as PDF',
+        desc: 'Long-form threat reports are usually published as a PDF that the HTML summary only links to, and the appendix is where the complete indicator list lives. Filtering on the body phrase keeps marketing decks out of the results.',
+        queryTemplate: '"<actor>" filetype:pdf intext:"indicators of compromise"',
+        values: { filetype: 'pdf', intext: 'indicators of compromise' },
+      },
+      {
+        title: 'Alias resolution across trackers',
+        desc: 'Actor naming is genuinely fragmented — the same intrusion set can carry six vendor names. MITRE\'s group pages and Malpedia both maintain cross-referenced alias lists, so this is the query that tells you whether two reports are describing the same thing.',
+        queryTemplate: '"<actor>" (site:attack.mitre.org OR site:malpedia.caad.fkie.fraunhofer.de)',
+        values: { site: 'attack.mitre.org OR malpedia.caad.fkie.fraunhofer.de' },
+      },
+    ],
+    tip: 'This site carries its own ATT&CK coverage map and Threat Actor reference, which cover the same ground without a search engine in the loop — reach for these queries when you specifically need the primary vendor report behind an entry.',
+  },
+  {
+    id: 'code-secrets',
+    group: 'Your own exposure',
+    label: 'Code & Secret Leakage',
+    desc: 'Source, config, and credentials from your organization that ended up in a public repository or registry. Type your domain or organization name into the phrase field below.',
+    highlight: ['phrase', 'site', 'inurl', 'or'],
+    presets: [
+      {
+        title: 'Your domain across public code hosts',
+        desc: 'The broad first pass. Internal hostnames and email domains get committed by accident constantly — in a README, a test fixture, a sample config — and each one is a small piece of your internal topology published for free.',
+        queryTemplate: '"<domain>" (site:github.com OR site:gitlab.com OR site:bitbucket.org)',
+        values: { site: 'github.com OR gitlab.com OR bitbucket.org' },
+      },
+      {
+        title: 'Secret-shaped strings alongside your domain',
+        desc: 'Pairs your domain with the variable names credentials are conventionally stored under. Not every hit is a live secret — plenty are placeholders — but the ones that are not tend to be the highest-severity finding of the day.',
+        queryTemplate: '"<domain>" (site:github.com OR site:gitlab.com) api_key OR client_secret OR aws_access_key_id OR private_key',
+        values: { site: 'github.com OR gitlab.com', or: 'api_key client_secret aws_access_key_id private_key' },
+      },
+      {
+        title: 'Config, CI, and infrastructure files',
+        desc: 'Targets the file paths that describe how something is deployed rather than what it does. A committed docker-compose file or workflow definition maps your build pipeline, service names, and sometimes the registries and hosts they talk to.',
+        queryTemplate: '"<domain>" site:github.com (inurl:.env OR inurl:docker-compose OR inurl:.github/workflows OR inurl:terraform)',
+        values: { site: 'github.com', inurl: '.env OR docker-compose OR .github/workflows OR terraform' },
+      },
+      {
+        title: 'Internal names on public package registries',
+        desc: 'An internal package name that exists publicly is both a leak and a dependency-confusion setup, since a build that resolves the public one first will happily install someone else\'s code. Worth knowing which of your internal names are already taken.',
+        queryTemplate: '"<domain>" (site:npmjs.com OR site:pypi.org OR site:hub.docker.com)',
+        values: { site: 'npmjs.com OR pypi.org OR hub.docker.com' },
+      },
+    ],
+    tip: 'Google indexes repository pages it has crawled; it does not search file contents. For that you need GitHub\'s own code search, which is in the Pivot queries section below — it does path: globs and content: matching that no web search engine can express.',
+  },
+  {
+    id: 'remote-access',
+    group: 'Your own exposure',
+    label: 'Remote Access & Edge Devices',
+    desc: 'Internet-facing VPN, remote-desktop, webmail, and out-of-band management entry points on your own estate — the front door a large share of intrusions come through. Type your domain into the Site field below.',
+    highlight: ['site', 'inurl', 'intitle'],
+    presets: [
+      {
+        title: 'Remote-desktop and webmail portals',
+        desc: '/RDWeb is the default virtual directory Microsoft documents for RD Web Access, and /owa the one Exchange documents for Outlook on the web. If either is indexed, it is reachable from the open internet — which is a decision worth confirming somebody actually made.',
+        queryTemplate: 'site:<domain> (inurl:/RDWeb OR inurl:/owa)',
+        values: { inurl: '/RDWeb OR /owa' },
+      },
+      {
+        title: 'VPN appliance web paths',
+        desc: '/dana-na is the Ivanti (formerly Pulse) Connect Secure web path named in CISA\'s own exploitation advisories, and /vpn the generic gateway path several other appliances use. These devices are a recurring initial-access target, so knowing which of yours are indexed is two minutes well spent.',
+        queryTemplate: 'site:<domain> (inurl:/dana-na OR inurl:/vpn)',
+        values: { inurl: '/dana-na OR /vpn' },
+      },
+      {
+        title: 'Out-of-band management interfaces',
+        desc: 'Dell iDRAC and HPE iLO are baseboard management controllers — full console and power control underneath the operating system. Neither should ever be internet-reachable, so an indexed page carrying the product name in its title is worth chasing to ground the same day.',
+        queryTemplate: 'site:<domain> (intitle:iDRAC OR intitle:iLO)',
+        values: { intitle: 'iDRAC OR iLO' },
+      },
+    ],
+    tip: 'An empty result here proves nothing. Search engines only index pages they were linked to and allowed to crawl, and appliance login pages are usually neither. Treat this as a fast first pass, then confirm properly with Shodan or Censys in the Pivot queries below — those scan the address space directly instead of waiting on a crawler.',
+  },
+];
+
+// ───────────────────────────────────────────────────────────────────────────
+// Pivot queries — the specialist half of the toolkit.
+//
+// The recipe builder above only speaks web-search syntax, and deliberately so:
+// its four engines all accept the same literal site:/filetype:/intitle: family.
+// The platforms below do not. Shodan, Censys, crt.sh, GitHub code search,
+// urlscan.io and VirusTotal each have their own field names and operators, and
+// pasting one into another produces silent garbage rather than an error — which
+// is exactly why these live in their own section with the target platform named
+// on every single query, rather than being folded into the builder's engine
+// switch.
+//
+// Field names and operators here were verified against each platform's own
+// current documentation before being written:
+//   Shodan   — shodan.io/search/filters (the published filter list)
+//   Censys   — docs.censys.com/docs/censys-query-language + the Platform host
+//              dataset reference (CenQL; the Platform replaced legacy Search)
+//   crt.sh   — verified live against the running service, including the SQL
+//              LIKE `%` wildcard in both `%.domain` and `%substring%` form
+//   GitHub   — docs.github.com/.../understanding-github-code-search-syntax
+//   urlscan  — urlscan.io/docs/search/ (Elasticsearch query-string fields)
+//   VirusTotal — docs.virustotal.com/docs/file-search-modifiers
+// Anything that could not be verified was left out rather than guessed at:
+// notably Censys JARM (the field exists but its shape is undocumented), Shodan
+// negation syntax, and several vendor appliance URL paths.
+// ───────────────────────────────────────────────────────────────────────────
+
+// Kept file-local (not exported), same as DorkPreset above: osint.astro consumes
+// PIVOT_PLATFORMS/PIVOT_TRACKS structurally and never imports these names, and
+// an exported-but-unimported type is exactly what `npm run audit:deadcode`
+// flags. DorkFocus stays exported because DorkBuilder.astro imports it by name.
+interface PivotPlatform {
+  id: string;
+  label: string;
+  /** What it actually indexes — one line, so a reader knows why they'd reach for it. */
+  what: string;
+  /** The honest access story: free, sign-in required, or paid tier. */
+  access: string;
+  /** Official syntax documentation. */
+  docsUrl: string;
+  /**
+   * Where a query gets run. Deliberately the platform's own search page and
+   * not a pre-filled deep link: every query below is a template with a
+   * `<placeholder>` still in it, so a deep link would just run a search for
+   * the literal angle brackets. Copy, substitute, paste.
+   */
+  openUrl: string;
+}
+
+export const PIVOT_PLATFORMS: PivotPlatform[] = [
+  {
+    id: 'shodan',
+    label: 'Shodan',
+    what: 'Internet-wide scan data — open ports, service banners, TLS certificates, HTTP titles and bodies, and screenshots, indexed by host.',
+    access: 'Free account for basic search; several filters (including vuln: and tag:) are restricted to paid memberships.',
+    docsUrl: 'https://www.shodan.io/search/filters',
+    openUrl: 'https://www.shodan.io/',
+  },
+  {
+    id: 'censys',
+    label: 'Censys Platform',
+    what: 'A second independent internet-wide scan dataset, with hosts, web properties and certificates as separate queryable datasets you can join across.',
+    access: 'Free account with a monthly query allowance; CenQL replaced the legacy Censys Search syntax.',
+    docsUrl: 'https://docs.censys.com/docs/censys-query-language',
+    openUrl: 'https://platform.censys.io/search',
+  },
+  {
+    id: 'crtsh',
+    label: 'crt.sh',
+    what: 'A searchable mirror of the public certificate transparency logs — every certificate a participating CA has issued, whether or not the host it was issued for was ever online.',
+    access: 'Free, no account. `%` is a SQL LIKE wildcard, so `%.example.com` matches subdomains and `%example%` matches a substring anywhere in the identity.',
+    docsUrl: 'https://certificate.transparency.dev/',
+    openUrl: 'https://crt.sh/',
+  },
+  {
+    id: 'github',
+    label: 'GitHub code search',
+    what: 'The contents of public repositories — not just the pages a web crawler reached, but the files themselves, searchable by path glob, language, and literal content.',
+    access: 'Free, but you must be signed in to GitHub for code search to return results.',
+    docsUrl: 'https://docs.github.com/en/search-github/github-code-search/understanding-github-code-search-syntax',
+    openUrl: 'https://github.com/search?type=code',
+  },
+  {
+    id: 'urlscan',
+    label: 'urlscan.io',
+    what: 'A public archive of website scans — every request a page made, the files it served, its TLS issuer, its ASN, and a screenshot, for every scan anyone submitted publicly.',
+    access: 'Free to search public scans. Queries use Elasticsearch query-string syntax.',
+    docsUrl: 'https://urlscan.io/docs/search/',
+    openUrl: 'https://urlscan.io/search/',
+  },
+  {
+    id: 'virustotal',
+    label: 'VirusTotal Intelligence',
+    what: 'Search across VirusTotal\'s sample corpus by structural similarity rather than by exact hash — import hash, fuzzy hash, signer, submission window, engine verdict.',
+    access: 'Looking up a single hash is free; the search modifiers below are VirusTotal Intelligence, which is a paid tier.',
+    docsUrl: 'https://docs.virustotal.com/docs/file-search-modifiers',
+    openUrl: 'https://www.virustotal.com/',
+  },
+];
+
+interface PivotQuery {
+  /** PivotPlatform id. */
+  platform: string;
+  title: string;
+  /** The literal query. `<placeholders>` are the parts you substitute. */
+  query: string;
+  desc: string;
+}
+
+interface PivotTrack {
+  id: string;
+  label: string;
+  desc: string;
+  queries: PivotQuery[];
+}
+
+export const PIVOT_TRACKS: PivotTrack[] = [
+  {
+    id: 'infrastructure',
+    label: 'Infrastructure pivoting',
+    desc: 'One indicator in, related infrastructure out. A single domain, IP, or certificate is almost never the whole picture — these walk outward from it until the edges stop moving.',
+    queries: [
+      {
+        platform: 'shodan',
+        title: 'Hosts serving a certificate for a domain',
+        query: 'ssl.cert.subject.cn:"<domain>"',
+        desc: 'Every scanned host presenting a TLS certificate whose subject common name is this domain, wherever it happens to live. This is how the origin behind a CDN, a staging copy on a different provider, or a box still serving a certificate you thought was retired all surface.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Certificate data mentioning an organization',
+        query: 'ssl:"<organization name>"',
+        desc: 'Broader than the common-name filter: matches the organization string anywhere in the certificate, which catches hosts behind a wildcard or SAN-only certificate that never names an individual domain.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Everything scanned in an organization\'s netblocks',
+        query: 'org:"<organization name>"',
+        desc: 'Keyed on network registration data, which is the weak link — subsidiaries, acquisitions, and anything cloud-hosted usually sit under somebody else\'s org string entirely. Treat a clean result as "this is what is registered to you", not "this is all of you".',
+      },
+      {
+        platform: 'shodan',
+        title: 'Everything scanned in a CIDR range',
+        query: 'net:<CIDR>',
+        desc: 'The precise version of the org: query above, and the one to use once you have the actual allocation out of RIR data rather than trusting a name match.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Hosts sharing a favicon',
+        query: 'http.favicon.hash:<hash>',
+        desc: 'Shodan stores a hash of each host\'s favicon. Two servers built from the same panel or kit serve the same icon, so the hash still matches after the domain, certificate, and IP have all been rotated — one of the few pivots that survives an operator rebuilding.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Hosts sharing a TLS stack fingerprint',
+        query: 'ssl.jarm:<jarm hash>',
+        desc: 'JARM fingerprints how a server\'s TLS stack answers a fixed set of probes. Identical software and configuration produce identical fingerprints, which is what groups C2 servers of one family together across hosting providers. Expect false positives from anything running a stock stack.',
+      },
+      {
+        platform: 'censys',
+        title: 'Hosts resolving under a name',
+        query: 'host.dns.names:"<domain>"',
+        desc: 'The second opinion on Shodan\'s view. The two scan on different schedules from different vantage points, and disagreement between them is itself information — usually about something that recently appeared or recently went away.',
+      },
+      {
+        platform: 'censys',
+        title: 'Certificates issued to an organization',
+        query: 'cert.parsed.subject.organization:"<organization name>"',
+        desc: 'Censys keeps certificates as their own dataset, so this searches issuance records directly rather than only the hosts currently presenting them. Good for finding the certificates behind assets that are already offline.',
+      },
+      {
+        platform: 'censys',
+        title: 'Certificates by subject common name',
+        query: 'cert.parsed.subject.common_name:"<domain>"',
+        desc: 'The certificate-dataset equivalent of Shodan\'s ssl.cert.subject.cn filter. Run both — the two services log from different CT log sets and different scan histories, and neither is complete on its own.',
+      },
+      {
+        platform: 'censys',
+        title: 'Hosts that redirect to a domain',
+        query: 'host.services.endpoints.http.redirect_chain.hostname="<domain>"',
+        desc: 'Hosts whose HTTP redirect chain lands on this domain. Catches parked lookalikes, forgotten vanity domains, and traffic-laundering hops that point at you but carry none of your names in their own certificates.',
+      },
+      {
+        platform: 'censys',
+        title: 'Hosts in an ASN running a given service',
+        query: 'host.autonomous_system.asn=<number> and host.services.port=443',
+        desc: 'CenQL\'s `and` combines conditions across the whole host record. Swap the port for whatever you are chasing; the ASN keeps it to one network rather than the whole internet.',
+      },
+      {
+        platform: 'censys',
+        title: 'A specific service on a specific port',
+        query: 'host.services: (software.product="<product>" and endpoints.http.html_title="<title>")',
+        desc: 'The nested form — parentheses after `host.services:` require both conditions to hold for the same service object, rather than for the host as a whole. Without the nesting you get hosts that run the product somewhere and show that title somewhere else.',
+      },
+      {
+        platform: 'crtsh',
+        title: 'Every certificate ever logged for a domain\'s subdomains',
+        query: '%.<domain>',
+        desc: 'The best free subdomain inventory there is, because certificate transparency records issuance rather than reachability. Hosts that were never linked, never crawled, and are long since decommissioned are all still in here.',
+      },
+      {
+        platform: 'crtsh',
+        title: 'Certificates naming an organization',
+        query: '<organization name>',
+        desc: 'The identity search also matches organization names in certificate subjects, which surfaces assets under domains you did not know to ask about — the usual way a forgotten acquisition\'s infrastructure turns up.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Public scans of a domain',
+        query: 'page.domain:"<domain>"',
+        desc: 'Everything anyone has publicly scanned on this domain, with the full request chain and a screenshot per scan. Often the only surviving record of what a page looked like before it was pulled.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Where a domain appears as a subresource',
+        query: 'domain:"<domain>" AND NOT page.domain:"<domain>"',
+        desc: 'Scans that contacted this domain without it being the page being scanned. Read one way it is your third-party dependency footprint on other people\'s sites; read the other way it is every scanned page that reached out to infrastructure you are investigating.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Recent scans of an IP',
+        query: 'page.ip:"<ip>" AND date:>now-30d',
+        desc: 'Ties an address to the hostnames actually served from it recently. `date:>now-30d` is the documented relative-date form and keeps a long-lived shared-hosting IP from burying the thing you are after.',
+      },
+    ],
+  },
+  {
+    id: 'phishing',
+    label: 'Phishing & malicious domains',
+    desc: 'Lookalike registrations, kit reuse, and the certificate trail a phishing site leaves behind before anyone reports it.',
+    queries: [
+      {
+        platform: 'crtsh',
+        title: 'Lookalike domains carrying a brand string',
+        query: '%<brand>%',
+        desc: 'Substring wildcards on both sides match the brand anywhere in a certificate identity, which is how you find brand-alike registrations the moment they request a certificate — typically hours to days before the page goes live and long before anyone reports it.',
+      },
+      {
+        platform: 'crtsh',
+        title: 'Certificates for a suspect domain\'s subdomains',
+        query: '%.<suspect domain>',
+        desc: 'Once you have one confirmed lookalike, this enumerates what else was issued under it. Phishing operators reuse a registration across several targets, so the sibling names usually name the rest of the campaign\'s victims.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Newly registered domains scanned recently',
+        query: 'page.domain:"<domain>" AND page.domainAgeDays:<30',
+        desc: 'Domain age is a strong phishing signal on its own — legitimate business infrastructure is rarely three weeks old. Both halves are documented urlscan fields; combine with a brand term to scope it.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Community-tagged phishing scans',
+        query: 'task.tags:"phishing" AND page.domain:"<domain>"',
+        desc: 'Submitters tag scans, and phishing is the most consistently applied tag on the platform. Cheap corroboration when you are deciding whether something is worth escalating.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Pages by certificate issuer and title',
+        query: 'page.tlsIssuer:"<issuer>" AND page.title:"<brand>"',
+        desc: 'Kits get deployed with the same free-CA certificate and the same copied page title over and over. Pairing the two is a surprisingly durable signature for one operator\'s output.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Hosts serving a string from a confirmed kit',
+        query: 'http.html:"<distinctive string>"',
+        desc: 'Matches a literal string in the page body across everything Shodan has crawled. Take a genuinely distinctive artifact out of a confirmed phishing page — a form action, a misspelled label, a hardcoded element id — and this finds every other host running the same kit.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Hosts titled after a brand',
+        query: 'http.title:"<brand>"',
+        desc: 'Impersonation pages copy the real page title verbatim, because that is what makes the browser tab look right. Noisy on its own; useful once you narrow it with a port, a country, or a certificate filter.',
+      },
+      {
+        platform: 'github',
+        title: 'The kit\'s own source',
+        query: '"<distinctive string>" NOT is:fork',
+        desc: 'Phishing kits are shared as source far more often than people expect. Feeding a distinctive string from a page into code search sometimes lands you the whole kit, including the exfiltration endpoint the operator forgot to change.',
+      },
+    ],
+  },
+  {
+    id: 'malware',
+    label: 'File, hash & sample hunting',
+    desc: 'Start from a file you are holding and find its relatives — same builder, same signer, same infrastructure — rather than only its exact hash.',
+    queries: [
+      {
+        platform: 'virustotal',
+        title: 'Samples sharing an import hash',
+        query: 'entity:file imphash:"<imphash>" p:5+',
+        desc: 'The import hash summarises a PE\'s import table, which is a property of how it was compiled rather than of its contents — so it survives repacking and recompilation that change the file hash completely. `p:5+` trims the noise floor to samples at least five engines flag.',
+      },
+      {
+        platform: 'virustotal',
+        title: 'Fuzzy-hash neighbours',
+        query: 'entity:file ssdeep:"<ssdeep hash>"',
+        desc: 'ssdeep is a context-triggered piecewise hash: similar files produce similar hashes. Use it when you suspect you have one build out of a series and want the others.',
+      },
+      {
+        platform: 'virustotal',
+        title: 'Structural-similarity neighbours',
+        query: 'entity:file vhash:"<vhash>"',
+        desc: 'VirusTotal\'s own structural clustering hash. It tends to group a family more tightly than ssdeep does, at the cost of missing more distant relatives — run both and compare the two result sets.',
+      },
+      {
+        platform: 'virustotal',
+        title: 'A family within a time window',
+        query: 'entity:file engines:"<family name>" fs:2026-01-01+',
+        desc: 'Everything any engine labelled with this family name, first submitted after a date. `fs:` is first submission, so this reads as "when did this family start showing up", not "when was it last seen".',
+      },
+      {
+        platform: 'virustotal',
+        title: 'Samples signed by one identity',
+        query: 'entity:file sigcheck:"<signer name>" p:1+',
+        desc: 'Once one abused or stolen code-signing certificate turns up in an investigation, this finds the rest of what was signed with it — usually the fastest route to the full scope of a supply-chain or signed-loader campaign.',
+      },
+      {
+        platform: 'virustotal',
+        title: 'A filename that keeps appearing',
+        query: 'entity:file name:"<filename>" p:3+',
+        desc: 'Matches the names files were submitted under. Weak evidence on its own — names are trivially changed — but a distinctive dropped filename recurring across unrelated submitters is a real lead.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Where a file was served from',
+        query: 'files.sha256:"<sha256>"',
+        desc: 'urlscan records the files each scanned page served, so this turns a hash into the URLs and hosts that delivered it. Turns "I have the payload" into "I have the delivery chain".',
+      },
+      {
+        platform: 'github',
+        title: 'A hash in public detection content',
+        query: '"<sha256>" NOT is:fork',
+        desc: 'Hashes land in Sigma rules, YARA files, and IOC lists well before they land in a blog post. `NOT is:fork` keeps the same rule repository from being returned three hundred times.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Hosts serving the same payload path',
+        query: 'http.html:"<staging filename>"',
+        desc: 'Once you have a staging filename out of a sample, this finds the other open directories serving it — which is generally the rest of the campaign\'s infrastructure with no further work.',
+      },
+    ],
+  },
+  {
+    id: 'exposure',
+    label: 'Exposed & leaked assets',
+    desc: 'What is reachable, published, or committed that should not be. Same question the web-search focuses ask, answered by scanning and by reading files rather than by asking a crawler what it happened to see.',
+    queries: [
+      {
+        platform: 'github',
+        title: 'Environment files in an organization',
+        query: 'org:<github org> path:*.env',
+        desc: 'A committed .env is the single highest-yield finding in this whole section — they exist to hold credentials, and they get committed constantly. `path:` takes globs, so this matches the file wherever it sits in the tree.',
+      },
+      {
+        platform: 'github',
+        title: 'Private keys by file content',
+        query: 'org:<github org> content:"BEGIN RSA PRIVATE KEY"',
+        desc: '`content:` restricts matching to file contents rather than paths or metadata — the thing no web search engine can do. The PEM header is a fixed string, so this has effectively no false-positive rate.',
+      },
+      {
+        platform: 'github',
+        title: 'Terraform state files',
+        query: '"<domain>" path:*.tfstate',
+        desc: 'Terraform state records the resources it manages along with, in older or carelessly configured setups, their secrets in plaintext. It also maps your cloud estate in one file, which is worth just as much to somebody scoping you.',
+      },
+      {
+        platform: 'github',
+        title: 'Internal hostnames in live code',
+        query: '"<internal hostname>" NOT is:fork NOT is:archived',
+        desc: 'Excluding forks and archived repositories cuts most of the duplicate noise, leaving code somebody is plausibly still running. An internal hostname in a public repo maps your network for free.',
+      },
+      {
+        platform: 'github',
+        title: 'CI workflow definitions',
+        query: '"<domain>" path:.github/workflows',
+        desc: 'Workflow files describe the build pipeline, the registries it pushes to, and the names of every secret it consumes. Even with the values redacted, the shape of the pipeline is useful reconnaissance.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Screenshots of everything in your estate',
+        query: 'org:"<organization name>" has_screenshot:true',
+        desc: 'Shodan screenshots services with a visual protocol — RDP, VNC, web panels. Scrolling the grid is genuinely the fastest way to see what your estate looks like from outside, and unattended desktops and default panels are impossible to miss.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Exposed remote desktop',
+        query: 'org:"<organization name>" port:3389',
+        desc: 'RDP straight to the internet remains one of the most common initial-access paths in real incidents. This is the one query on this page worth running against your own org string before you finish reading it.',
+      },
+      {
+        platform: 'shodan',
+        title: 'A specific product inside a range',
+        query: 'net:<CIDR> product:"<product>"',
+        desc: 'Scoped to a range you actually own, this answers "how many of these are exposed" without the ambiguity of matching on a registration name. Use it when a CVE lands and you need a number by the end of the meeting.',
+      },
+      {
+        platform: 'censys',
+        title: 'Vulnerable services in a network',
+        query: 'host.autonomous_system.asn=<number> and host.services.vulns.id:"<CVE id>"',
+        desc: 'Censys attaches vulnerability identifiers to service records, so this scopes a specific CVE to a specific ASN. The equivalent Shodan filter (vuln:) is restricted to paid memberships, which makes this the free route to the same answer.',
+      },
+      {
+        platform: 'crtsh',
+        title: 'Shadow IT and forgotten subdomains',
+        query: '%.<domain>',
+        desc: 'Same query as the infrastructure track, different question. Read the result as an asset inventory: anything in here you cannot account for is either shadow IT, an abandoned project, or somebody else\'s certificate for your name — and all three are worth an answer.',
+      },
+    ],
+  },
+  {
+    id: 'actor',
+    label: 'Actor & campaign research',
+    desc: 'Turning a name into detection content, and detection content back into infrastructure.',
+    queries: [
+      {
+        platform: 'github',
+        title: 'Detection rules naming an actor',
+        query: '"<actor name>" (path:*.yml OR path:*.yar) NOT is:fork',
+        desc: 'Sigma rules are YAML and YARA rules are .yar, so the two path globs cover most published detection content. The rule that catches a campaign is usually public before the report describing it is.',
+      },
+      {
+        platform: 'github',
+        title: 'Proof-of-concept and exploitation tooling',
+        query: '"<CVE id>" path:*.py NOT is:fork',
+        desc: 'Tells you how weaponised a vulnerability actually is, which is a different and more useful question than its CVSS score when you are deciding what to patch tonight.',
+      },
+      {
+        platform: 'urlscan',
+        title: 'Scans tagged for a campaign',
+        query: 'task.tags:"<campaign tag>"',
+        desc: 'Researchers tag their submissions, so a campaign tag often gathers scans from several unrelated people. Good corroboration, and occasionally a set of hosts nobody has published yet.',
+      },
+      {
+        platform: 'shodan',
+        title: 'Panels by issuer and title together',
+        query: 'ssl.cert.issuer.cn:"<CA name>" http.title:"<panel title>"',
+        desc: 'C2 panels are consistent about both the free CA they get certificates from and what their login page calls itself. Either filter alone is far too noisy; together they narrow to something reviewable by hand.',
+      },
+      {
+        platform: 'virustotal',
+        title: 'Where a family is being submitted from',
+        query: 'entity:file engines:"<family name>" submitter:<ISO country code>',
+        desc: '`submitter:` takes an ISO 3166-1 alpha-2 country code. Submission geography is a rough proxy for targeting, and a family suddenly appearing from a new region is worth noticing.',
+      },
+      {
+        platform: 'censys',
+        title: 'A software and port combination',
+        query: 'host.services: (port=<port> and software.product="<product>")',
+        desc: 'Once a report names the software and port a campaign\'s servers run, the nested form finds the rest of them. Requires both conditions on the same service object, which is what stops it matching unrelated hosts that happen to satisfy each separately.',
+      },
+    ],
   },
 ];

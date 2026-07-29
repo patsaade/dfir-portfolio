@@ -1,0 +1,903 @@
+---
+// Guided SentinelOne PowerQuery builder for Singularity Data Lake event search.
+// Same shape as KqlBuilder: a compose UI on the left that assembles valid
+// SYNTAX, and a persistent "Query" stage on the right (sticky on wide
+// viewports) with a copy button.
+//
+// This is NOT a query engine. Nothing here connects to a SentinelOne console,
+// no query is ever executed, and no event is ever fetched — the output is text
+// to paste into Singularity's own Event Search / PowerQuery bar.
+//
+// Every field name, event-type value and operator comes from src/data/s1.ts,
+// which carries per-entry provenance because SentinelOne's product docs sit
+// behind a customer login; the assembly itself is pure and lives in
+// src/utils/s1.ts (unit tested in test/s1.test.ts), not in this file. Genuinely
+// requires JS — there is no meaningful static form for a builder whose column
+// list changes with the group stage — so the workspace stays hidden until the
+// script confirms it's running, same JS-armed, no-JS-safe philosophy as
+// DorkBuilder and KqlBuilder.
+import { css } from 'styled-system/css';
+import Icon from './Icon.astro';
+import WorkspaceShell from './WorkspaceShell.astro';
+import { S1_EVENT_TYPES } from '../data/s1';
+import { S1_PACKAGES } from '../data/queryPackages';
+
+// Packages are offered grouped by investigation theme, so the loader reads as
+// "what am I looking for" rather than as one flat list of 14 titles.
+const packageThemes = S1_PACKAGES.reduce<{ theme: string; packages: typeof S1_PACKAGES }[]>((groups, p) => {
+  const existing = groups.find((g) => g.theme === p.theme);
+  if (existing) existing.packages.push(p);
+  else groups.push({ theme: p.theme, packages: [p] });
+  return groups;
+}, []);
+
+// Handed to the client script as a server-rendered JSON payload rather than
+// imported into it — same pattern DorkBuilder, SplBuilder and KqlBuilder use.
+// The point is bundle size: src/data/queryPackages.ts holds all three
+// languages' packages and imports all three query builders, so importing it
+// from this script would drag the KQL and SPL assembly code into this page's
+// bundle for nothing. Only the four fields the script reads are serialized.
+const packagePayload = S1_PACKAGES.map((p) => ({ id: p.id, finds: p.finds, dataSource: p.dataSource, tuning: p.tuning, spec: p.spec }));
+
+const topRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' });
+const selectorField = css({ display: 'flex', flexDirection: 'column', gap: '0.3rem', flex: '1 1 20rem', minW: '15rem' });
+const fieldLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+});
+const selectInput = css({
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.borderStrong)',
+  borderRadius: 'md',
+  px: '0.6rem',
+  py: '0.45rem',
+  cursor: 'pointer',
+  maxW: '100%',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const caption = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight: 1.6, m: 0, minH: '1.2em' });
+const paneLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
+  color: 'textMuted',
+  mb: '0.55rem',
+  mt: 0,
+});
+const stepBlock = css({ mb: '1.4rem' });
+const workspaceGrid = css({
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', lg: 'minmax(0, 1fr) minmax(0, 340px)' },
+  gap: '1.5rem',
+  alignItems: 'start',
+});
+
+const filterList = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+const filterRow = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: '0.4rem',
+  p: '0.45rem 0.55rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const filterAnd = css({
+  fontFamily: 'mono',
+  fontSize: '0.72rem',
+  fontWeight: 700,
+  color: 'primary',
+  flexShrink: 0,
+  whiteSpace: 'nowrap',
+});
+const filterSelect = css({
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  color: 'text',
+  bg: 'bg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.4rem',
+  py: '0.32rem',
+  cursor: 'pointer',
+  maxW: '100%',
+  minW: 0,
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const filterValue = css({
+  flex: '1 1 130px',
+  minW: 0,
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  color: 'text',
+  bg: 'bg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.45rem',
+  py: '0.32rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+const iconBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  w: '1.7rem',
+  h: '1.7rem',
+  borderRadius: 'sm',
+  border: '1px solid token(colors.border)',
+  bg: 'bg',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+const emptyNote = css({ fontSize: '0.82rem', color: 'textMuted', m: 0, fontStyle: 'italic' });
+
+// Scroll, never grow — same convention as the other tools' output boxes.
+const columnList = css({
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+  gap: '0.15rem 0.6rem',
+  maxH: '13rem',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  p: '0.5rem 0.6rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+});
+const checkRow = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontFamily: 'mono',
+  fontSize: '0.76rem',
+  color: 'text',
+  cursor: 'pointer',
+  py: '0.12rem',
+  minW: 0,
+  _hover: { color: 'primary' },
+});
+const checkLabelText = css({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+
+// `&[hidden]` is explicit because these classes set `display` unconditionally,
+// and an author-origin display always beats the UA stylesheet's
+// `[hidden]{display:none}` — see CLAUDE.md's Debugging gotchas.
+const inlineRow = css({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.4rem',
+  alignItems: 'center',
+  '&[hidden]': { display: 'none' },
+});
+const blockWrap = css({ display: 'block', '&[hidden]': { display: 'none' } });
+const smallLabel = css({ fontFamily: 'sans', fontSize: '0.75rem', color: 'textMuted', flexShrink: 0 });
+const numberInput = css({
+  w: '5.5rem',
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.borderStrong)',
+  borderRadius: 'sm',
+  px: '0.45rem',
+  py: '0.32rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+});
+const aliasInput = css({
+  w: '9rem',
+  minW: 0,
+  fontFamily: 'mono',
+  fontSize: '0.78rem',
+  color: 'text',
+  bg: 'bg',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  px: '0.45rem',
+  py: '0.32rem',
+  transition: 'border-color 150ms ease',
+  _focus: { outline: 'none', borderColor: 'primary' },
+  '&::placeholder': { color: 'textMuted', opacity: 0.7 },
+});
+
+const stage = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem', position: { lg: 'sticky' }, top: { lg: '90px' } });
+const outputBox = css({
+  m: 0,
+  p: '0.8rem 0.9rem',
+  fontFamily: 'mono',
+  fontSize: '0.82rem',
+  lineHeight: 1.7,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  maxH: '22rem',
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  minH: '5rem',
+});
+const msgList = css({ display: 'flex', flexDirection: 'column', gap: '0.4rem', m: 0, p: 0, listStyle: 'none' });
+const msgBase = {
+  fontSize: '0.78rem',
+  lineHeight: 1.6,
+  m: 0,
+  pl: '0.6rem',
+  borderLeft: '2px solid token(colors.border)',
+} as const;
+const msgWarn = css({ ...msgBase, color: 'text', borderLeftColor: 'accent' });
+const msgTip = css({ ...msgBase, color: 'textMuted' });
+
+const actionCol = css({ display: 'flex', flexDirection: 'column', gap: '0.5rem' });
+// Plain objects, not pre-atomized css() calls, so the primary variant merges
+// deeply and deterministically overrides _hover.color — see STYLE_GUIDE.md.
+const actionBtnBase = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.4rem',
+  fontSize: '0.85rem',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  px: '0.8rem',
+  py: '0.5rem',
+  borderRadius: 'md',
+  border: '1px solid token(colors.border)',
+  color: 'text',
+  cursor: 'pointer',
+  bg: 'bgCard',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+} as const;
+const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
+const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
+const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: '0.35rem' });
+
+const packageNote = css({
+  fontSize: '0.82rem',
+  color: 'textMuted',
+  lineHeight: 1.65,
+  m: 0,
+  p: '0.6rem 0.75rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  '&[hidden]': { display: 'none' },
+});
+const hintNote = css({ fontSize: '0.76rem', color: 'textMuted', mt: '0.5rem', lineHeight: 1.6 });
+const monoAccent = css({ fontFamily: 'mono', color: 'primary' });
+---
+
+<WorkspaceShell
+  hook="data-s1-builder"
+  noJsMessage="The interactive PowerQuery builder needs JavaScript enabled. The DFIR packages and the field reference further down the page are plain text and work without it."
+  gap="1.25rem"
+  attrs={{ 'data-s1-packages': JSON.stringify(packagePayload) }}
+>
+  <div class={topRow}>
+    <div class={selectorField}>
+      <label class={fieldLabel} for="s1-package">DFIR package</label>
+      <select id="s1-package" class={selectInput} data-s1-package>
+        <option value="">— Build from scratch —</option>
+        {
+          packageThemes.map((group) => (
+            <optgroup label={group.theme}>
+              {group.packages.map((p) => <option value={p.id}>{p.title}</option>)}
+            </optgroup>
+          ))
+        }
+      </select>
+    </div>
+
+    <button type="button" class={smallBtn} data-s1-reset data-sound="tick" title="Reset the builder to its defaults" aria-label="Reset the builder to its defaults">
+      <Icon name="rotate-cw" size={13} /> Reset
+    </button>
+  </div>
+
+  <p class={packageNote} data-s1-package-note role="status" aria-live="polite" hidden></p>
+
+  <div class={workspaceGrid}>
+    <div>
+      <div class={stepBlock}>
+        <p class={paneLabel}>Filter expression</p>
+        <div class={filterList} data-s1-filters></div>
+        <p class={emptyNote} data-s1-filters-empty hidden>No terms yet — PowerQuery needs at least one before the first pipe.</p>
+        <div class={css({ mt: '0.55rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' })}>
+          <button type="button" class={smallBtn} data-s1-add-filter data-sound="tick" title="Add another filter term">
+            <Icon name="list" size={13} /> Add term
+          </button>
+        </div>
+        <p class={hintNote}>
+          Terms are separated by a space, which SentinelOne reads as an implicit <code class={monoAccent}>AND</code>. There is
+          no OR grouping here — for "any of these values" use <code class={monoAccent}>in</code> rather than several terms.
+        </p>
+      </div>
+
+      <div class={stepBlock}>
+        <p class={paneLabel}>Group</p>
+        <label class={checkRow}>
+          <input type="checkbox" data-s1-group-on />
+          <span class={checkLabelText}>Aggregate with <code class={monoAccent}>| group</code></span>
+        </label>
+        <div class={blockWrap} data-s1-group-wrap hidden>
+          <div class={css({ display: 'flex', flexDirection: 'column', gap: '0.4rem', mt: '0.5rem' })} data-s1-agg-rows></div>
+          <div class={css({ mt: '0.5rem' })}>
+            <div class={inlineRow}>
+              <span class={smallLabel}>by</span>
+              <select class={filterSelect} data-s1-by-1 aria-label="First group-by field"></select>
+              <select class={filterSelect} data-s1-by-2 aria-label="Second group-by field"></select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class={stepBlock} data-s1-narrow-block>
+        <p class={paneLabel}>Narrow the result</p>
+        <div class={inlineRow}>
+          <span class={smallLabel}>| filter</span>
+          <select class={filterSelect} data-s1-narrow-col aria-label="Column to narrow on"></select>
+          <select class={filterSelect} data-s1-narrow-op aria-label="Comparison"></select>
+          <input type="text" inputmode="numeric" class={numberInput} data-s1-narrow-val placeholder="number" aria-label="Comparison value" autocomplete="off" spellcheck="false" />
+        </div>
+        <p class={hintNote}>
+          A numeric comparison applied after the group stage — this is how you reach the RARE end of a distribution, since the
+          builder only emits a descending <code class={monoAccent}>sort</code>.
+        </p>
+      </div>
+
+      <div class={stepBlock}>
+        <p class={paneLabel}>Sort &amp; limit</p>
+        <div class={inlineRow}>
+          <span class={smallLabel}>| sort −</span>
+          <select class={filterSelect} data-s1-sort-col aria-label="Column to sort on, descending"></select>
+          <label class={smallLabel} for="s1-limit">Limit</label>
+          <input type="number" id="s1-limit" class={numberInput} min="1" step="1" value="200" data-s1-limit />
+        </div>
+      </div>
+
+      <div class={stepBlock} data-s1-columns-block>
+        <p class={paneLabel}>Columns to return</p>
+        {/* The two data-*-class attributes hand the script the Panda-generated
+            class names for the rows it builds at runtime — same pattern as
+            KqlBuilder's own project list. */}
+        <div
+          class={columnList}
+          data-s1-columns
+          data-check-class={checkRow}
+          data-name-class={checkLabelText}
+          role="group"
+          aria-label="Columns to return"
+        >
+        </div>
+        <div class={css({ mt: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' })}>
+          <button type="button" class={smallBtn} data-s1-columns-clear data-sound="tick" title="Return every field">
+            <Icon name="x" size={13} /> Return everything
+          </button>
+          <span class={css({ fontSize: '0.76rem', color: 'textMuted' })} data-s1-columns-count></span>
+        </div>
+      </div>
+    </div>
+
+    <div class={stage}>
+      <p class={paneLabel}>Query</p>
+      <pre class={outputBox} tabindex="0" role="region" aria-label="Generated S1QL query"><code data-s1-output>&nbsp;</code></pre>
+      <ul class={msgList} data-s1-messages data-warn-class={msgWarn} data-tip-class={msgTip} aria-live="polite"></ul>
+      <div class={actionCol}>
+        <button type="button" class={primaryActionBtn} data-s1-copy data-copy-pop data-sound="copy" title="Copy the query to the clipboard">
+          <Icon name="copy" size={15} /> Copy query
+        </button>
+      </div>
+      <p class={caption}>
+        Set the time range in the Singularity console — PowerQuery takes it from the picker, not from the query text.
+      </p>
+    </div>
+  </div>
+
+  <template data-s1-row-template>
+    <div class={filterRow} data-s1-filter-row>
+      <span class={filterAnd} aria-hidden="true">AND</span>
+      <select class={filterSelect} data-s1-field aria-label="Field"></select>
+      <select class={filterSelect} data-s1-op aria-label="Operator"></select>
+      <input type="text" class={filterValue} data-s1-val autocomplete="off" spellcheck="false" aria-label="Value" />
+      <button type="button" class={iconBtn} data-s1-remove data-sound="tick" title="Remove this term" aria-label="Remove this term">
+        <Icon name="x" size={13} />
+      </button>
+    </div>
+  </template>
+
+  <template data-s1-agg-template>
+    <div class={filterRow} data-s1-agg-row>
+      <select class={filterSelect} data-s1-agg-fn aria-label="Aggregate function"></select>
+      <select class={filterSelect} data-s1-agg-field aria-label="Field to aggregate"></select>
+      <input type="text" class={aliasInput} data-s1-agg-alias placeholder="output name" autocomplete="off" spellcheck="false" aria-label="Output column name" />
+    </div>
+  </template>
+</WorkspaceShell>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  import { S1_AGGREGATIONS, S1_EVENT_TYPES, S1_FIELDS } from '../data/s1';
+  import { buildS1Query, defaultS1Spec, findS1Aggregation, findS1Field, s1AvailableColumns, s1OperatorsForKind } from '../utils/s1';
+  import { persistToolSession } from '../scripts/toolSession';
+  import { pop } from '../scripts/copyPop';
+
+  (function () {
+    var AGG_ROWS = 3;
+
+    function option(value, label) {
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      return opt;
+    }
+
+    // Replace a <select>'s options, keeping the current value selected when it
+    // still exists in the new list.
+    function fillSelect(sel, values, labels, blankLabel) {
+      var previous = sel.value;
+      sel.innerHTML = '';
+      if (blankLabel !== null && blankLabel !== undefined) sel.appendChild(option('', blankLabel));
+      for (var i = 0; i < values.length; i++) sel.appendChild(option(values[i], labels ? labels[i] : values[i]));
+      var kept = false;
+      for (var j = 0; j < sel.options.length; j++) {
+        if (sel.options[j].value === previous) { kept = true; break; }
+      }
+      sel.value = kept ? previous : sel.options.length ? sel.options[0].value : '';
+    }
+
+    function init() {
+      var roots = document.querySelectorAll('[data-s1-builder]:not([data-ready])');
+      Array.prototype.forEach.call(roots, function (root) {
+        var packageSel = root.querySelector('[data-s1-package]');
+        var packageNote = root.querySelector('[data-s1-package-note]');
+        var filtersEl = root.querySelector('[data-s1-filters]');
+        var filtersEmptyEl = root.querySelector('[data-s1-filters-empty]');
+        var addFilterBtn = root.querySelector('[data-s1-add-filter]');
+        var groupOnBox = root.querySelector('[data-s1-group-on]');
+        var groupWrap = root.querySelector('[data-s1-group-wrap]');
+        var aggRowsEl = root.querySelector('[data-s1-agg-rows]');
+        var by1Sel = root.querySelector('[data-s1-by-1]');
+        var by2Sel = root.querySelector('[data-s1-by-2]');
+        var narrowColSel = root.querySelector('[data-s1-narrow-col]');
+        var narrowOpSel = root.querySelector('[data-s1-narrow-op]');
+        var narrowValInput = root.querySelector('[data-s1-narrow-val]');
+        var sortColSel = root.querySelector('[data-s1-sort-col]');
+        var limitInput = root.querySelector('[data-s1-limit]');
+        var columnsBlock = root.querySelector('[data-s1-columns-block]');
+        var columnsEl = root.querySelector('[data-s1-columns]');
+        var columnsClearBtn = root.querySelector('[data-s1-columns-clear]');
+        var columnsCountEl = root.querySelector('[data-s1-columns-count]');
+        var outputEl = root.querySelector('[data-s1-output]');
+        var messagesEl = root.querySelector('[data-s1-messages]');
+        var copyBtn = root.querySelector('[data-s1-copy]');
+        var rowTemplate = root.querySelector('[data-s1-row-template]');
+        var aggTemplate = root.querySelector('[data-s1-agg-template]');
+        if (!filtersEl || !outputEl || !rowTemplate || !aggTemplate) return;
+
+        // Server-rendered payload (see the frontmatter comment on why these
+        // aren't imported). A malformed attribute degrades to "no packages
+        // offered" rather than breaking the whole builder.
+        var packages = [];
+        try { packages = JSON.parse(root.getAttribute('data-s1-packages') || '[]'); } catch (e) { packages = []; }
+
+        var fieldNames = S1_FIELDS.map(function (f) { return f.name; });
+        var eventTypeValues = S1_EVENT_TYPES.map(function (t) { return t.value; });
+        // Comparison operators offered on the post-group `| filter` stage —
+        // that stage is always a numeric narrowing, so only the numeric
+        // operators are relevant there.
+        var narrowOps = ['gte', 'gt', 'lte', 'lt', 'eq'];
+
+        // Owned save trigger — see the persistToolSession call at the bottom.
+        var sessionHandle = null;
+        var saveTimer = null;
+        var suppressSave = false;
+
+        function scheduleSave() {
+          if (suppressSave || !sessionHandle) return;
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(function () {
+            saveTimer = null;
+            sessionHandle.save();
+          }, 400);
+        }
+
+        // -- filter rows ----------------------------------------------------
+
+        function fillOperatorSelect(opSel, field) {
+          if (!field) { opSel.innerHTML = ''; return; }
+          var operators = s1OperatorsForKind(field.kind);
+          fillSelect(
+            opSel,
+            operators.map(function (o) { return o.id; }),
+            operators.map(function (o) { return o.symbol; }),
+            null,
+          );
+          for (var i = 0; i < operators.length; i++) if (operators[i].id === opSel.value) opSel.title = operators[i].hint;
+        }
+
+        function syncRow(row) {
+          var fieldSel = row.querySelector('[data-s1-field]');
+          var opSel = row.querySelector('[data-s1-op]');
+          var valInput = row.querySelector('[data-s1-val]');
+          var field = findS1Field(fieldSel.value);
+          fieldSel.title = field ? field.hint : '';
+          var operators = field ? s1OperatorsForKind(field.kind) : [];
+          var operator = null;
+          for (var i = 0; i < operators.length; i++) if (operators[i].id === opSel.value) operator = operators[i];
+          if (!operator) {
+            fillOperatorSelect(opSel, field);
+            for (var j = 0; j < operators.length; j++) if (operators[j].id === opSel.value) operator = operators[j];
+          }
+          opSel.title = operator ? operator.hint : '';
+          if (operator && operator.form === 'list') valInput.placeholder = 'value, value, value';
+          else if (field && field.kind === 'numeric') valInput.placeholder = 'number';
+          else if (fieldSel.value === 'event.type') valInput.placeholder = eventTypeValues[0];
+          else valInput.placeholder = 'value';
+          // event.type is a closed vocabulary in this tool, so the verified
+          // values are offered as a datalist rather than left to memory.
+          if (fieldSel.value === 'event.type') valInput.setAttribute('list', 's1-event-types');
+          else valInput.removeAttribute('list');
+        }
+
+        function addFilterRow(preset) {
+          var node = rowTemplate.content.cloneNode(true);
+          var row = node.querySelector('[data-s1-filter-row]');
+          var fieldSel = row.querySelector('[data-s1-field]');
+          var opSel = row.querySelector('[data-s1-op]');
+          var valInput = row.querySelector('[data-s1-val]');
+          fillSelect(fieldSel, fieldNames, fieldNames, null);
+          if (preset && preset.field) fieldSel.value = preset.field;
+          fillOperatorSelect(opSel, findS1Field(fieldSel.value));
+          if (preset && preset.operatorId) opSel.value = preset.operatorId;
+          syncRow(row);
+          if (preset && preset.value) valInput.value = preset.value;
+
+          fieldSel.addEventListener('change', function () {
+            fillOperatorSelect(opSel, findS1Field(fieldSel.value));
+            syncRow(row);
+            render();
+          });
+          opSel.addEventListener('change', function () { syncRow(row); render(); });
+          valInput.addEventListener('input', render);
+          row.querySelector('[data-s1-remove]').addEventListener('click', function () {
+            row.remove();
+            render();
+          });
+          filtersEl.appendChild(row);
+          return row;
+        }
+
+        function filterRows() {
+          return Array.prototype.slice.call(filtersEl.querySelectorAll('[data-s1-filter-row]'));
+        }
+
+        // -- aggregate rows -------------------------------------------------
+
+        function buildAggRows() {
+          aggRowsEl.innerHTML = '';
+          for (var i = 0; i < AGG_ROWS; i++) {
+            var node = aggTemplate.content.cloneNode(true);
+            var row = node.querySelector('[data-s1-agg-row]');
+            var fnSel = row.querySelector('[data-s1-agg-fn]');
+            var fieldSel = row.querySelector('[data-s1-agg-field]');
+            fillSelect(
+              fnSel,
+              S1_AGGREGATIONS.map(function (a) { return a.id; }),
+              S1_AGGREGATIONS.map(function (a) { return a.label; }),
+              '— none —',
+            );
+            fillSelect(fieldSel, fieldNames, fieldNames, null);
+            fnSel.addEventListener('change', function () { syncAggRows(); render(); });
+            fieldSel.addEventListener('change', render);
+            row.querySelector('[data-s1-agg-alias]').addEventListener('input', render);
+            aggRowsEl.appendChild(row);
+          }
+          syncAggRows();
+        }
+
+        function aggRows() {
+          return Array.prototype.slice.call(aggRowsEl.querySelectorAll('[data-s1-agg-row]'));
+        }
+
+        // count() takes no field, so its field picker is hidden rather than
+        // left showing a value that has no effect on the output.
+        function syncAggRows() {
+          aggRows().forEach(function (row) {
+            var meta = findS1Aggregation(row.querySelector('[data-s1-agg-fn]').value);
+            var fieldSel = row.querySelector('[data-s1-agg-field]');
+            fieldSel.hidden = !meta || !meta.needsField;
+            if (meta && meta.needsField) {
+              var allowed = S1_FIELDS.filter(function (f) { return meta.fieldKinds.indexOf(f.kind) !== -1; }).map(function (f) { return f.name; });
+              fillSelect(fieldSel, allowed, allowed, null);
+            }
+          });
+        }
+
+        // -- columns ---------------------------------------------------------
+
+        function buildColumnList() {
+          // Clear-then-rebuild. The clear is the documented-safe
+          // `innerHTML = ''` form (no HTML string is ever assembled from
+          // data); every node below is built with createElement/textContent.
+          columnsEl.innerHTML = '';
+          var checkClass = columnsEl.getAttribute('data-check-class') || '';
+          var nameClass = columnsEl.getAttribute('data-name-class') || '';
+          for (var i = 0; i < S1_FIELDS.length; i++) {
+            var field = S1_FIELDS[i];
+            var label = document.createElement('label');
+            label.className = checkClass;
+            label.title = field.hint;
+            var box = document.createElement('input');
+            box.type = 'checkbox';
+            box.value = field.name;
+            box.setAttribute('data-s1-column-box', '');
+            box.addEventListener('change', render);
+            var span = document.createElement('span');
+            span.className = nameClass;
+            span.textContent = field.name;
+            label.appendChild(box);
+            label.appendChild(span);
+            columnsEl.appendChild(label);
+          }
+        }
+
+        function selectedColumns() {
+          return Array.prototype.slice
+            .call(columnsEl.querySelectorAll('[data-s1-column-box]'))
+            .filter(function (b) { return b.checked; })
+            .map(function (b) { return b.value; });
+        }
+
+        // -- spec + render ----------------------------------------------------
+
+        function readSpec() {
+          var filters = filterRows().map(function (row) {
+            return {
+              field: row.querySelector('[data-s1-field]').value,
+              operatorId: row.querySelector('[data-s1-op]').value,
+              value: row.querySelector('[data-s1-val]').value,
+            };
+          });
+
+          var group = null;
+          if (groupOnBox.checked) {
+            var aggregations = [];
+            aggRows().forEach(function (row) {
+              var id = row.querySelector('[data-s1-agg-fn]').value;
+              if (!id) return;
+              aggregations.push({
+                aggregationId: id,
+                field: row.querySelector('[data-s1-agg-field]').value,
+                alias: row.querySelector('[data-s1-agg-alias]').value,
+              });
+            });
+            var by = [];
+            if (by1Sel.value) by.push(by1Sel.value);
+            if (by2Sel.value) by.push(by2Sel.value);
+            group = { aggregations: aggregations, by: by };
+          }
+
+          var rawLimit = limitInput.value.trim();
+          return {
+            filters: filters,
+            group: group,
+            postFilter: narrowColSel.value
+              ? { column: narrowColSel.value, operatorId: narrowOpSel.value, value: narrowValInput.value }
+              : null,
+            sort: sortColSel.value,
+            limit: rawLimit === '' ? null : Number(rawLimit),
+            columns: groupOnBox.checked ? [] : selectedColumns(),
+          };
+        }
+
+        function messageItem(text, className) {
+          var li = document.createElement('li');
+          li.className = className;
+          li.textContent = text;
+          return li;
+        }
+
+        function render() {
+          groupWrap.hidden = !groupOnBox.checked;
+          // group and columns are mutually exclusive in this builder — a group
+          // stage already decides exactly which columns come out.
+          columnsBlock.hidden = groupOnBox.checked;
+          syncAggRows();
+
+          var spec = readSpec();
+          var available = s1AvailableColumns(spec);
+          fillSelect(sortColSel, available, available, '— no sort —');
+          fillSelect(narrowColSel, available, available, '— no filter stage —');
+          spec = readSpec();
+
+          var result = buildS1Query(spec);
+          outputEl.textContent = result.query || ' ';
+
+          messagesEl.innerHTML = '';
+          for (var i = 0; i < result.warnings.length; i++) {
+            messagesEl.appendChild(messageItem(result.warnings[i], messagesEl.getAttribute('data-warn-class') || ''));
+          }
+          for (var j = 0; j < result.tips.length; j++) {
+            messagesEl.appendChild(messageItem(result.tips[j], messagesEl.getAttribute('data-tip-class') || ''));
+          }
+
+          filtersEmptyEl.hidden = filterRows().length > 0;
+          var count = selectedColumns().length;
+          columnsCountEl.textContent = count === 0 ? 'None selected — every field is returned.' : count + ' selected.';
+
+          scheduleSave();
+        }
+
+        // -- apply a whole spec (packages, session restore, reset) ------------
+
+        function applySpec(spec) {
+          if (!spec) return;
+          filtersEl.innerHTML = '';
+          var filters = spec.filters || [];
+          for (var i = 0; i < filters.length; i++) addFilterRow(filters[i]);
+
+          groupOnBox.checked = !!spec.group;
+          groupWrap.hidden = !spec.group;
+          var aggregations = spec.group ? spec.group.aggregations || [] : [];
+          aggRows().forEach(function (row, index) {
+            var agg = aggregations[index];
+            var fnSel = row.querySelector('[data-s1-agg-fn]');
+            fnSel.value = agg ? agg.aggregationId : '';
+            row.querySelector('[data-s1-agg-alias]').value = agg ? agg.alias || '' : '';
+          });
+          syncAggRows();
+          aggRows().forEach(function (row, index) {
+            var agg = aggregations[index];
+            if (agg && agg.field) row.querySelector('[data-s1-agg-field]').value = agg.field;
+          });
+          by1Sel.value = spec.group && spec.group.by && spec.group.by[0] ? spec.group.by[0] : '';
+          by2Sel.value = spec.group && spec.group.by && spec.group.by[1] ? spec.group.by[1] : '';
+
+          columnsBlock.hidden = !!spec.group;
+          var columns = spec.columns || [];
+          Array.prototype.forEach.call(columnsEl.querySelectorAll('[data-s1-column-box]'), function (box) {
+            box.checked = columns.indexOf(box.value) !== -1;
+          });
+
+          // The sort/narrow pickers can only be populated once the rest of the
+          // spec is in place, since what they may reference depends on it.
+          var available = s1AvailableColumns(readSpec());
+          fillSelect(sortColSel, available, available, '— no sort —');
+          fillSelect(narrowColSel, available, available, '— no filter stage —');
+          sortColSel.value = spec.sort && available.indexOf(spec.sort) !== -1 ? spec.sort : '';
+          if (spec.postFilter && available.indexOf(spec.postFilter.column) !== -1) {
+            narrowColSel.value = spec.postFilter.column;
+            narrowOpSel.value = spec.postFilter.operatorId;
+            narrowValInput.value = spec.postFilter.value;
+          } else {
+            narrowColSel.value = '';
+            narrowValInput.value = '';
+          }
+
+          limitInput.value = spec.limit === null || spec.limit === undefined ? '' : String(spec.limit);
+          render();
+        }
+
+        function showPackageNote(pkg) {
+          if (!packageNote) return;
+          if (!pkg) {
+            packageNote.textContent = '';
+            packageNote.hidden = true;
+            return;
+          }
+          packageNote.textContent = pkg.finds + ' — needs: ' + pkg.dataSource + ' Tuning: ' + pkg.tuning;
+          packageNote.hidden = false;
+        }
+
+        // -- wiring ------------------------------------------------------------
+
+        by1Sel.addEventListener('change', render);
+        by2Sel.addEventListener('change', render);
+        groupOnBox.addEventListener('change', render);
+        narrowColSel.addEventListener('change', render);
+        narrowOpSel.addEventListener('change', render);
+        narrowValInput.addEventListener('input', render);
+        sortColSel.addEventListener('change', render);
+        limitInput.addEventListener('input', render);
+        addFilterBtn.addEventListener('click', function () { addFilterRow(null); render(); });
+        columnsClearBtn.addEventListener('click', function () {
+          Array.prototype.forEach.call(columnsEl.querySelectorAll('[data-s1-column-box]'), function (b) { b.checked = false; });
+          render();
+        });
+
+        packageSel.addEventListener('change', function () {
+          var id = packageSel.value;
+          if (!id) { showPackageNote(null); return; }
+          for (var i = 0; i < packages.length; i++) {
+            if (packages[i].id === id) {
+              applySpec(packages[i].spec);
+              showPackageNote(packages[i]);
+              return;
+            }
+          }
+        });
+
+        var status = document.createElement('div');
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;';
+        document.body.appendChild(status);
+
+        copyBtn.addEventListener('click', function () {
+          var text = outputEl.textContent || '';
+          if (!text.trim()) return;
+          navigator.clipboard.writeText(text).then(function () {
+            pop(copyBtn);
+            status.textContent = 'PowerQuery copied to clipboard';
+            setTimeout(function () { status.textContent = ''; }, 1600);
+          }).catch(function () {});
+        });
+
+        // -- boot -------------------------------------------------------------
+
+        fillSelect(by1Sel, fieldNames, fieldNames, '— none —');
+        fillSelect(by2Sel, fieldNames, fieldNames, '— none —');
+        fillSelect(
+          narrowOpSel,
+          narrowOps,
+          narrowOps.map(function (id) {
+            var symbols = { gte: '>=', gt: '>', lte: '<=', lt: '<', eq: '=' };
+            return symbols[id];
+          }),
+          null,
+        );
+        buildAggRows();
+        buildColumnList();
+        applySpec(defaultS1Spec());
+
+        // Session persistence: the tool's whole state IS the query spec, and
+        // the filter rows are created dynamically, so this serializes the spec
+        // itself rather than relying on toolSession's data-session-field
+        // auto-binding (which only sees elements present at init). Same shape
+        // and same reasoning as KqlBuilder's own call.
+        var session = persistToolSession({
+          root: root,
+          resetButton: '[data-s1-reset]',
+          serialize: function () { return readSpec(); },
+          restore: function (data) { applySpec(data); },
+          onReset: function () {
+            suppressSave = true;
+            packageSel.value = '';
+            showPackageNote(null);
+            applySpec(defaultS1Spec());
+            if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+            suppressSave = false;
+          },
+        });
+        sessionHandle = session;
+
+        root.setAttribute('data-ready', '');
+      });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>
+
+<datalist id="s1-event-types">
+  {S1_EVENT_TYPES.map((t) => <option value={t.value}>{t.hint}</option>)}
+</datalist>

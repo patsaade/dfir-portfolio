@@ -75,7 +75,7 @@ const textarea = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.7rem 0.85rem',
   minH: '8rem',
@@ -112,6 +112,10 @@ const fileBtn = css({
   cursor: 'pointer',
   transition: 'border-color 150ms ease',
   _hover: { borderColor: 'primary', color: 'primary' },
+  // The file input inside this label is visually hidden but focusable, so the
+  // label has to surface the focus ring on its behalf — otherwise tabbing to
+  // it puts focus somewhere with no visible indicator (WCAG 2.4.7).
+  '&:has(input:focus-visible)': { outline: '2px solid token(colors.primary)', outlineOffset: '2px', borderColor: 'primary' },
 });
 const fileName = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
 
@@ -272,7 +276,7 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
       <div class={fileRow} data-mftusn-file-row hidden>
         <label class={fileBtn}>
           <Icon name="download" size={15} /> Choose file
-          <input type="file" data-mftusn-file class={css({ display: 'none' })} />
+          <input type="file" data-mftusn-file class={css({ position: 'absolute', w: '1px', h: '1px', p: 0, m: '-1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 })} />
         </label>
         <span class={fileName} data-mftusn-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
       </div>
@@ -309,7 +313,7 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
 
     <div>
       <p class={paneLabel}>$STANDARD_INFORMATION vs $FILE_NAME</p>
-      <div class={tableWrap} data-mftusn-mft-compare-wrap>
+      <div class={tableWrap} data-mftusn-mft-compare-wrap tabindex="0" role="region" aria-label="Parsed records table">
         <table class={compareTable}>
           <thead>
             <tr>

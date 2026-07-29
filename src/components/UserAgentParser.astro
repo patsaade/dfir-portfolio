@@ -54,7 +54,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.75rem',
   py: '0.6rem',
@@ -225,7 +225,7 @@ const noteText = css({ fontSize: '0.82rem', color: 'text', lineHeight: 1.6, m: 0
     <div>
       <p class={paneLabel}>Caveats &amp; flags for this string</p>
       <p class={caption} data-uap-notes-empty role="status" aria-live="polite">Paste a string above to see what the parser can and can't tell you about it.</p>
-      <ul class={noteList} data-uap-note-list></ul>
+      <ul class={noteList} data-uap-note-list tabindex="0" aria-label="Parser notes"></ul>
       <template data-uap-note-template>
         <li class={noteRow}>
           <Icon name="alert-triangle" size={15} class={noteIcon} />

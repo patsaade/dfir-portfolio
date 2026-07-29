@@ -80,7 +80,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     final challenge's IPv4 pattern. Want to try any of them against your own text? Head to
     the <a href="/tools/regex-tester/" class={css({ color: 'primary', _hover: { textDecoration: 'underline' } })}>Regex Tester</a>.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Pattern library quick reference table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -144,7 +144,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </p>
     </div>
     <div>
-      <a href="/tools/regex-cheatsheet/" class={toolChip}>
+      <a href="/reference/regex-cheatsheet/" class={toolChip}>
         <Icon name="list" size={13} /> Regex Syntax Cheat Sheet <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>

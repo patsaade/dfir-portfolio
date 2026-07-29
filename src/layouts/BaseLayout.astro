@@ -46,7 +46,7 @@ const props = Astro.props;
   <body>
     <Background />
 
-    {/* Defines window.__sound before the nav's SoundToggle script runs. */}
+    {/* Eager loader only — defines window.__soundLoad(); the Web Audio engine (window.__sound) is dynamically imported on demand. */}
     <SoundEngine />
 
     <a
@@ -75,10 +75,12 @@ const props = Astro.props;
     {/* Site-wide DFIR sidebar — desktop/tablet only, no per-page gating (see CLAUDE.md invariant 13). */}
     <ToolSidebar />
 
-    {/* Animates every <details> element's open/close site-wide instead of the
-        native instant toggle — was written but never mounted (see CLAUDE.md
-        invariant 12 / AnimatedDetails.astro's own docblock, which already
-        documented this as sitewide behavior that wasn't actually running). */}
+    {/* Animates every <details> element's open/close instead of the native
+        instant toggle (see CLAUDE.md invariant 12). Mounted here so no page
+        has to opt in, but it is NOT a site-wide payload: the component is a
+        tiny gate that only dynamically imports the animation chunk when the
+        page actually contains a <details> — roughly 20 pages out of ~1,700.
+        See AnimatedDetails.astro's own docblock. */}
     <AnimatedDetails />
 
     {/* Slides a thumb behind the active segment of every segmented switch
@@ -96,11 +98,11 @@ const props = Astro.props;
         minH: '60vh',
         animation: 'fadeIn 400ms ease both',
         // ToolSidebar (invariant 13) is `position: fixed, left: 0` at `md`+,
-        // 236px wide (its own `RAIL_W` — kept as a literal here too, not an
+        // 240px wide (its own `RAIL_W` — kept as a literal here too, not an
         // import, since Panda needs a static string to generate a class;
         // update both together if the rail's width ever changes). Plain
         // `mx: 'auto'` centering computes each side's margin as
-        // `(viewport − 960) / 2`, which is only ≥ 236px once the viewport is
+        // `(viewport − 960) / 2`, which is only ≥ 240px once the viewport is
         // ~1432px wide — below that (which includes ordinary 1280×800/
         // 1366×768 laptop screens), the rail's fixed-position right edge
         // physically overlapped this column's own left edge, truncating
@@ -112,11 +114,11 @@ const props = Astro.props;
         // compound selector sometimes doesn't" gotcha) is kept in sync with
         // the rail's actual hidden/shown state by ToolSidebar.astro's own
         // `render()`, the same pattern that component already uses for
-        // `--sidebar-max-h`/`--rail-h`. The `236px` literal fallback inside
+        // `--sidebar-max-h`. The `240px` literal fallback inside
         // `var()` is what a no-JS visitor gets — correct, since the rail's
         // own server-rendered default is `data-view="shown"`.
         md: {
-          marginLeft: 'max(var(--sidebar-reserve, 236px), calc((100% - 960px) / 2))',
+          marginLeft: 'max(var(--sidebar-reserve, 240px), calc((100% - 960px) / 2))',
           marginRight: 'auto',
         },
       })}

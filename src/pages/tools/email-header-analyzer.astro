@@ -98,7 +98,7 @@ const attackChip = css({
   description="Paste raw email headers to walk the Received chain, read SPF/DKIM/DMARC verdicts, and flag From/Reply-To mismatches — entirely local."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Email Header Analyzer' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Email Header Analyzer' }]}
     eyebrow="Extractors"
     title="Email Header & Auth-Chain Analyzer"
     description="Paste a raw header block and get the Received chain (oldest hop first, with timing), SPF/DKIM/DMARC verdicts, and From/Reply-To/Return-Path mismatch flags — entirely in your browser."
@@ -136,7 +136,7 @@ const attackChip = css({
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> SPF / DKIM / DMARC verdict reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="SPF / DKIM / DMARC verdict reference table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -175,7 +175,7 @@ const attackChip = css({
     present, but Microsoft doesn't publish as granular a per-value table for it as it does for SCL/BCL, so it's
     described generally rather than tabulated here.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="Microsoft 365 SCL / BCL score reference table — SCL value">
     <table class={refTable}>
       <thead>
         <tr>
@@ -195,7 +195,7 @@ const attackChip = css({
       </tbody>
     </table>
   </div>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Microsoft 365 SCL / BCL score reference table — BCL value">
     <table class={refTable}>
       <thead>
         <tr>

@@ -24,7 +24,7 @@ describe('regex cheat sheet data', () => {
   });
 
   it('every category has a CATEGORY_META entry on the cheat sheet page', () => {
-    const pageSrc = readFileSync(resolve(root, 'src/pages/tools/regex-cheatsheet.astro'), 'utf-8');
+    const pageSrc = readFileSync(resolve(root, 'src/pages/reference/regex-cheatsheet.astro'), 'utf-8');
     const metaBlock = pageSrc.match(/const CATEGORY_META:[\s\S]*?\n};/);
     expect(metaBlock, 'expected a CATEGORY_META object in regex-cheatsheet.astro').not.toBeNull();
     const body = metaBlock![0];

@@ -32,7 +32,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.75rem',
   py: '0.6rem',
@@ -199,7 +199,7 @@ const categoryItemBtn = css({
                 <Icon name="copy" size={12} />
               </button>
             </div>
-            <ul class={categoryList} data-ioc-list />
+            <ul class={categoryList} data-ioc-list tabindex="0" aria-label="Extracted indicators"/>
           </div>
         ))
       }

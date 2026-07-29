@@ -1,0 +1,370 @@
+---
+// MITRE ATT&CK Coverage Map — the FULL Enterprise matrix (generated from MITRE's
+// official STIX), laid out by tactic in kill-chain order. Each technique links to
+// its MITRE page, its own detail page, and (where one exists) the glossary entry;
+// posts/labs that tag an `attack` ID mark it "covered". Searchable, with a
+// covered-only filter, a coverage summary, and a legend. Linked from the footer's
+// "More". Static page — prerendered to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import FilterToggle from '../../components/FilterToggle.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import TacticStepper from '../../components/TacticStepper.astro';
+import ViewToggle from '../../components/ViewToggle.astro';
+import TacticMatrix from '../../components/TacticMatrix.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { tag, card } from 'styled-system/recipes';
+import { getSortedPosts, getSortedLabs, tagSlug } from '../../utils/posts';
+import { termBySlug } from '../../data/securityTerms';
+import { ATTACK_TECHNIQUES, ATTACK_TACTIC_ORDER, ATTACK_TACTIC_DEFINITIONS, ATTACK_VERSION, ATTACK_TECHNIQUE_BY_ID } from '../../data/references';
+import { D3FEND_TECHNIQUES } from '../../data/d3fend';
+
+// Id → technique lookup (sub-technique parent lookups happen inside the
+// per-tactic render loop below; avoids an O(n²) .find() per technique) —
+// shared with d3fend/[id].astro and event-ids/[slug].astro's ATT&CK resolver.
+const attackById = ATTACK_TECHNIQUE_BY_ID;
+
+// Techniques explicitly covered by a post/lab (via its `attack` frontmatter).
+const [posts, labs] = await Promise.all([getSortedPosts(), getSortedLabs()]);
+const covered = new Set([...posts, ...labs].flatMap((p) => p.data.attack ?? []));
+// Techniques that have at least one D3FEND countermeasure (the defensive cross-link).
+const defended = new Set(D3FEND_TECHNIQUES.flatMap((d) => d.counters));
+
+// Group techniques by tactic; render tactics in kill-chain order, populated only.
+// A technique can sit under several tactics — list it under each, like the matrix.
+const byTactic: Record<string, typeof ATTACK_TECHNIQUES> = {};
+for (const t of ATTACK_TECHNIQUES) for (const tac of t.tactics) (byTactic[tac] ??= []).push(t);
+const tactics = ATTACK_TACTIC_ORDER.filter((name) => byTactic[name]?.length);
+const tacticDefinitions = new Map(ATTACK_TACTIC_DEFINITIONS.map((t) => [t.name, t.definition]));
+// Anchor each technique's id to its first render only (no duplicate DOM ids).
+const anchored = new Set<string>();
+
+const total = ATTACK_TECHNIQUES.length;
+const linkedCount = ATTACK_TECHNIQUES.filter((t) => t.glossarySlug).length;
+const coveredCount = ATTACK_TECHNIQUES.filter((t) => covered.has(t.id)).length;
+
+// Kill-chain stepper: one pill per tactic, in official order, sized by technique
+// count with the covered count highlighted.
+const stepperItems = tactics.map((name) => ({
+  id: tagSlug(name),
+  label: name,
+  count: byTactic[name].length,
+  highlight: byTactic[name].filter((t) => covered.has(t.id)).length,
+}));
+
+// Matrix view (ViewToggle/TacticMatrix): the same byTactic grouping, MITRE
+// Navigator-style — one column per tactic, sub-techniques indented, "covered"
+// as the accent highlight (matching the list view's left-border treatment).
+const matrixColumns = tactics.map((name) => ({
+  tactic: name,
+  id: tagSlug(name),
+  cells: byTactic[name].map((t) => ({
+    id: t.id,
+    name: `${t.id} ${t.name}`,
+    href: `/reference/attack-map/${t.id}/`,
+    sub: t.id.includes('.'),
+    accent: covered.has(t.id),
+  })),
+}));
+
+// Platform facet for the search combobox — cross-cuts the tactic grouping, so you
+// can narrow to e.g. Windows or Linux techniques. A technique runs on several.
+const platCounts: Record<string, number> = {};
+for (const t of ATTACK_TECHNIQUES) for (const p of t.platforms ?? []) platCounts[p] = (platCounts[p] ?? 0) + 1;
+const platformOptions = Object.entries(platCounts)
+  .sort((a, b) => b[1] - a[1])
+  .map(([p, n]) => ({ value: tagSlug(p), label: p, count: n }));
+
+// Each tactic is a collapsible <details>, matching the glossary / Tools / Certifications pages.
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .tactic-title': { color: 'primary' } },
+});
+const chevCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease', 'details[open] &': { transform: 'rotate(90deg)' } });
+const tacticHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', m: 0, fontSize: '1.05rem', fontWeight: 700 });
+const tacCount = css({ fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem' });
+const tacCoveredCount = css({ fontFamily: 'sans', fontSize: '0.72rem', fontWeight: 600, color: 'accent' });
+// A <span> (not <p>) since it lives inside <summary>, whose content model is
+// phrasing content — display:block here is purely visual, not a flow element.
+const tacDefinitionP = css({ display: 'block', color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, mt: '0.4rem', ml: '2.55rem' });
+const grid = css({ mt: '1rem' }); // columns/gap come from the shared .card-grid class
+const chip = `${card()} ${css({
+  scrollMarginTop: '90px', // clear the sticky header when linked to via #<id>
+  '&[data-covered]': { borderLeftWidth: '3px', borderLeftColor: 'accent' },
+  '&:target': { borderColor: 'primary', boxShadow: 'cardHover' },
+})}`;
+const chipTop = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' });
+const chipId = css({ fontFamily: 'mono', fontSize: '0.72rem', fontWeight: 600, color: 'primary' });
+const coveredBadge = tag({ tone: 'accent' });
+const chipName = css({ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600, fontSize: '0.9rem', color: 'text', lineHeight: 1.3, _hover: { color: 'primary' } });
+const chipGloss = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem', fontWeight: 600, color: 'textMuted', mt: 'auto', _hover: { color: 'primary' } });
+// Sub-technique lineage line (mirrors D3FEND's parent chip for the same visual language).
+const chipParent = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem', fontWeight: 600, color: 'textMuted' });
+
+// Search + controls.
+const statLink = css({ color: 'primary', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', _hover: { textDecoration: 'underline' } });
+const legendRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1.25rem', mb: '1.75rem', fontSize: '0.78rem', color: 'textMuted' });
+const legendItem = css({ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' });
+const legendSwatch = css({ display: 'inline-block', w: '14px', h: '14px', bg: 'bgCard', border: '1px solid token(colors.border)', borderLeftWidth: '3px', borderLeftColor: 'accent', borderRadius: '2px', flexShrink: 0 });
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="MITRE ATT&CK Coverage Map"
+  description="The full MITRE ATT&CK Enterprise matrix, by tactic — every technique linked to its official MITRE page and a detail page, with the ones I've covered marked."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'MITRE ATT&CK Coverage Map' }]}
+    eyebrow="Frameworks"
+    title="MITRE ATT&CK Coverage Map"
+    description="The full Enterprise matrix, laid out by tactic. Each technique links to its official MITRE page and detail entry; many link straight to the glossary, and the ones I've written about are marked."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      <strong class={css({ color: 'text' })}>MITRE ATT&CK</strong> — short for <em>Adversarial Tactics,
+      Techniques, and Common Knowledge</em> — is a free, openly maintained knowledge base of how real
+      attackers operate. <em>Tactics</em> are the adversary's goals (the <em>why</em>, e.g. Persistence);{' '}
+      <em>techniques</em> are the specific methods used to reach them (the <em>how</em>, e.g. Process
+      Injection). Mapping detections and writeups to it gives defenders a shared vocabulary for
+      describing intrusions.
+    </p>
+  </aside>
+
+  {/* Cross-link to the defensive counterpart */}
+  <a
+    href="/reference/d3fend/"
+    class={css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      mb: '1.5rem',
+      p: '0.7rem 1rem',
+      borderRadius: 'md',
+      border: '1px solid token(colors.border)',
+      bg: 'bgCard',
+      fontSize: '0.9rem',
+      color: 'text',
+      transition: 'border-color 200ms ease, color 200ms ease',
+      _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+    })}
+  >
+    <Icon name="shield" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>See the defensive counterpart — <strong class={css({ fontWeight: 700 })}>MITRE D3FEND Map</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
+  {/* Search + platform filter (typeahead combobox) */}
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="attack-cb"
+      options={platformOptions}
+      placeholder={`Search ${total} techniques by name or ID, or type a platform…`}
+      label="Search ATT&CK techniques or filter by platform"
+    />
+  </div>
+
+  {/* Stats + controls */}
+  <div class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem 1rem', flexWrap: 'wrap', mb: '0.85rem' })}>
+    <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.9rem', color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span><span id="attack-count">{total}</span> techniques</span>
+      <span aria-hidden="true">·</span>
+      <span class={css({ color: 'accent', fontWeight: 600 })}>{coveredCount} covered in writeups</span>
+      <span aria-hidden="true">·</span>
+      <span>{linkedCount} in the glossary</span>
+      <span aria-hidden="true">·</span>
+      <a href="https://attack.mitre.org/" target="_blank" rel="noopener" class={statLink}>ATT&CK v{ATTACK_VERSION} <Icon name="external-link" size={12} /></a>
+    </p>
+    <div class={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', w: '100%' })}>
+      {/* Covered, Glossary and the D3FEND cross-link mirror the D3FEND map's own
+          row exactly (same order, same short-noun labels), so the two maps read
+          as one control. Detection and Mitigations have no D3FEND counterpart —
+          they come from MITRE's ATT&CK data, which D3FEND's ontology doesn't
+          publish an equivalent of — so they trail the shared three. */}
+      <FilterToggle id="attack-covered-toggle" icon="check" label="Covered" tone="accent" />
+      <FilterToggle id="attack-gloss-toggle" icon="book-open" label="Glossary" tone="primary" />
+      <FilterToggle id="attack-defense-toggle" icon="shield" label="Defense" tone="primary" />
+      <FilterToggle id="attack-detection-toggle" icon="search" label="Detection" tone="primary" />
+      <FilterToggle id="attack-mitigation-toggle" icon="wrench" label="Mitigations" tone="primary" />
+      {/* Collapse-all and the List/Matrix toggle are the two right-aligned
+          controls, grouped so they WRAP AS A UNIT. Previously CollapseAll
+          carried the `ml: auto` itself, so when it and the toggle happened to
+          land on the same flex line the auto margin shoved both right and the
+          toggle overflowed the container. The group now owns the auto margin
+          and CollapseAll's own is neutralised inside it. */}
+      <div class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', ml: { sm: 'auto' } })}>
+        <CollapseAll target="[data-tactic-group]" class={css({ ml: 0 })} />
+        <ViewToggle listTarget="#attack-list-view" matrixTarget="#attack-matrix-view" storageKey="attack-map-view" />
+      </div>
+    </div>
+  </div>
+
+  {/* Kill-chain stepper — the tactic sequence at a glance, jump to any section */}
+  <TacticStepper items={stepperItems} tone="primary" icon="crosshair" ariaLabel="Jump to ATT&CK tactic" />
+
+  {/* Legend */}
+  <div class={legendRow}>
+    <span class={legendItem}><span class={legendSwatch} aria-hidden="true"></span> covered in a writeup</span>
+    <span class={legendItem}><Icon name="book-open" size={13} class={css({ color: 'textMuted' })} /> links to the glossary entry</span>
+    <span class={legendItem}><Icon name="layers" size={13} class={css({ color: 'textMuted' })} /> sub-technique of a parent technique</span>
+    <span class={legendItem}><Icon name="arrow-right" size={13} class={css({ color: 'textMuted' })} /> opens the technique detail page</span>
+  </div>
+
+  <div id="attack-list-view" class={css({ display: 'flex', flexDirection: 'column' })}>
+    {
+      tactics.map((tactic) => {
+        const tacCovered = byTactic[tactic].filter((t) => covered.has(t.id)).length;
+        const tacDefinition = tacticDefinitions.get(tactic);
+        return (
+          <details id={tagSlug(tactic)} data-tactic-group open class={groupDetails}>
+            <summary class={groupSummary}>
+              <h2 class={tacticHead}>
+                <Icon name="chevron-right" size={17} class={chevCls} />
+                <Icon name="crosshair" size={18} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class="tactic-title">{tactic}</span>
+                <span class={tacCount}>{byTactic[tactic].length}</span>
+                {tacCovered > 0 && <span class={tacCoveredCount}>{tacCovered} covered</span>}
+              </h2>
+              {tacDefinition && <span class={tacDefinitionP}>{tacDefinition}</span>}
+            </summary>
+            <div class={`card-grid ${grid}`}>
+              {byTactic[tactic].map((t) => {
+                const gloss = t.glossarySlug ? termBySlug(t.glossarySlug) : undefined;
+                const firstHere = !anchored.has(t.id);
+                if (firstHere) anchored.add(t.id);
+                const isCovered = covered.has(t.id);
+                const parent = t.id.includes('.') ? attackById.get(t.id.split('.')[0]) : undefined;
+                return (
+                  <div
+                    id={firstHere ? t.id : undefined}
+                    class={chip}
+                    data-attack-id={t.id}
+                    data-platforms={`|${(t.platforms ?? []).map(tagSlug).join('|')}|`}
+                    data-attack-card={`${t.id} ${t.name} ${tactic} ${gloss ? gloss.term : ''}`.toLowerCase()}
+                    {...(isCovered ? { 'data-covered': true } : {})}
+                    {...(gloss ? { 'data-has-gloss': true } : {})}
+                    {...(defended.has(t.id) ? { 'data-has-defense': true } : {})}
+                    {...((t.detection?.length ?? 0) > 0 ? { 'data-has-detection': true } : {})}
+                    {...((t.mitigations?.length ?? 0) > 0 ? { 'data-has-mitigation': true } : {})}
+                  >
+                    <div class={chipTop}>
+                      <span class={chipId}>{t.id}</span>
+                      {isCovered && <span class={coveredBadge}>covered</span>}
+                    </div>
+                    <a href={`/reference/attack-map/${t.id}/`} class={chipName}>
+                      {t.name}
+                      <Icon name="arrow-right" size={12} class={css({ color: 'textMuted', flexShrink: 0 })} />
+                    </a>
+                    {gloss && (
+                      <a href={`/reference/glossary/${gloss.slug}/`} class={chipGloss}>
+                        <Icon name="book-open" size={12} /> {gloss.term}
+                      </a>
+                    )}
+                    {parent && (
+                      <span class={chipParent}>
+                        <Icon name="layers" size={12} /> sub-technique of {parent.name}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        );
+      })
+    }
+  </div>
+
+  <div id="attack-matrix-view" hidden>
+    <p class={css({ color: 'textMuted', fontSize: '0.82rem', mb: '0.75rem' })}>
+      MITRE Navigator-style layout — one column per tactic, sub-techniques indented. Search and filters above apply to the list view only.
+    </p>
+    <TacticMatrix columns={matrixColumns} ariaLabel="MITRE ATT&CK technique matrix" tone="primary" />
+  </div>
+
+  <p id="attack-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No techniques match.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/drills/attack/" class={toolChip}>
+        <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>Practice recognizing techniques from real behavior, drawn from this same dataset.</p>
+    </div>
+    <div>
+      <a href="/reference/threat-actors/" class={toolChip}>
+        <Icon name="user" size={13} /> Threat Actor / APT Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>See which real-world groups are documented using each technique.</p>
+    </div>
+  </div>
+
+  <p class={css({ fontSize: '0.78rem', color: 'textMuted', mt: '2.5rem', pt: '1.5rem', borderTop: '1px solid token(colors.border)', lineHeight: 1.6 })}>
+    ATT&CK® and MITRE ATT&CK® are registered trademarks of The MITRE Corporation. Technique names and
+    IDs are drawn from the public ATT&CK knowledge base (v{ATTACK_VERSION}); this map links back to the canonical pages.
+  </p>
+
+  <ListFilter
+    config={{
+      comboboxId: 'attack-cb',
+      cardSelector: '[data-attack-card]',
+      searchAttr: 'data-attack-card',
+      groupSelector: '[data-tactic-group]',
+      countId: 'attack-count',
+      emptyId: 'attack-empty',
+      dedupeAttr: 'data-attack-id',
+      facetAttr: 'data-platforms',
+      facetMulti: true,
+      toggles: [
+        { id: 'attack-covered-toggle', attr: 'data-covered' },
+        { id: 'attack-gloss-toggle', attr: 'data-has-gloss' },
+        { id: 'attack-defense-toggle', attr: 'data-has-defense' },
+        { id: 'attack-detection-toggle', attr: 'data-has-detection' },
+        { id: 'attack-mitigation-toggle', attr: 'data-has-mitigation' },
+      ],
+      urlSync: { queryParam: 'q', facetParam: 'platform' },
+    }}
+  />
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['attack-map']} />
+</BaseLayout>

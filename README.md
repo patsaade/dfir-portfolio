@@ -52,8 +52,8 @@ This repo is the source for **patricksaade.com** — an **Astro + Panda CSS + MD
 deployed on Vercel via the `@astrojs/vercel` adapter (all routes prerendered to static HTML;
 CI type-checks, tests, and builds every push). The same build also serves
 **[cyberkit.win](https://cyberkit.win)**, a tools-only mirror on the same Vercel project: personal
-pages (About, Certifications, Blog, Labs) redirect to the DFIR tool hub there, and the nav/footer
-brand swaps accordingly — every DFIR/IT tool, reference, and drill is otherwise identical on both
+pages (About, Certifications, Blog, Labs) redirect to the homepage there, and the nav/footer
+brand swaps accordingly — every reference, tool, and drill is otherwise identical on both
 domains.
 
 ```bash

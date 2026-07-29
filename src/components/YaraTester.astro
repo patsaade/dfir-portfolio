@@ -68,7 +68,7 @@ const nameInput = css({
   fontWeight: 600,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.7rem',
   py: '0.5rem',
@@ -87,7 +87,7 @@ const kindSelect = css({
   fontSize: '0.8rem',
   color: 'text',
   bg: 'bgSubtle',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'sm',
   px: '0.5rem',
   py: '0.4rem',
@@ -105,7 +105,7 @@ const idInput = css({
   fontWeight: 700,
   color: 'primary',
   bg: 'bgSubtle',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'sm',
   px: '0.45rem',
   py: '0.4rem',
@@ -182,7 +182,7 @@ const selectInput = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.6rem',
   py: '0.45rem',
@@ -225,7 +225,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.75rem',
   py: '0.6rem',
@@ -482,7 +482,7 @@ const actionBtn = css({
   <div>
     <p class={paneLabel}>Scan result</p>
     <div class={verdictBox} data-yara-verdict role="status" aria-live="polite"></div>
-    <div class={resultsList} data-yara-results></div>
+    <div class={resultsList} data-yara-results tabindex="0" role="region" aria-label="Rule match results"></div>
   </div>
 
   {/* Cloned per "+ Add string" click */}

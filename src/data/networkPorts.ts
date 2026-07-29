@@ -1,6 +1,6 @@
 // Network Port Reference — TCP/UDP well-known + registered ports that matter
-// for DFIR (single source of truth for /network-ports/ and per-port detail
-// pages /network-ports/[slug]/). Same rigor as eventIds.ts: every entry was
+// for DFIR (single source of truth for /reference/network-ports/ and per-port
+// detail pages /reference/network-ports/[slug]/). Same rigor as eventIds.ts: every entry was
 // researched, then independently adversarially fact-checked (a second pass
 // of skeptics specifically trying to REFUTE each claim, not just confirm it)
 // before inclusion — 4 entries were caught making a false claim during that

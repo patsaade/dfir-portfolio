@@ -15,19 +15,40 @@ const link = proseLink;
 const strongText = css({ color: 'text' });
 const inlineCode = css({ fontFamily: 'mono', fontSize: '0.9em' });
 
+// Brand fork (CLAUDE.md invariant 14). Every factual claim below is true of
+// both domains — same build, same absence of tracking, same local-only
+// storage — so only the two statements that actually name a domain or
+// describe what the site *is* are forked; the policy itself is shared. Both
+// variants render server-side and one is hidden by a FLAT, single-level
+// `[data-brand="cyberkit"] &` selector; never nest a second self-selector
+// inside it (Panda bakes the ancestor condition into the class name, not the
+// selector, so it would apply unconditionally).
+const hideOnCyberkit = css({ '[data-brand="cyberkit"] &': { display: 'none' } });
+const onlyOnCyberkit = css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } });
+const onlyOnCyberkitItem = css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'list-item' } });
+
 const updated = 'July 8, 2026';
 ---
 
 <BaseLayout
   title="Privacy Policy"
-  description="How patricksaade.com handles data: cookieless, privacy-friendly analytics and no personal tracking."
+  description="How this site handles data: cookieless, privacy-friendly analytics and no personal tracking."
 >
   <PageHeader breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Privacy' }]} eyebrow="Legal" title="Privacy Policy" description={`Last updated: ${updated}`} />
 
   <p class={para}>
-    This site (<strong class={strongText}>patricksaade.com</strong>, also served at{' '}
-    <strong class={strongText}>cyberkit.win</strong> as a tools-only mirror) is a personal
-    blog and portfolio. It is intentionally privacy-respecting: there are no accounts, no
+    <span class={hideOnCyberkit}>
+      This site (<strong class={strongText}>patricksaade.com</strong>, also served at{' '}
+      <strong class={strongText}>cyberkit.win</strong> as a tools-only mirror) is a personal
+      blog and portfolio.
+    </span>
+    <span class={onlyOnCyberkit}>
+      This site (<strong class={strongText}>cyberkit.win</strong>) is a free collection of
+      security reference material and browser-based tools, built and maintained by Patrick
+      Saade and served from the same build as{' '}
+      <strong class={strongText}>patricksaade.com</strong>, his blog and portfolio.
+    </span>{' '}
+    It is intentionally privacy-respecting: there are no accounts, no
     sign-ups, no advertising, and no third-party tracking or marketing cookies. This policy
     applies equally to both domains — same build, same lack of tracking, same local-only
     storage.
@@ -56,11 +77,12 @@ const updated = 'July 8, 2026';
     <code class={inlineCode}>localStorage</code> instead — for
     example your theme (light/dark mode and chosen color palette per mode), whether you've turned
     on the optional interface sounds, your preferred list/matrix view on the ATT&CK and D3FEND
-    maps, whether the site-wide DFIR/IT/Drills sidebar is hidden or shown and which of the three
-    datasets (DFIR, IT, or Drills) it's showing, and if you've dragged it, where you left it
-    vertically, your last
+    maps, whether the site-wide Quick Access sidebar is hidden or shown and which of the three
+    datasets (Reference, Tools, or Drills) it's showing, and if you've dragged it, where you left it
+    vertically, whether you've switched the footer clock from UTC to your local timezone, whether
+    you've paused the scrolling Term of the Day ticker, your last
     search/filter on pages with one (so returning to a page
-    like Tools or the Glossary picks up where you left off), and, on each interactive tool page,
+    like Reference, Tools, or the Glossary picks up where you left off), and, on each interactive tool page,
     whatever you last typed or selected in that tool's own fields — keyed to that page, so coming
     back to it picks up where you left off. Each tool with saved input has its own "reset" button
     to clear just that tool back to its defaults. Those values stay on your device, are
@@ -99,16 +121,17 @@ const updated = 'July 8, 2026';
 
   <h2 class={h2}>External links</h2>
   <p class={para}>
-    Posts and pages link to third-party resources (e.g. LinkedIn, GitHub, and tool/vendor
-    documentation). Those sites have their own privacy practices, which this policy does not
-    cover.
+    Pages here link out to third-party resources — tool and vendor documentation, standards
+    bodies such as MITRE and NIST, and profile links. Those sites have their own privacy
+    practices, which this policy does not cover.
   </p>
 
   <h2 class={h2}>Your choices</h2>
   <ul class={list}>
     <li>Use your browser's "Do Not Track" / privacy settings — analytics here is already cookieless and anonymous.</li>
     <li>Clear site data / <code class={inlineCode}>localStorage</code> to reset all saved preferences (theme, sound, sidebar layout, any saved view/filter choices, and any tool inputs left behind) — or use a tool's own "reset" button to clear just that one.</li>
-    <li>Block scripts for <code class={inlineCode}>patricksaade.com</code> — the site still renders and reads normally.</li>
+    <li class={hideOnCyberkit}>Block scripts for <code class={inlineCode}>patricksaade.com</code> — the site still renders and reads normally.</li>
+    <li class={onlyOnCyberkitItem}>Block scripts for <code class={inlineCode}>cyberkit.win</code> — the site still renders and reads normally.</li>
   </ul>
 
   <h2 class={h2}>Contact</h2>

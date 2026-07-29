@@ -15,12 +15,14 @@ const COLOR_KEYS: (keyof ThemeColors)[] = [
   'bgSubtle',
   'bgCard',
   'border',
+  'borderStrong',
   'text',
   'textMuted',
   'primary',
   'primaryHover',
   'accent',
   'codeBg',
+  'danger',
 ];
 
 describe('theme registry', () => {

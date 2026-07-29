@@ -2,9 +2,9 @@
 // MAC Analyzer — decodes the IEEE 802 MAC-48 address
 // FORMAT itself (src/utils/macAddress.ts, src/components/MacAddressAnalyzer.astro):
 // the OUI/NIC-specific byte split, the U/L and I/G bits, and the broadcast
-// special case. IT fundamentals, not DFIR framing (per CLAUDE.md's IT-vs-DFIR
-// rule — this page teaches the address format itself, not an investigator's
-// use of it). Deliberately does NOT resolve a manufacturer name from the OUI —
+// special case — this page teaches the address format itself, not an
+// investigator's use of it. A `tool` entry in SITE_ENTRIES, category
+// `decoders-extractors`, tagged `domains: ['networking']`. Deliberately does NOT resolve a manufacturer name from the OUI —
 // see the intro copy below for why, and the "Other resources" section for the
 // IEEE Registration Authority's own public lookup for that specific question.
 // Same page shape as the other interactive tools (intro aside -> tool ->
@@ -41,7 +41,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   description="Decode a MAC address into its OUI and NIC-specific bytes, and see what the U/L and I/G bits in its first octet mean — entirely in your browser. Decodes structure only; it doesn't identify the manufacturer."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'MAC Analyzer' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'MAC Analyzer' }]}
     eyebrow="Tools"
     title="MAC Analyzer"
     description="Paste a MAC address and see exactly how its 48 bits break down — the OUI and NIC-specific byte split, and what the U/L and I/G bits in the first octet actually mean — live as you type."
@@ -106,7 +106,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </p>
     </div>
     <div>
-      <a href="/ip-reference/" class={toolChip}>
+      <a href="/reference/ip-cidr/" class={toolChip}>
         <Icon name="map-pin" size={13} /> IP &amp; CIDR Reference <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>

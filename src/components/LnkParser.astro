@@ -47,12 +47,16 @@ const fileBtn = css({
   px: '0.8rem',
   py: '0.45rem',
   borderRadius: 'md',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   bg: 'bgSubtle',
   color: 'text',
   cursor: 'pointer',
   transition: 'border-color 150ms ease',
   _hover: { borderColor: 'primary', color: 'primary' },
+  // The file input inside this label is visually hidden but focusable, so the
+  // label has to surface the focus ring on its behalf — otherwise tabbing to
+  // it puts focus somewhere with no visible indicator (WCAG 2.4.7).
+  '&:has(input:focus-visible)': { outline: '2px solid token(colors.primary)', outlineOffset: '2px', borderColor: 'primary' },
 });
 const fileName = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
 
@@ -238,7 +242,7 @@ const RAW_FIELDS = [
     <div class={fileRow}>
       <label class={fileBtn}>
         <Icon name="download" size={15} /> Choose .lnk file
-        <input type="file" accept=".lnk" data-lnk-file class={css({ display: 'none' })} />
+        <input type="file" accept=".lnk" data-lnk-file class={css({ position: 'absolute', w: '1px', h: '1px', p: 0, m: '-1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 })} />
       </label>
       <span class={fileName} data-lnk-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
     </div>
@@ -252,7 +256,7 @@ const RAW_FIELDS = [
     <div>
       <p class={paneLabel}>Resolved target</p>
       <div class={resultRow}>
-        <pre class={resultBoxTarget} data-lnk-value="target">&nbsp;</pre>
+        <pre class={resultBoxTarget} data-lnk-value="target" tabindex="0" role="region" aria-label="Resolved target path">&nbsp;</pre>
         <button type="button" class={rowCopyBtn} data-lnk-copy="target" data-copy-pop data-sound="copy" aria-label="Copy resolved target path" title="Copy">
           <Icon name="copy" size={13} />
         </button>
@@ -267,7 +271,7 @@ const RAW_FIELDS = [
           TIMESTAMP_FIELDS.map((f) => (
             <div class={resultRow}>
               <span class={resultBadge}>{f.label}</span>
-              <pre class={resultBox} data-lnk-value={f.id}>&nbsp;</pre>
+              <pre class={resultBox} data-lnk-value={f.id} tabindex="0" role="region" aria-label={`${f.label} timestamp`}>&nbsp;</pre>
               <button type="button" class={rowCopyBtn} data-lnk-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label} timestamp`} title="Copy">
                 <Icon name="copy" size={13} />
               </button>
@@ -285,7 +289,7 @@ const RAW_FIELDS = [
           STRING_FIELDS.map((f) => (
             <div class={resultRow}>
               <span class={resultBadge}>{f.label}</span>
-              <pre class={resultBox} data-lnk-value={f.id}>&nbsp;</pre>
+              <pre class={resultBox} data-lnk-value={f.id} tabindex="0" role="region" aria-label={f.label}>&nbsp;</pre>
               <button type="button" class={rowCopyBtn} data-lnk-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label}`} title="Copy">
                 <Icon name="copy" size={13} />
               </button>
@@ -303,7 +307,7 @@ const RAW_FIELDS = [
           LINKINFO_FIELDS.map((f) => (
             <div class={resultRow}>
               <span class={resultBadge}>{f.label}</span>
-              <pre class={resultBox} data-lnk-value={f.id}>&nbsp;</pre>
+              <pre class={resultBox} data-lnk-value={f.id} tabindex="0" role="region" aria-label={f.label}>&nbsp;</pre>
               <button type="button" class={rowCopyBtn} data-lnk-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label}`} title="Copy">
                 <Icon name="copy" size={13} />
               </button>
@@ -316,7 +320,7 @@ const RAW_FIELDS = [
     {/* LinkTargetIDList / Shell Items */}
     <div>
       <p class={paneLabel}>Target ID List — Shell Items (best-effort breadcrumb)</p>
-      <ul class={itemListBox} data-lnk-item-list></ul>
+      <ul class={itemListBox} data-lnk-item-list tabindex="0" aria-label="Parsed shortcut entries"></ul>
       <p class={emptyNote} data-lnk-item-empty hidden>No LinkTargetIDList present — HasLinkTargetIDList flag not set.</p>
       <template data-lnk-item-template>
         <li class={itemRow}>
@@ -336,7 +340,7 @@ const RAW_FIELDS = [
           RAW_FIELDS.map((f) => (
             <div class={resultRow}>
               <span class={resultBadge}>{f.label}</span>
-              <pre class={resultBox} data-lnk-value={f.id}>&nbsp;</pre>
+              <pre class={resultBox} data-lnk-value={f.id} tabindex="0" role="region" aria-label={f.label}>&nbsp;</pre>
               <button type="button" class={rowCopyBtn} data-lnk-copy={f.id} data-copy-pop data-sound="copy" aria-label={`Copy ${f.label}`} title="Copy">
                 <Icon name="copy" size={13} />
               </button>

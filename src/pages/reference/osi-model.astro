@@ -1,0 +1,659 @@
+---
+// OSI 7-Layer Model + TCP/IP 4-Layer Model Reference — general networking
+// fundamentals, IT-framed (no attacker/defender lens; see CLAUDE.md's IT vs.
+// DFIR framing rule). Static page — prerender to HTML served from the CDN.
+//
+// REBUILT from scratch (not a port of the prior implementation) after a
+// long-running, never-conclusively-resolved report of a stray visual
+// rectangle on this page. The rebuild deliberately drops the highest-
+// complexity piece the page used to have — a CSS Grid "derivation diagram"
+// where each TCP/IP layer's cell spanned a computed range of grid-row
+// lines via a per-element inline `gridRow` style, color-coded with a
+// `hue-rotate()` filter per layer. That specific grid already had one
+// confirmed, fixed bug earlier (Panda silently emitting no CSS for a
+// dynamic `gridTemplateRows` template literal); this rebuild avoids the
+// whole category by not doing per-element dynamic grid placement at all.
+// The OSI->TCP/IP mapping is conveyed instead by: (a) a plain, always-
+// present HTML table (zero dynamic positioning, the same safe pattern
+// every other reference page on this site already uses for tabular data),
+// and (b) a "Maps to" badge directly on each TCP/IP layer card. No
+// `hue-rotate()`/`filter` anywhere in this file — every accent uses the
+// single `primary` token directly, which is simpler and removes an entire
+// class of "does this style value survive Panda's static extraction"
+// question. The per-layer stacks also drop the earlier absolutely-
+// positioned "spine" line + dot in favor of a plain bordered card list —
+// visually plainer, but every box here is a normal document-flow element
+// with no `position: absolute` at all.
+//
+// Content (the OSI/TCP-IP layer descriptions, the derivation mapping, the
+// port ranges) is unchanged from the verified version of this page —
+// rebuilding the presentation isn't a reason to re-verify settled facts.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag, card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import type { IconName } from '../../components/Icon.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+
+interface OsiLayer {
+  num: number;
+  name: string;
+  icon: IconName;
+  gist: string;
+  what: string;
+  examples: string[];
+  why: string;
+}
+
+// Ascending, Physical (1) through Application (7) — the DOM always renders in
+// this order; the reverse-order toggle flips it visually via CSS, not by
+// re-rendering, so a no-JS visitor always gets this canonical bottom-up order.
+const OSI_LAYERS: OsiLayer[] = [
+  {
+    num: 1,
+    name: 'Physical',
+    icon: 'cpu',
+    gist: 'Raw bits over a physical medium — cabling, voltage, light, radio. No addressing at all.',
+    what: "The physical medium and the raw signaling that carries bits across it — cabling, connectors, voltage levels, light pulses, and radio frequencies. Nothing at this layer has any concept of an address; it just moves an electrical, optical, or radio signal from one point to another.",
+    examples: ['Ethernet cabling (Cat5e/6)', 'Fiber optics', 'Wi-Fi radio (802.11 PHY)', 'Hubs & repeaters'],
+    why: 'A dead link light or an unplugged cable is a Layer 1 problem — worth ruling out first, since nothing above this layer works at all without it.',
+  },
+  {
+    num: 2,
+    name: 'Data Link',
+    icon: 'wifi',
+    gist: 'Packages bits into frames, adds MAC addressing, governs the local segment. Switching happens here.',
+    what: 'Packages raw bits into frames, adds physical (MAC) addressing, and governs how devices share access to the same local segment — this is where switching happens.',
+    examples: ['Ethernet (802.3)', 'Wi-Fi (802.11 MAC)', 'ARP', 'VLANs (802.1Q)', 'Switches'],
+    why: "An ARP conflict or a switch's MAC table filling up is a Layer 2 event — invisible to a Layer 3/4 firewall, since a firewall never looks below the IP header.",
+  },
+  {
+    num: 3,
+    name: 'Network',
+    icon: 'globe',
+    gist: 'Logical addressing and routing across networks — how a packet finds its way there.',
+    what: "Handles logical addressing and routing — how a packet gets addressed and forwarded across multiple networks toward a destination that isn't on the local segment.",
+    examples: ['IP (IPv4/IPv6)', 'ICMP', 'Routers', 'Routing protocols (OSPF, BGP)'],
+    why: "Most firewall rules and routing decisions are written against this layer — 'which network can reach which' is fundamentally a Layer 3 question.",
+  },
+  {
+    num: 4,
+    name: 'Transport',
+    icon: 'arrow-left-right',
+    gist: 'End-to-end delivery between processes — connection setup, reliability, flow control (or none).',
+    what: 'Provides end-to-end delivery between two processes on two hosts — connection setup, reliability (retransmission and ordering), and flow control, or the deliberate absence of any of that.',
+    examples: ['TCP', 'UDP', 'Port numbers'],
+    why: 'Port numbers live here, which is why most firewall and IDS rules match on a source/destination IP + port + protocol tuple — the classic Layer 3/4 five-tuple.',
+  },
+  {
+    num: 5,
+    name: 'Session',
+    icon: 'message-square',
+    gist: 'Opens, tracks, and tears down the logical session between two communicating applications.',
+    what: 'Establishes, maintains, and tears down the logical session between two communicating applications — tracking which packets belong to which ongoing exchange, independent of the transport connection underneath it.',
+    examples: ['NetBIOS sessions', 'RPC session setup', 'SMB session establishment'],
+    why: 'Modern socket APIs abstract most of this away, but the concept still explains why protocols like SMB and RPC track their own session state on top of a plain TCP connection.',
+  },
+  {
+    num: 6,
+    name: 'Presentation',
+    icon: 'file-text',
+    gist: 'Translates data between an app format and a wire format — encoding, serialization, compression.',
+    what: "Translates data between the format an application uses and a format suitable for the wire — character encoding, serialization, compression, and, in the model's classic telling, encryption.",
+    examples: ['Character encoding (ASCII/Unicode)', 'Data serialization', 'Compression'],
+    why: "It's the reason a payload can look encrypted or compressed at the packet level even when the underlying data itself isn't — worth remembering when a capture shows nothing but opaque bytes.",
+  },
+  {
+    num: 7,
+    name: 'Application',
+    icon: 'monitor',
+    gist: 'Where named, recognizable application protocols — and the software people use — live.',
+    what: 'The layer application protocols — and the software people actually interact with — operate at. This is where recognizable, named protocols live.',
+    examples: ['HTTP/HTTPS', 'DNS', 'SMTP', 'SSH', 'FTP'],
+    why: "Deep packet inspection, IDS/IPS signature matching, and web proxies all do their real work here — it's the layer where content, not just addressing, gets inspected.",
+  },
+];
+
+interface TcpIpLayer {
+  name: string;
+  icon: IconName;
+  gist: string;
+  what: string;
+  examples: string[];
+  /** The real OSI layer numbers this TCP/IP layer collapses — drives the
+   *  text label ("OSI Layers 1–2") in both the card badge and the table. */
+  osiLayers: number[];
+}
+
+// Ascending, Link through Application — mirrors OSI_LAYERS' bottom-up order.
+const TCPIP_LAYERS: TcpIpLayer[] = [
+  {
+    name: 'Link',
+    icon: 'link',
+    gist: 'Everything involved in physically transmitting and locally addressing data on one segment.',
+    what: "Combines OSI's Physical and Data Link layers — everything involved in physically transmitting and locally addressing data on a single network segment.",
+    examples: ['Ethernet', 'Wi-Fi', 'ARP'],
+    osiLayers: [1, 2],
+  },
+  {
+    name: 'Internet',
+    icon: 'globe',
+    gist: 'Logical addressing and routing across networks.',
+    what: "Corresponds directly to OSI's Network layer — logical addressing and routing across networks.",
+    examples: ['IP (IPv4/IPv6)', 'ICMP'],
+    osiLayers: [3],
+  },
+  {
+    name: 'Transport',
+    icon: 'arrow-left-right',
+    gist: 'End-to-end delivery between processes, reliable or not.',
+    what: "Corresponds directly to OSI's Transport layer — end-to-end delivery between processes, reliable or not.",
+    examples: ['TCP', 'UDP'],
+    osiLayers: [4],
+  },
+  {
+    name: 'Application',
+    icon: 'monitor',
+    gist: 'Session management, data formatting, and the application protocol — all one layer here.',
+    what: "Combines OSI's Session, Presentation, and Application layers into one — session management, data formatting, and the application protocol itself are all just the application's problem in this model.",
+    examples: ['HTTP/HTTPS', 'DNS', 'SSH', 'SMTP', 'TLS'],
+    osiLayers: [5, 6, 7],
+  },
+];
+
+function osiLabel(nums: number[]): string {
+  if (nums.length === 1) return `OSI Layer ${nums[0]}`;
+  return `OSI Layers ${nums[0]}–${nums[nums.length - 1]}`;
+}
+
+const PORT_RANGES = [
+  {
+    title: '0 – 1023 · Well-known',
+    desc: "Assigned by IANA to the internet's core, long-established services. Historically, binding to one of these on a Unix-like system requires root or an elevated capability, since they're meant for well-known system services rather than arbitrary user processes.",
+  },
+  {
+    title: '1024 – 49151 · Registered',
+    desc: 'Assignable to a specific service on request, but nothing technically enforces that — plenty of widely-used services run here without ever formally registering, because nothing in TCP/IP stops a process from binding any free port in this range.',
+  },
+  {
+    title: '49152 – 65535 · Dynamic / Ephemeral',
+    desc: "Never assigned to a named service. This is the range an operating system draws from to hand a client application a temporary source port for the outbound side of a connection — picked per-connection, not configured.",
+  },
+];
+
+const WELL_KNOWN_PORTS = [
+  { port: '80', protocol: 'TCP', service: 'HTTP', desc: 'Unencrypted web traffic.' },
+  { port: '443', protocol: 'TCP', service: 'HTTPS', desc: 'Encrypted web traffic (TLS).' },
+  { port: '22', protocol: 'TCP', service: 'SSH', desc: 'Encrypted remote shell, file transfer, and tunneling.' },
+  { port: '21', protocol: 'TCP', service: 'FTP', desc: 'File transfer control channel (the data channel is negotiated separately).' },
+  { port: '25', protocol: 'TCP', service: 'SMTP', desc: 'Mail relay between mail servers.' },
+  { port: '53', protocol: 'TCP/UDP', service: 'DNS', desc: 'Name resolution — UDP for ordinary lookups, TCP for zone transfers and oversized responses.' },
+  { port: '3389', protocol: 'TCP', service: 'RDP', desc: 'Windows Remote Desktop.' },
+  { port: '67 / 68', protocol: 'UDP', service: 'DHCP', desc: 'Automatic IP configuration — 67 is the server, 68 is the client.' },
+];
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const sectionIcon = css({ color: 'primary' });
+const bodyP = css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1rem' });
+
+const introBox = css({
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  p: '1rem 1.25rem',
+  mb: '1.5rem',
+});
+const introText = css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 });
+
+// "Why this matters" 3-cell grid — same shape used across the site's other
+// reference pages (network-ports.astro's rangeGrid, etc.).
+const threeGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(3, 1fr)' }, gap: '0.85rem' });
+const infoCell = css({ p: '1rem 1.1rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const infoCellTitle = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.92rem', color: 'text', display: 'block' });
+const infoCellDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.65, mt: '0.4rem' });
+
+// Reverse-order toggle — a plain 2-segment switch (bordered track, active
+// segment gets bgCard+primary). Its `role="radiogroup"` markup below means
+// AnimatedSwitch.astro (mounted site-wide in BaseLayout) auto-wires it with
+// no opt-out — CLAUDE.md invariant 12's own retrofit contract requires
+// exactly one change for that: `position: 'relative', zIndex: 0` here, so
+// the inserted thumb's `position: absolute` resolves its containing block
+// to THIS track, not up the tree to <main> (which — because of its own
+// `animation: fadeIn ... both` in BaseLayout.astro — is itself an
+// unintended containing block once the animation completes and leaves a
+// non-`none` computed transform behind). Omitting this is exactly what
+// produced a switch-thumb sized to <main>'s entire height instead of this
+// track's — a real, confirmed instance of the "stray rectangle" bug this
+// page was rebuilt to get rid of, caught by an adversarial code-quality
+// review after the rebuild, not by the rebuild itself.
+const orderToggleTrack = css({
+  position: 'relative',
+  zIndex: 0,
+  display: 'inline-flex',
+  gap: '0.15rem',
+  p: '0.2rem',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  mb: '1.25rem',
+});
+const orderSegBtn = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  px: '0.65rem',
+  py: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  borderRadius: 'sm',
+  border: '1px solid transparent',
+  bg: 'transparent',
+  color: 'textMuted',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'text' },
+  '&[data-active]': { bg: 'bgCard', color: 'primary', borderColor: 'border', boxShadow: 'card' },
+});
+
+// Per-layer card list — plain bordered cards in normal document flow, no
+// absolutely-positioned decoration of any kind. `flexDirection` flips via
+// the shared `[data-order]` attribute on <main> (set by the page-local
+// script below) so both stacks (OSI + TCP/IP) reverse together.
+const stack = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.6rem',
+  mt: '1.25rem',
+  '[data-order="top-down"] &': { flexDirection: 'column-reverse' },
+});
+const layerCard = `${card()} ${css({ cursor: 'default' })}`;
+const layerHead = css({ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' });
+const numBadge = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '2.1rem',
+  height: '2.1rem',
+  borderRadius: 'md',
+  bg: 'color-mix(in srgb, token(colors.primary) 15%, transparent)',
+  color: 'primary',
+  fontFamily: 'mono',
+  fontWeight: 700,
+  fontSize: '0.85rem',
+  flexShrink: 0,
+});
+const layerIconTile = css({ color: 'primary', flexShrink: 0 });
+const layerName = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '1.02rem', color: 'text' });
+const gistText = css({ color: 'text', fontSize: '0.88rem', lineHeight: 1.6, mt: '0.5rem', m: 0 });
+const exampleRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', mt: '0.6rem' });
+const mapBadgeRow = css({ mt: '0.6rem' });
+
+const moreDetails = css({ mt: '0.6rem' });
+const moreSummary = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  fontFamily: 'sans',
+  fontSize: '0.78rem',
+  fontWeight: 600,
+  color: 'primary',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  '& svg': { transition: 'transform 200ms ease' },
+  'details[open] > &': { '& svg': { transform: 'rotate(90deg)' } },
+});
+const moreBody = css({ color: 'textMuted', fontSize: '0.86rem', lineHeight: 1.7, mt: '0.5rem' });
+const moreWhyLabel = css({
+  fontFamily: 'sans',
+  fontSize: '0.7rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: 'primary',
+  mt: '0.7rem',
+  mb: '0.2rem',
+});
+const noMargin = css({ m: 0 });
+
+// Accessible mapping table — the single source of truth for the OSI<->TCP/IP
+// derivation, always rendered (no responsive breakpoint gate, no separate
+// "diagram" competing with it). Plain <table> markup only, no dynamic grid
+// positioning of any kind.
+const tableWrap = css({ mt: '1.5rem', border: '1px solid token(colors.border)', borderRadius: 'md', overflowX: 'auto' });
+const dataTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const th = css({
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.68rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  bg: 'bgCard',
+  p: '0.55rem 0.85rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const td = css({ fontSize: '0.88rem', color: 'text', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)' });
+const tdMono = css({ fontFamily: 'mono', fontWeight: 700, color: 'primary' });
+const tdPort = css({ fontFamily: 'mono', fontWeight: 700, color: 'primary', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
+const tdProto = css({ fontFamily: 'mono', fontSize: '0.8rem', color: 'textMuted', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
+const tdService = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.85rem', color: 'text', p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)', whiteSpace: 'nowrap' });
+const tdDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, p: '0.55rem 0.85rem', borderBottom: '1px solid token(colors.border)' });
+
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="OSI & TCP/IP Model Reference"
+  description="The OSI seven-layer model and the practical four-layer TCP/IP model it's usually simplified to — what each layer does, the protocols that actually run there, how the two map onto each other, and the three IANA port ranges with the ports that matter most day to day."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'OSI & TCP/IP Model Reference' }]}
+    eyebrow="Reference"
+    title="OSI & TCP/IP Model Reference"
+    description="The OSI seven-layer model, the four-layer TCP/IP model it collapses into in practice, how the two map onto each other, and the IANA port ranges every connection on the network draws from."
+  />
+
+  <aside class={introBox}>
+    <p class={introText}>
+      Neither model is a protocol — both are just ways of organizing where a given protocol's job starts and
+      ends. OSI is the seven-layer teaching framework; TCP/IP is the simpler four-layer version real networking
+      is actually built on.
+    </p>
+  </aside>
+
+  <h2 id="why-it-matters" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={sectionIcon} /> Why the layers matter
+  </h2>
+  <div class={threeGrid}>
+    <div class={infoCell}>
+      <span class={infoCellTitle}>It defines scope</span>
+      <p class={infoCellDesc}>
+        A Layer 2 problem (an ARP conflict, a switching loop) and a Layer 7 problem (a broken API response) live
+        in different parts of the stack — knowing which one you're looking at points you at the right evidence.
+      </p>
+    </div>
+    <div class={infoCell}>
+      <span class={infoCellTitle}>It makes packet captures readable</span>
+      <p class={infoCellDesc}>
+        Every protocol wraps the one above it — an Ethernet frame carries an IP packet, which carries a TCP
+        segment, which carries an HTTP request. A raw capture opens with link-layer headers first because of this.
+      </p>
+    </div>
+    <div class={infoCell}>
+      <span class={infoCellTitle}>It locates where controls sit</span>
+      <p class={infoCellDesc}>
+        A stateless ACL only ever looks at Layer 3/4 — source, destination, port, protocol. A proxy or IDS doing
+        signature matching works at Layer 7, reading actual content. Knowing the difference tells you what a
+        control can and can't see.
+      </p>
+    </div>
+  </div>
+
+  <h2 id="osi-model" class={sectionH2}>
+    <Icon name="layers" size={20} class={sectionIcon} /> The OSI 7-layer model
+  </h2>
+  <p class={bodyP}>
+    Standardized by ISO in 1984 — seven layers, each depending only on the one directly beneath it. Almost
+    nothing implements all seven cleanly in practice, but it's still the shared vocabulary for where something
+    happens.
+  </p>
+
+  <div class={orderToggleTrack} role="radiogroup" aria-label="Stack reading order" data-order-toggle>
+    <button type="button" role="radio" aria-checked="true" data-active data-order-btn="bottom-up" class={orderSegBtn}>
+      <Icon name="arrow-up" size={13} /> Bottom-up (Physical → App)
+    </button>
+    <button type="button" role="radio" aria-checked="false" data-order-btn="top-down" class={orderSegBtn}>
+      <Icon name="arrow-down" size={13} /> Top-down (App → Physical)
+    </button>
+  </div>
+
+  <div class={stack} data-layer-stack>
+    {
+      OSI_LAYERS.map((l) => (
+        <div class={layerCard} id={`osi-${l.num}`}>
+          <div class={layerHead}>
+            <span class={numBadge}>{`0${l.num}`}</span>
+            <Icon name={l.icon} size={20} class={layerIconTile} />
+            <span class={layerName}>{`Layer ${l.num} — ${l.name}`}</span>
+          </div>
+          <p class={gistText}>{l.gist}</p>
+          <div class={exampleRow}>
+            {l.examples.map((e) => (
+              <span class={tag({ tone: 'muted' })}>{e}</span>
+            ))}
+          </div>
+          <details class={moreDetails}>
+            <summary class={moreSummary}>
+              <Icon name="chevron-right" size={13} /> Show more
+            </summary>
+            <div class={moreBody}>
+              <p class={noMargin}>{l.what}</p>
+              <p class={moreWhyLabel}>Why it matters</p>
+              <p class={noMargin}>{l.why}</p>
+            </div>
+          </details>
+        </div>
+      ))
+    }
+  </div>
+
+  <h2 id="tcpip-model" class={sectionH2}>
+    <Icon name="globe" size={20} class={sectionIcon} /> The TCP/IP 4-layer model
+  </h2>
+  <p class={bodyP}>
+    The Internet Protocol Suite — what's actually running underneath every connection — predates OSI and
+    collapses the top three OSI layers into one, since real applications never cleanly separate session,
+    presentation, and application concerns the way OSI's telling does.
+  </p>
+
+  <div class={stack} data-layer-stack>
+    {
+      TCPIP_LAYERS.map((l) => (
+        <div class={layerCard}>
+          <div class={layerHead}>
+            <Icon name={l.icon} size={20} class={layerIconTile} />
+            <span class={layerName}>{l.name}</span>
+          </div>
+          <p class={gistText}>{l.gist}</p>
+          <div class={exampleRow}>
+            {l.examples.map((e) => (
+              <span class={tag({ tone: 'muted' })}>{e}</span>
+            ))}
+          </div>
+          <div class={mapBadgeRow}>
+            <span class={tag({ tone: 'primary' })}>Maps to {osiLabel(l.osiLayers)}</span>
+          </div>
+          <details class={moreDetails}>
+            <summary class={moreSummary}>
+              <Icon name="chevron-right" size={13} /> Show more
+            </summary>
+            <div class={moreBody}>
+              <p class={noMargin}>{l.what}</p>
+            </div>
+          </details>
+        </div>
+      ))
+    }
+  </div>
+
+  <h2 id="derivation" class={sectionH2}>
+    <Icon name="columns" size={20} class={sectionIcon} /> How TCP/IP's layers are derived
+  </h2>
+  <p class={bodyP}>
+    TCP/IP's four layers aren't a different model — they're OSI's seven, merged. The table below lines each
+    TCP/IP layer up against the exact OSI layers it absorbs (the same mapping the "Maps to" badges above show,
+    collected in one place).
+  </p>
+
+  <div class={tableWrap} tabindex="0" role="region" aria-label="TCP/IP to OSI layer mapping table">
+    <table class={dataTable}>
+      <thead>
+        <tr>
+          <th class={th}>TCP/IP layer</th>
+          <th class={th}>OSI layer(s)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          TCPIP_LAYERS.map((l) => (
+            <tr>
+              <td class={`${td} ${tdMono}`}>{l.name}</td>
+              <td class={td}>{osiLabel(l.osiLayers)}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="ports" class={sectionH2}>
+    <Icon name="hash" size={20} class={sectionIcon} /> Well-known ports &amp; the transport layer
+  </h2>
+  <p class={bodyP}>
+    Every TCP/UDP conversation involves a port on each end; RFC 6335 splits the 16-bit port space into three
+    IANA-maintained ranges. For how specific ports get read as indicators during an investigation, see the{' '}
+    <a href="/reference/network-ports/" class={css({ color: 'primary', textDecoration: 'underline' })}>Network Port Reference</a>.
+  </p>
+  <div class={threeGrid}>
+    {
+      PORT_RANGES.map((r) => (
+        <div class={infoCell}>
+          <span class={infoCellTitle}>{r.title}</span>
+          <p class={infoCellDesc}>{r.desc}</p>
+        </div>
+      ))
+    }
+  </div>
+
+  <div class={tableWrap} tabindex="0" role="region" aria-label="Common ports reference table">
+    <table class={dataTable}>
+      <thead>
+        <tr>
+          <th class={th}>Port</th>
+          <th class={th}>Protocol</th>
+          <th class={th}>Service</th>
+          <th class={th}>What it's for</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          WELL_KNOWN_PORTS.map((p) => (
+            <tr>
+              <td class={tdPort}>{p.port}</td>
+              <td class={tdProto}>{p.protocol}</td>
+              <td class={tdService}>{p.service}</td>
+              <td class={tdDesc}>{p.desc}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="link" size={20} class={sectionIcon} /> Related references
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/reference/ip-cidr/" class={toolChip}>
+        <Icon name="map-pin" size={13} /> IP &amp; CIDR Reference <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        For the addressing side of the network layer — which IPv4/IPv6 ranges are private, CGNAT, loopback, or
+        documentation-only — see the IP &amp; CIDR Reference.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/cidr-calculator/" class={toolChip}>
+        <Icon name="grid" size={13} /> CIDR &amp; VLAN Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Need the actual subnet math — network/broadcast address, netmask, host range — for a specific block? The
+        CIDR &amp; VLAN Calculator computes it live, in your browser.
+      </p>
+    </div>
+  </div>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['osi-model']} />
+</BaseLayout>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  // Reverse-order toggle: flips BOTH per-layer stacks (OSI + TCP/IP) between
+  // bottom-up (the DOM's own order, Physical first) and top-down, via a
+  // single `data-order` attribute on <main>, read by each `stack`'s own CSS
+  // (`[data-order="top-down"] &` -> `flex-direction: column-reverse`) — no
+  // DOM reordering, so scroll position and focus stay sane across a toggle.
+  // Debounced per CLAUDE.md invariant 12 even though the visual change is an
+  // instant CSS flex-direction flip with no transition to thrash mid-way —
+  // the guard is cheap and keeps this consistent with every other stateful
+  // toggle on the site.
+  (function () {
+    function init() {
+      var group = document.querySelector('[data-order-toggle]');
+      if (!group) return;
+      var bottomBtn = group.querySelector('[data-order-btn="bottom-up"]');
+      var topBtn = group.querySelector('[data-order-btn="top-down"]');
+      var root = document.querySelector('main') || document.body;
+      if (!bottomBtn || !topBtn) return;
+      var KEY = 'osi-model-order';
+
+      function setOrder(order) {
+        root.setAttribute('data-order', order);
+        var topActive = order === 'top-down';
+        [
+          [bottomBtn, !topActive],
+          [topBtn, topActive],
+        ].forEach(function (pair) {
+          var btn = pair[0], active = pair[1];
+          if (active) btn.setAttribute('data-active', '');
+          else btn.removeAttribute('data-active');
+          btn.setAttribute('aria-checked', String(active));
+        });
+        try { localStorage.setItem(KEY, order); } catch (e) {}
+      }
+
+      var busy = false;
+      function debounceClick(el, cooldownMs, handler) {
+        el.addEventListener('click', function () {
+          if (busy) return;
+          busy = true;
+          handler();
+          setTimeout(function () { busy = false; }, cooldownMs);
+        });
+      }
+
+      debounceClick(bottomBtn, 200, function () { setOrder('bottom-up'); });
+      debounceClick(topBtn, 200, function () { setOrder('top-down'); });
+
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      if (saved === 'top-down') setOrder('top-down');
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+</script>

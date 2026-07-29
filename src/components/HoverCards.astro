@@ -2,17 +2,18 @@
 // Site-wide hover/tap context cards, powered by Floating UI (@floating-ui/dom).
 //
 // - Glossary TERMS are tagged manually with <Term slug> and resolved from
-//   /glossary/bank.json on demand.
+//   /reference/glossary/bank.json on demand.
 // - Companies, certifications, and distinctive tools (src/data/hovercards.ts)
 //   are auto-detected: their first mention in <main> prose is wrapped in a
 //   trigger. (Links, code, headings, and navigation/breadcrumbs are skipped.)
 // Desktop = hover/focus; touch = tap to toggle, tap-away / Esc / scroll to close.
+//
+// The entity dictionary is imported by the BUNDLED client script below, not
+// injected here via `define:vars` — `define:vars` forces `is:inline`, which
+// shipped the whole table verbatim into every page's HTML instead of into one
+// minified, content-hashed, cached chunk. HoverEntity has only client-safe
+// fields, so it ships as-is; add a mapping step if that ever changes.
 import { css } from 'styled-system/css';
-import { HOVER_ENTITIES } from '../data/hovercards';
-
-// Client entity dictionary (everything the card + matcher needs). HoverEntity has
-// only client-safe fields, so it ships as-is; add a map here if that ever changes.
-const entities = HOVER_ENTITIES;
 
 const cardCls = css({
   position: 'fixed',
@@ -58,18 +59,43 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
   </div>
 </template>
 
-<script is:inline define:vars={{ entities }}>
-  window.__HC_ENTITIES = entities;
-</script>
-
 <script>
   // @ts-nocheck — vanilla DOM client script
-  import { computePosition, offset, flip, shift, arrow, autoUpdate } from '@floating-ui/dom';
+  // Bundled (never `is:inline`): the entity table below is imported, not
+  // injected via `define:vars`, so it lands in one minified, content-hashed
+  // chunk shared by every page instead of being repeated in every page's HTML.
+  import { HOVER_ENTITIES } from '../data/hovercards';
+
+  // Floating UI is loaded LAZILY. It is only needed once a card actually has to
+  // be positioned — nothing before a hover/focus/tap touches it — but as a
+  // static import it was inlined into this always-loaded chunk and paid for on
+  // every page view whether or not a single card was ever opened. A dynamic
+  // import makes Rollup split it into its own chunk, fetched on first use (and
+  // warmed on the first `pointerover` of a trigger, below, so there's no
+  // perceptible delay). `FUI` is the resolved namespace; a failed import
+  // resets the promise so a later attempt can retry, and simply yields no card
+  // rather than a broken, unpositioned one.
+  var FUI = null;
+  var fuiPromise = null;
+  function loadFui() {
+    if (!fuiPromise) {
+      fuiPromise = import('@floating-ui/dom')
+        .then(function (m) {
+          FUI = m;
+          return m;
+        })
+        .catch(function () {
+          fuiPromise = null;
+          return null;
+        });
+    }
+    return fuiPromise;
+  }
 
   (function () {
     var tmpl = document.getElementById('hc-template');
     if (!tmpl) return;
-    var entities = window.__HC_ENTITIES || [];
+    var entities = HOVER_ENTITIES;
     var byId = {};
     entities.forEach(function (e) { byId[e.id] = e; });
 
@@ -80,7 +106,7 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
     function loadTerms() {
       if (termMap) return Promise.resolve(termMap);
       if (termLoading) return termLoading;
-      termLoading = fetch('/glossary/bank.json')
+      termLoading = fetch('/reference/glossary/bank.json')
         .then(function (r) { return r.ok ? r.json() : []; })
         .then(function (arr) {
           termMap = {};
@@ -170,7 +196,7 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
         return loadTerms().then(function (map) {
           var t = map[slug];
           if (!t) return null;
-          return { name: t.term, type: 'Term', blurb: t.short, url: '/glossary/' + slug + '/', linkText: 'Read the full entry', external: false };
+          return { name: t.term, type: 'Term', blurb: t.short, url: '/reference/glossary/' + slug + '/', linkText: 'Read the full entry', external: false };
         });
       }
       var e = byId[trigger.getAttribute('data-card-entity')];
@@ -191,12 +217,20 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
       else { link.removeAttribute('target'); link.removeAttribute('rel'); }
     }
 
+    // Only ever reached after loadFui() has resolved (see show() below and the
+    // autoUpdate callback it installs); the guard is belt-and-braces.
     function place(trigger, el) {
+      if (!FUI) return;
       var arrowEl = el.querySelector('[data-hc-arrow]');
-      return computePosition(trigger, el, {
+      return FUI.computePosition(trigger, el, {
         strategy: 'fixed',
         placement: 'top',
-        middleware: [offset(10), flip({ padding: 8 }), shift({ padding: 8 }), arrow({ element: arrowEl, padding: 8 })],
+        middleware: [
+          FUI.offset(10),
+          FUI.flip({ padding: 8 }),
+          FUI.shift({ padding: 8 }),
+          FUI.arrow({ element: arrowEl, padding: 8 }),
+        ],
       }).then(function (pos) {
         Object.assign(el.style, { left: pos.x + 'px', top: pos.y + 'px' });
         var ad = pos.middlewareData.arrow;
@@ -222,8 +256,12 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
       if (activeTrigger === trigger && card) return;
       hide();
       activeTrigger = trigger;
-      dataFor(trigger).then(function (data) {
-        if (!data || activeTrigger !== trigger) return;
+      // Card data and Floating UI are fetched in parallel — the term bank is
+      // already a network round-trip for <Term> triggers, so the lazy chunk
+      // costs nothing extra there, and it's warmed on pointerover regardless.
+      Promise.all([dataFor(trigger), loadFui()]).then(function (res) {
+        var data = res[0];
+        if (!data || !FUI || activeTrigger !== trigger) return;
         card = tmpl.content.firstElementChild.cloneNode(true);
         card.id = 'hc-pop-' + (++hcSeq);
         fill(card, data);
@@ -235,13 +273,28 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
           card.addEventListener('pointerenter', function () { clearTimeout(hideT); });
           card.addEventListener('pointerleave', scheduleHide);
         }
-        cleanup = autoUpdate(trigger, card, function () { place(trigger, card); });
+        cleanup = FUI.autoUpdate(trigger, card, function () { place(trigger, card); });
       });
     }
     function scheduleShow(t) { clearTimeout(hideT); showT = setTimeout(function () { show(t); }, 120); }
     function scheduleHide() { clearTimeout(showT); hideT = setTimeout(hide, 160); }
 
     function closestTrigger(el) { return el && el.closest ? el.closest('.hovercard') : null; }
+
+    // Warm the lazy Floating UI chunk the moment a pointer first reaches ANY
+    // trigger — on hover-capable devices that's ~120ms before scheduleShow()
+    // fires, and on touch it still lands before the tap resolves into a click,
+    // so the split costs no perceptible latency. Registered separately from the
+    // hover handlers below (and not gated on `hoverCapable`) so touch devices
+    // get the warm-up too; capture + passive so it can never delay or be
+    // delayed by anything else on the page.
+    document.addEventListener(
+      'pointerover',
+      function (e) {
+        if (closestTrigger(e.target)) loadFui();
+      },
+      { capture: true, passive: true },
+    );
 
     if (hoverCapable) {
       document.addEventListener('pointerover', function (e) { var t = closestTrigger(e.target); if (t) scheduleShow(t); });

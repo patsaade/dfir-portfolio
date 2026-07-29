@@ -1,7 +1,15 @@
 ---
 // Opt-in UI sound switch. Off by default; persists to localStorage ('sound') via
-// the shared window.__sound controller (defined in SoundEngine). Renders both
-// icons and toggles which is shown, so there's no innerHTML churn or layout shift.
+// the shared window.__sound controller. Renders both icons and toggles which is
+// shown, so there's no innerHTML churn or layout shift.
+//
+// window.__sound is no longer guaranteed to exist when this runs: the Web Audio
+// engine is lazily imported (see SoundEngine.astro), so on a default sound-off
+// page load only window.__soundLoad() is defined. This script therefore reads
+// the persisted preference directly for its initial render, and pulls the
+// engine in on first enable — never bailing out just because the engine has
+// not been fetched yet, which is what the old `!window.__sound` early return
+// would now do on every page.
 import { css } from 'styled-system/css';
 import Icon from './Icon.astro';
 
@@ -38,12 +46,20 @@ const btn = css({
   // @ts-nocheck — vanilla DOM client script
   (function () {
     var btn = document.querySelector('[data-sound-toggle]');
-    if (!btn || !window.__sound) return;
+    if (!btn) return;
     var iconOff = btn.querySelector('[data-snd-icon=off]');
     var iconOn = btn.querySelector('[data-snd-icon=on]');
 
+    // The engine owns the state once it's loaded; before that, the persisted
+    // preference is the state (they cannot disagree — the engine seeds itself
+    // from the same key).
+    function isOn() {
+      if (window.__sound) return window.__sound.isEnabled();
+      try { return localStorage.getItem('sound') === 'on'; } catch (e) { return false; }
+    }
+
     function sync() {
-      var on = window.__sound.isEnabled();
+      var on = isOn();
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       btn.setAttribute('aria-label', on ? 'Disable interface sounds' : 'Enable interface sounds');
       btn.setAttribute('title', on ? 'Interface sounds: on' : 'Interface sounds: off');
@@ -51,7 +67,26 @@ const btn = css({
       else { iconOn.setAttribute('hidden', ''); iconOff.removeAttribute('hidden'); }
     }
 
-    btn.addEventListener('click', function () { window.__sound.toggle(); });
+    // Warm the engine chunk on hover/focus so the click below almost always
+    // resolves against an already-fetched module. That keeps the enabling
+    // click's own confirmation chirp inside the window where the browser still
+    // honours the gesture for audio — the fetch, not the promise itself, is the
+    // only part that could take real time.
+    function warm() { if (!window.__sound && window.__soundLoad) window.__soundLoad(); }
+    btn.addEventListener('pointerenter', warm);
+    btn.addEventListener('focus', warm);
+
+    btn.addEventListener('click', function () {
+      if (window.__sound) { window.__sound.toggle(); return; }
+      // Engine not loaded yet, which can only mean sound is currently off — so
+      // this click is an ENABLE. Pull the chunk in, then hand off to the engine,
+      // which persists the preference, fires `soundchange` (re-syncing this
+      // button), and resume-then-plays the `on` chirp.
+      if (!window.__soundLoad) return;
+      window.__soundLoad().then(function () {
+        if (window.__sound) window.__sound.set(true);
+      });
+    });
     document.addEventListener('soundchange', sync);
     sync();
   })();

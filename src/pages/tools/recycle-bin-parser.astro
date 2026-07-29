@@ -123,7 +123,7 @@ const V2_LAYOUT: LayoutRow[] = [
   description="Decode a Windows Recycle Bin $I metadata file — the deleted item's original full path, its size, and the deletion timestamp. Both format versions, entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Recycle Bin ($I) Parser' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Recycle Bin ($I) Parser' }]}
     eyebrow="Artifact Parsers"
     title="Recycle Bin ($I) Parser"
     description="Upload a $I metadata file to recover the deleted item's original path, its size, and when it was sent to the Recycle Bin — decoded locally in your browser."
@@ -193,7 +193,7 @@ const V2_LAYOUT: LayoutRow[] = [
   </p>
 
   <p class={tableCaption}>Version 1 — Windows Vista, 7, 8 and 8.1 (a fixed 544-byte record)</p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Version 1 record layout table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -221,7 +221,7 @@ const V2_LAYOUT: LayoutRow[] = [
   </div>
 
   <p class={tableCaption}>Version 2 — Windows 10 and 11 (variable length)</p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Version 2 record layout table">
     <table class={refTable}>
       <thead>
         <tr>

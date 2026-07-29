@@ -1,0 +1,19 @@
+---
+// Systems topic hub — a thin wrapper around DomainHub, which renders every one
+// of the three hubs (/dfir/, /networking/, /systems/) from SITE_ENTRIES'
+// `domains` tags. Everything structural lives there; this file owns only the
+// route, the prerender flag and this page's own <BaseLayout> metadata.
+//
+// `systems` sits at exactly 8 tagged entries — the hub threshold — and only
+// clears it because two drills are tagged. See consts.ts's own note.
+export const prerender = true;
+import BaseLayout from '../layouts/BaseLayout.astro';
+import DomainHub from '../components/DomainHub.astro';
+---
+
+<BaseLayout
+  title="Systems"
+  description="Every systems page on the site in one place — the ASCII and character-encoding table, the regex syntax cheat sheet, the cron parser, number-base and data-size converters, and the regex and terminal-command drills."
+>
+  <DomainHub domain="systems" />
+</BaseLayout>

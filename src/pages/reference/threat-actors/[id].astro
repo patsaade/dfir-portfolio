@@ -1,0 +1,160 @@
+---
+// Threat actor group detail — one prerendered page per MITRE ATT&CK group
+// (src/data/threatActors.ts), following the same shape as the ATT&CK/D3FEND/
+// Event ID detail pages: an eyebrow + id/aliases header, the full MITRE
+// description, associated techniques cross-linked into the ATT&CK map where
+// they resolve on-site (resolveAttackLink — same fallback-to-MITRE pattern
+// event-ids/[slug].astro and d3fend/[id].astro already use), associated
+// malware/tools, and a reference out to the group's own MITRE page. The
+// route param is named `id` to match the file, but its value is the
+// name-derived slug (see threatActorSlug in threatActors.ts), not the raw
+// MITRE G#### id — the id still renders as a badge throughout.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag } from 'styled-system/recipes';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Breadcrumbs from '../../../components/Breadcrumbs.astro';
+import Icon from '../../../components/Icon.astro';
+import EntryNav from '../../../components/EntryNav.astro';
+import { THREAT_ACTORS, THREAT_ACTORS_ATTACK_VERSION, threatActorSlug } from '../../../data/threatActors';
+import { resolveAttackLink } from '../../../data/references';
+import { SITE } from '../../../consts';
+
+export async function getStaticPaths() {
+  return THREAT_ACTORS.map((actor) => ({
+    params: { id: threatActorSlug(actor.name) },
+    props: { actor },
+  }));
+}
+
+const { actor } = Astro.props;
+
+const idx = THREAT_ACTORS.findIndex((a) => a.id === actor.id);
+const prev = idx > 0 ? THREAT_ACTORS[idx - 1] : null;
+const next = idx >= 0 && idx < THREAT_ACTORS.length - 1 ? THREAT_ACTORS[idx + 1] : null;
+
+// On-site where we have the technique, otherwise straight to the
+// authoritative MITRE page — same resolve-or-fall-back-external pattern
+// event-ids/[slug].astro and d3fend/[id].astro already use.
+const techniqueLinks = actor.techniques.map(resolveAttackLink);
+const isCappedTechniques = typeof actor.techniquesTotal === 'number' && actor.techniquesTotal > actor.techniques.length;
+
+// Same DefinedTerm shape as the ATT&CK/Event ID detail pages.
+const jsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'DefinedTerm',
+  name: `${actor.id} ${actor.name}`,
+  description: actor.description || actor.summary,
+  inDefinedTermSet: `${SITE.url}/reference/threat-actors/`,
+  termCode: actor.id,
+  url: `${SITE.url}/reference/threat-actors/${threatActorSlug(actor.name)}/`,
+  sameAs: actor.url,
+}).replace(/</g, '\\u003c'); // escape `<` so it can't break out of the <script> tag
+
+const sectionH2 = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.2rem', fontWeight: 700, mt: '2.5rem', mb: '0.75rem' });
+const para = css({ color: 'text', lineHeight: 1.8, fontSize: '1.02rem' });
+const refLink = css({ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.92rem', color: 'text', transition: 'color 150ms ease', _hover: { color: 'primary' } });
+const attackChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  px: '0.6rem',
+  py: '0.3rem',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'color-mix(in srgb, token(colors.primary) 10%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.primary) 30%, transparent)',
+  borderRadius: 'full',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+---
+
+<BaseLayout title={`${actor.id} ${actor.name} — MITRE ATT&CK`} description={actor.summary}>
+  <Breadcrumbs
+    items={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Threat Actor / APT Reference', href: '/reference/threat-actors/' }, { label: actor.name }]}
+  />
+
+  <header class={css({ mb: '1.5rem' })}>
+    <p class={css({ fontFamily: 'sans', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'primary', mb: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' })}>
+      <Icon name="user" size={15} />
+      MITRE ATT&amp;CK Group
+    </p>
+    <h1 class={css({ fontSize: { base: '2.1rem', md: '2.75rem' }, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 })}>
+      {actor.name}
+    </h1>
+    <p class={css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', mt: '0.6rem' })}>
+      {actor.id}
+    </p>
+    {actor.aliases.length > 0 && (
+      <div class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', mt: '1rem' })}>
+        <span class={css({ fontSize: '0.72rem', fontWeight: 700, color: 'textMuted', textTransform: 'uppercase', letterSpacing: '0.07em', mr: '0.2rem' })}>Also known as</span>
+        {actor.aliases.map((al) => <span class={tag({ tone: 'muted' })}>{al}</span>)}
+      </div>
+    )}
+  </header>
+
+  <h2 class={sectionH2}><Icon name="book-open" size={18} class={css({ color: 'primary' })} /> Description</h2>
+  <p class={para}>{actor.description || actor.summary}</p>
+
+  {techniqueLinks.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="crosshair" size={18} class={css({ color: 'primary' })} /> Documented techniques</h2>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+        ATT&amp;CK techniques {actor.name} is reported using — on-site links resolve to this site's own
+        technique detail page; the rest link straight to MITRE.
+      </p>
+      <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' })}>
+        {techniqueLinks.map((t) => (
+          <a href={t.href} target={t.onSite ? undefined : '_blank'} rel={t.onSite ? undefined : 'noopener'} class={attackChip} title={`${t.id}${t.onSite ? ` ${t.name} — technique detail` : ' — on attack.mitre.org'}`}>
+            <Icon name="crosshair" size={13} />
+            <span class={css({ fontFamily: 'mono', fontWeight: 700 })}>{t.id}</span>
+            {t.onSite && t.name}
+          </a>
+        ))}
+      </div>
+      {isCappedTechniques && (
+        <p class={css({ fontSize: '0.8rem', color: 'textMuted', mt: '0.85rem' })}>
+          A sample of {actor.techniquesTotal} documented technique uses — the{' '}
+          <a href={actor.url} target="_blank" rel="noopener" class={css({ color: 'primary', mx: '0.25rem', _hover: { textDecoration: 'underline' } })}>MITRE group page</a>{' '}
+          has the full list.
+        </p>
+      )}
+    </>
+  )}
+
+  {actor.software.length > 0 && (
+    <>
+      <h2 class={sectionH2}><Icon name="terminal" size={18} class={css({ color: 'primary' })} /> Malware &amp; tools</h2>
+      <p class={css({ color: 'textMuted', fontSize: '0.92rem', mb: '0.85rem', lineHeight: 1.7 })}>
+        Malware and tools MITRE documents {actor.name} using:
+      </p>
+      <div class={css({ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' })}>
+        {actor.software.map((s) => <span class={tag({ tone: 'muted', mono: true })}>{s}</span>)}
+      </div>
+    </>
+  )}
+
+  <h2 class={sectionH2}><Icon name="external-link" size={18} class={css({ color: 'primary' })} /> Reference</h2>
+  <ul class={css({ listStyle: 'none', m: 0, p: 0 })}>
+    <li>
+      <a href={actor.url} target="_blank" rel="noopener" class={refLink}>
+        <Icon name="external-link" size={14} class={css({ color: 'primary', flexShrink: 0 })} />
+        <span>MITRE ATT&CK — {actor.id}: {actor.name}</span>
+      </a>
+    </li>
+  </ul>
+  <p class={css({ fontSize: '0.78rem', color: 'textMuted', mt: '0.85rem', lineHeight: 1.6 })}>
+    ATT&CK® is a registered trademark of The MITRE Corporation; group names, aliases, and descriptions
+    come from the public ATT&CK knowledge base (v{THREAT_ACTORS_ATTACK_VERSION}).
+  </p>
+
+  <EntryNav
+    ariaLabel="More threat actor groups"
+    prev={prev ? { href: `/reference/threat-actors/${threatActorSlug(prev.name)}/`, label: `${prev.id} ${prev.name}` } : null}
+    next={next ? { href: `/reference/threat-actors/${threatActorSlug(next.name)}/`, label: `${next.id} ${next.name}` } : null}
+  />
+
+  <script type="application/ld+json" is:inline set:html={jsonLd} />
+</BaseLayout>

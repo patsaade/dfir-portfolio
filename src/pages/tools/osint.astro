@@ -1,0 +1,409 @@
+---
+// OSINT Toolkit — a recipe-framed search-operator ("dork") builder across
+// Google/Bing/DuckDuckGo: pick a Focus (the "cuisine style" — what you're
+// trying to find), which highlights relevant Ingredients and offers a few
+// named Presets; picking a Preset fills those ingredients, producing the
+// live Recipe (the final query) in the builder's own sticky stage. All of
+// it lives inside <DorkBuilder> — there's no separate recipe-browsing
+// section on this page. Framed for authorized/defensive use (assessing your
+// own or a client's exposure, or an authorized investigation), matching this
+// site's dual-use-tool guidance. Static page.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import DorkBuilder from '../../components/DorkBuilder.astro';
+import Term from '../../components/Term.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { SEARCH_ENGINES, DORK_OPERATORS, DORK_FOCUSES, PIVOT_PLATFORMS, PIVOT_TRACKS } from '../../data/osint';
+import { tag } from 'styled-system/recipes';
+import { TOOLS } from '../../data/tools';
+import { resolveAttackLink } from '../../data/references';
+
+const platformById = new Map(PIVOT_PLATFORMS.map((p) => [p.id, p]));
+
+const osintTools = TOOLS.filter((t) => t.fn === 'OSINT');
+const reconTechniques = ['T1593', 'T1596'].map(resolveAttackLink);
+
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px', // clear the sticky header when linked to via #<id>
+});
+const opTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' });
+const opTh = css({ textAlign: 'left', color: 'textMuted', fontFamily: 'sans', fontWeight: 600, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)' });
+// Kept as a plain object (not a pre-atomized css() call) so the two variant
+// cells below can css(opTdBase, variant) — a deep object merge that
+// deterministically overrides opTdBase's own color, unlike concatenating two
+// independently-atomized class strings (see STYLE_GUIDE.md "Buttons" for the
+// exact failure mode this avoids — these two cells were previously composed
+// as `${opTd} ${...}`, which left the winning color up to Panda's atomic-
+// class ordering: the Syntax column was rendering full-contrast `text`
+// instead of the intended `primary` mono styling, purely by chance of
+// ordering, and the notes column likewise wasn't reliably muted).
+const opTdBase = { p: '0.5rem 0.7rem', borderBottom: '1px solid token(colors.border)', color: 'text' } as const;
+const opTd = css(opTdBase);
+const opTdCode = css(opTdBase, { fontFamily: 'mono', color: 'primary' });
+const opTdNote = css(opTdBase, { color: 'textMuted', fontSize: '0.78rem' });
+// Matches DorkBuilder.astro's exactTag exactly — same always-visible, zero-
+// interaction "Exact" chip glued onto the phrase operator's syntax fragment,
+// here and in the builder's own ingredient badge, so the two stay visually
+// consistent (see that file's comment for why the bare quote glyphs alone
+// weren't self-evident).
+const exactTag = css({
+  display: 'inline-block',
+  fontFamily: 'sans',
+  fontSize: '0.58rem',
+  fontWeight: 800,
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+  color: 'accent',
+  bg: 'color-mix(in srgb, token(colors.accent) 16%, transparent)',
+  borderRadius: 'sm',
+  px: '0.3rem',
+  py: '0.05rem',
+  ml: '0.35rem',
+  verticalAlign: 'middle',
+});
+// ── Pivot queries ─────────────────────────────────────────────────────────
+// The specialist half of the toolkit. Every row names the platform it targets
+// before it shows the query, because these six query languages share nothing
+// with each other or with the builder above — a Shodan filter pasted into
+// Google returns confident-looking nonsense rather than an error.
+const platformGrid = css({
+  display: 'grid',
+  gridTemplateColumns: { base: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+  gap: '0.75rem',
+  mt: '1rem',
+  mb: '1.75rem',
+});
+const platformCard = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.35rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.85rem 1rem',
+});
+const platformName = css({ fontFamily: 'sans', fontSize: '0.95rem', fontWeight: 700, color: 'text', m: 0 });
+const platformWhat = css({ fontSize: '0.82rem', color: 'text', lineHeight: 1.55, m: 0 });
+const platformAccess = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5, m: 0 });
+const platformLinks = css({ display: 'flex', flexWrap: 'wrap', gap: '0.9rem', mt: '0.15rem' });
+const platformLink = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.3rem',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: 'primary',
+  _hover: { textDecoration: 'underline' },
+});
+
+const trackH3 = css({ fontSize: '1.05rem', fontWeight: 700, color: 'text', mt: '2rem', mb: '0.3rem', scrollMarginTop: '90px' });
+const trackDesc = css({ fontSize: '0.88rem', color: 'textMuted', lineHeight: 1.6, mt: 0, mb: '1rem' });
+const queryList = css({ display: 'flex', flexDirection: 'column', gap: '0.75rem', listStyle: 'none', p: 0, m: 0 });
+const queryCard = css({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.45rem',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '0.85rem 1rem',
+});
+const queryHead = css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.55rem' });
+const queryTitle = css({ fontFamily: 'sans', fontSize: '0.92rem', fontWeight: 700, color: 'text' });
+const queryRow = css({ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' });
+// Scroll, don't grow — same convention as the tool output boxes elsewhere on
+// the site (see STYLE_GUIDE.md), so a long CenQL query can't stretch the card.
+const queryCode = css({
+  flex: 1,
+  minW: 0,
+  m: 0,
+  p: '0.5rem 0.65rem',
+  fontFamily: 'mono',
+  fontSize: '0.8rem',
+  color: 'primary',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  overflowX: 'auto',
+  whiteSpace: 'pre',
+});
+const queryCopy = css({
+  flexShrink: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  w: '2rem',
+  h: '2rem',
+  color: 'textMuted',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'sm',
+  cursor: 'pointer',
+  transition: 'all 150ms ease',
+  _hover: { color: 'primary', borderColor: 'primary' },
+  '&[data-copied]': { color: 'accent', borderColor: 'accent' },
+});
+const queryDesc = css({ fontSize: '0.83rem', color: 'textMuted', lineHeight: 1.6, m: 0 });
+
+const toolChipRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', mt: '0.75rem' });
+const toolChip = css({
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.35rem',
+  fontFamily: 'sans',
+  fontSize: '0.85rem',
+  fontWeight: 600,
+  color: 'text',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  px: '0.7rem',
+  py: '0.4rem',
+  transition: 'all 150ms ease',
+  _hover: { borderColor: 'primary', color: 'primary' },
+});
+---
+
+<BaseLayout
+  title="OSINT Toolkit"
+  description="An interactive search-operator (dork) recipe builder across Google, Bing, DuckDuckGo and Brave, plus verified pivot queries for Shodan, Censys, crt.sh, GitHub code search, urlscan.io and VirusTotal."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'OSINT Toolkit' }]}
+    eyebrow="Query Builders"
+    title="OSINT Toolkit"
+    description="Two halves. A recipe builder for web-search operators — pick a Focus, fill in the Ingredients, get a ready-to-run query — and a set of pivot queries for the specialist platforms an investigation actually runs through."
+  />
+
+  <aside
+    class={css({
+      bg: 'bgSubtle',
+      border: '1px solid token(colors.border)',
+      borderLeftWidth: '3px',
+      borderLeftColor: 'primary',
+      borderRadius: 'md',
+      p: '1rem 1.25rem',
+      mb: '1.5rem',
+    })}
+  >
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', m: 0 })}>
+      <strong class={css({ color: 'text' })}>OSINT</strong> —{' '}
+      <Term slug="open-source-intelligence"><em>open-source intelligence</em></Term> — is
+      information gathered from publicly available sources: search engines, DNS, certificate logs,
+      internet-wide scan data, code repositories, sandbox archives. For a defender, the same
+      techniques an attacker uses to scope a target (MITRE ATT&amp;CK's{' '}
+      {reconTechniques.map((t, i) => (
+        <>
+          <a href={t.href} class={css({ color: 'primary' })}>{t.id} {t.name}</a>
+          {i < reconTechniques.length - 1 ? ' and ' : ''}
+        </>
+      ))}) are also how you scope your own exposure before someone else does, and how you get
+      context on an indicator at three in the morning without waiting on a vendor.
+    </p>
+    <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem', mt: '0.75rem', mb: 0 })}>
+      Two ground rules, because they matter. Point this at infrastructure you own or are authorized
+      to test, and at people and organizations you have a real investigative reason to look at —
+      an engagement, an incident, a due-diligence review. Not at private individuals for any other
+      reason. The person-focused queries here exist because verifying a claimed identity is a normal
+      part of an IR engagement; they are not a starting point for tracking somebody.
+    </p>
+  </aside>
+
+  <h2 id="builder" class={css({ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '1.3rem', fontWeight: 700, mb: '1rem', scrollMarginTop: '90px' })}>
+    <Icon name="search" size={20} class={css({ color: 'primary' })} /> Recipe builder
+  </h2>
+  <DorkBuilder engines={SEARCH_ENGINES} operators={DORK_OPERATORS} focuses={DORK_FOCUSES} />
+
+  <h2 id="operators" class={sectionH2}>
+    <Icon name="list" size={20} class={css({ color: 'primary' })} /> Operator reference
+  </h2>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Operator reference table">
+    <table class={opTable}>
+      <thead>
+        <tr>
+          <th class={opTh}>Operator</th>
+          <th class={opTh}>Syntax</th>
+          <th class={opTh}>Works on</th>
+          <th class={opTh}>What it does</th>
+          <th class={opTh}>Cross-engine notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {
+          DORK_OPERATORS.map((op) => (
+            <tr>
+              <td class={opTd}>{op.label}</td>
+              <td class={opTdCode}>
+                {op.kind === 'phrase' ? '"…"' : op.kind === 'exclude' ? '-term' : op.prefix}
+                {op.kind === 'phrase' && <span class={exactTag}>Exact</span>}
+              </td>
+              <td class={opTd}>
+                {op.engines
+                  .map((e) => SEARCH_ENGINES.find((s) => s.id === e)?.label ?? e)
+                  .join(', ')}
+              </td>
+              <td class={opTd}>{op.description}</td>
+              <td class={opTdNote}>{op.note}</td>
+            </tr>
+          ))
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class={css({ color: 'textMuted', fontSize: '0.78rem', mt: '0.6rem' })}>
+    Several long-standing operators (intitle:, inurl:, intext:, OR) are no longer formally documented
+    by Google, though still widely reported as functional — the builder and notes above flag this
+    distinction rather than presenting undocumented and officially-guaranteed syntax as equivalent.
+    Google has fully deprecated several other once-common "dork" operators over the years
+    (cache:, related:, info:, the + prefix, the ~ synonym match) — they're intentionally left out.
+  </p>
+
+  <h2 id="pivot" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Pivot queries
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.7, fontSize: '0.95rem' })}>
+    A web search engine tells you what a crawler happened to see. Most of a DFIR pivot happens
+    somewhere else — in internet-wide scan data, in certificate transparency logs, in the contents
+    of public repositories, in a sandbox archive. Those platforms each have their own query
+    language, and none of them overlap with the operators above, so every query below names the
+    platform it belongs to. Copy it, substitute the{' '}
+    <code class={css({ fontFamily: 'mono', fontSize: '0.85em', color: 'primary' })}>&lt;placeholder&gt;</code>, and
+    run it there.
+  </p>
+  <div class={platformGrid}>
+    {
+      PIVOT_PLATFORMS.map((p) => (
+        <div class={platformCard}>
+          <p class={platformName}>{p.label}</p>
+          <p class={platformWhat}>{p.what}</p>
+          <p class={platformAccess}>{p.access}</p>
+          <div class={platformLinks}>
+            <a href={p.openUrl} target="_blank" rel="noopener" class={platformLink}>
+              Open <Icon name="external-link" size={12} />
+            </a>
+            <a href={p.docsUrl} target="_blank" rel="noopener" class={platformLink}>
+              Syntax docs <Icon name="external-link" size={12} />
+            </a>
+          </div>
+        </div>
+      ))
+    }
+  </div>
+
+  {
+    PIVOT_TRACKS.map((track) => (
+      <>
+        <h3 id={`pivot-${track.id}`} class={trackH3}>{track.label}</h3>
+        <p class={trackDesc}>{track.desc}</p>
+        <ul class={queryList}>
+          {track.queries.map((q) => (
+            <li class={queryCard}>
+              <div class={queryHead}>
+                <span class={tag({ tone: 'primary' })}>{platformById.get(q.platform)?.label ?? q.platform}</span>
+                <span class={queryTitle}>{q.title}</span>
+              </div>
+              <div class={queryRow}>
+                <pre class={queryCode} tabindex="0" role="region" aria-label={`${q.title} — example search query`}><code>{q.query}</code></pre>
+                <button
+                  type="button"
+                  class={queryCopy}
+                  data-pivot-copy
+                  data-sound="copy"
+                  title="Copy query"
+                  aria-label={`Copy the ${platformById.get(q.platform)?.label ?? q.platform} query: ${q.title}`}
+                >
+                  <Icon name="copy" size={14} />
+                </button>
+              </div>
+              <p class={queryDesc}>{q.desc}</p>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))
+  }
+
+  <h2 id="tools-in-kit" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> OSINT tools in the kit
+  </h2>
+  <p class={css({ color: 'textMuted', fontSize: '0.9rem' })}>
+    <Term slug="certificate-transparency">Certificate transparency</Term>, IP reputation, internet-wide scan
+    data, and more — the toolkit already covers several free/open OSINT lookups.
+  </p>
+  <div class={toolChipRow}>
+    {
+      osintTools.map((t) => (
+        <a href={`/reference/tool-catalog/${t.slug}/`} class={toolChip}>
+          {t.name}
+          <Icon name="link" size={13} class={css({ color: 'textMuted' })} />
+        </a>
+      ))
+    }
+  </div>
+  <p class={css({ mt: '0.85rem' })}>
+    <a href="/reference/tool-catalog/?q=osint" class={css({ color: 'primary', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.9rem', _hover: { textDecoration: 'underline' } })}>
+      See all OSINT tools in the Tool Catalog <Icon name="link" size={13} />
+    </a>
+  </p>
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['osint']} />
+
+  <script is:inline>
+  // @ts-nocheck — vanilla DOM client script
+  // Copy buttons for the Pivot queries. Every query is server-rendered as
+  // selectable text in its own preformatted block, so a no-JS visitor loses
+  // nothing but the convenience — this is purely an enhancement layer.
+  // Ignore-while-busy debounce (the shape ToolSidebar's debounceClick
+  // established) so a double-click can't land mid-transition and leave the
+  // button stuck showing the wrong state.
+  (function () {
+    var COOLDOWN = 1400;
+    var status = document.createElement('div');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.style.cssText =
+      'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;';
+    document.body.appendChild(status);
+
+    var btns = document.querySelectorAll('[data-pivot-copy]');
+    Array.prototype.forEach.call(btns, function (btn) {
+      var busy = false;
+      btn.addEventListener('click', function () {
+        if (busy) return;
+        var row = btn.parentNode;
+        var code = row && row.querySelector('code');
+        var text = code ? code.textContent || '' : '';
+        if (!text.trim() || !navigator.clipboard) return;
+        busy = true;
+        navigator.clipboard
+          .writeText(text)
+          .then(function () {
+            btn.setAttribute('data-copied', '');
+            status.textContent = 'Query copied to clipboard';
+          })
+          .catch(function () {})
+          .then(function () {
+            setTimeout(function () {
+              btn.removeAttribute('data-copied');
+              status.textContent = '';
+              busy = false;
+            }, COOLDOWN);
+          });
+      });
+    });
+  })();
+  </script>
+</BaseLayout>

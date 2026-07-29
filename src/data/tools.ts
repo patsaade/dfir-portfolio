@@ -1,5 +1,7 @@
-// DFIR toolkit — the single source of truth for the Tools index (/tools/) and the
-// per-tool detail pages (/tools/[slug]/). Grouped by the platform a tool runs on.
+// DFIR toolkit — the single source of truth for the Tool Catalog index
+// (/reference/tool-catalog/) and its per-tool detail pages
+// (/reference/tool-catalog/[slug]/). NOTE /tools/ is a DIFFERENT page now — the
+// interactive-tools index; this dataset is the catalog of external tooling. Grouped by the platform a tool runs on.
 // Each tool carries a short `use` (card one-liner), a `fn` function tag, a `cost`
 // licensing tag, a `tags` array of descriptive keywords (shown on the detail page
 // and folded into search), and — for the detail page, in the glossary format —

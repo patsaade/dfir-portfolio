@@ -191,7 +191,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   description="Paste a raw User-Agent header and see the browser, rendering engine, and OS it claims — parsed entirely in your browser, with every caveat spelled out."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'User-Agent Parser' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'User-Agent Parser' }]}
     eyebrow="Extractors"
     title="User-Agent String Parser"
     description="Paste a raw User-Agent header value and see the browser, rendering engine, and operating system it claims — plus every reason that claim might be wrong. Parsed entirely in your browser."
@@ -290,7 +290,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     interesting ones: a real, unmodified Opera browser and a command-line HTTP client both come back with an{' '}
     <strong class={strong}>unrecognized browser</strong>, for completely different reasons.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Worked examples table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -343,7 +343,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     several <em>other</em> browsers' tokens too — checking in the wrong order silently mislabels one browser as
     another instead of reporting nothing.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="What this parser recognizes table — Browser">
     <table class={refTable}>
       <thead>
         <tr>
@@ -367,7 +367,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </tbody>
     </table>
   </div>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="What this parser recognizes table — OS / platform">
     <table class={refTable}>
       <thead>
         <tr>

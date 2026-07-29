@@ -32,6 +32,16 @@
 // terminalEnvironments.ts — this file only renders lines into the DOM and
 // checks the current challenge's own grade() against the raw text typed,
 // the same job gradeAnswer() does for DrillEngine's own questions.
+//
+// unmetInvestigateGates()/investigateSatisfied() below are the "investigate
+// before you act" gate for the 3 destructive challenges (bash `kill`, cmd.exe
+// `taskkill`, PowerShell `Stop-Process`) — see terminalChallenges.ts's own
+// `investigate` field doc. Both are plain, DOM-free functions of (investigate,
+// history) so they're unit-testable without a browser (test/terminalDrill.test.ts),
+// the same "extract the pure part" convention this repo's Testing/QA process
+// doc asks for. They deliberately reuse the SAME `history` array
+// initTerminalDrill() already maintains for ArrowUp/Down recall, rather than
+// adding a second history mechanism.
 
 import { runTerminalCommand, PROMPTS, SHELL_DISPLAY_NAMES } from '../data/terminalEnvironments';
 
@@ -45,6 +55,40 @@ interface TerminalChallengeLike {
   grade: (raw: string) => boolean;
   referenceHref?: string;
   referenceLabel?: string;
+  investigate?: { description: string; test: (raw: string) => boolean }[];
+}
+
+/**
+ * Every `investigate` predicate that has NOT yet matched any command in
+ * `history`, returned as its own `description` string (empty array = fully
+ * satisfied, or no gate defined at all). A predicate throwing is treated as
+ * "did not match" rather than propagating, matching checkChallenge()'s own
+ * grade()-call safety net just below.
+ */
+export function unmetInvestigateGates(
+  investigate: { description: string; test: (raw: string) => boolean }[] | undefined,
+  history: string[],
+): string[] {
+  if (!investigate || investigate.length === 0) return [];
+  return investigate
+    .filter((gate) => {
+      return !history.some((raw) => {
+        try {
+          return Boolean(gate.test(raw));
+        } catch (e) {
+          return false;
+        }
+      });
+    })
+    .map((gate) => gate.description);
+}
+
+/** True when every `investigate` predicate (if any) already matches something in `history`. */
+export function investigateSatisfied(
+  investigate: { description: string; test: (raw: string) => boolean }[] | undefined,
+  history: string[],
+): boolean {
+  return unmetInvestigateGates(investigate, history).length === 0;
 }
 
 interface TerminalDrillConfig {
@@ -149,6 +193,22 @@ export function initTerminalDrill(config) {
       ok = false;
     }
     if (!ok) return;
+    // The destructive challenges (bash `kill`, cmd.exe `taskkill`,
+    // PowerShell `Stop-Process`) can carry an `investigate` gate — even a
+    // syntactically-correct destructive command doesn't finish the
+    // challenge until every gate already matches something earlier in this
+    // session's own `history`. The real simulated output (silent success,
+    // for all 3 of these commands) has already been appended by runCommand()
+    // before this function ever runs, so withholding "solved" here never
+    // hides what the command actually did — it only withholds the "✓
+    // Correct" callout and nudges the learner toward what to check first.
+    var unmet = unmetInvestigateGates(challenge.investigate, history);
+    if (unmet.length > 0) {
+      unmet.forEach(function (description) {
+        addLine('⚠ ' + description, 'nudge');
+      });
+      return;
+    }
     solvedThisChallenge = true;
     solvedCount += 1;
     addLine('✓ Correct', 'correct');

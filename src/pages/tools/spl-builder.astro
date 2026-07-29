@@ -14,6 +14,8 @@ import { toolChip } from '../../components/RelatedTools.astro';
 import ExternalResources from '../../components/ExternalResources.astro';
 import { EXTERNAL_RESOURCES } from '../../data/externalResources';
 import { SPL_AGG_FUNCTIONS, SPL_PIPE_COMMANDS, SPL_PRESETS, SPL_SEARCH_OPERATORS, buildSplQuery } from '../../utils/spl';
+import { SPL_PACKAGES, queryPackageText, themesFor } from '../../data/queryPackages';
+import { ATTACK_TECHNIQUE_BY_ID } from '../../data/references';
 
 // Every query string printed on this page is assembled by the same function
 // the tool itself calls — never hand-typed — and each result is asserted
@@ -73,6 +75,35 @@ const exampleCode = css({
   maxH: '12rem',
   overflowY: 'auto',
 });
+
+// Packages render through the same pure builder the tool itself uses, so a
+// package's printed query and the one you get when you load it are the same
+// string by construction rather than by proofreading.
+const packages = SPL_PACKAGES.map((p) => ({
+  ...p,
+  query: queryPackageText(p),
+  technique: p.attack ? ATTACK_TECHNIQUE_BY_ID.get(p.attack) : undefined,
+}));
+const packageThemes = themesFor('spl');
+const themeH3 = css({
+  fontSize: '0.72rem',
+  fontFamily: 'sans',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.08em',
+  color: 'textMuted',
+  mt: '1.75rem',
+  mb: '0.85rem',
+});
+const packageCard = css({
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'md',
+  p: '1rem 1.1rem',
+  mb: '1rem',
+});
+const packageMeta = css({ color: 'textMuted', fontSize: '0.82rem', lineHeight: 1.65, m: 0, mb: '0.4rem' });
+const metaKey = css({ fontFamily: 'sans', fontWeight: 700, color: 'text' });
 ---
 
 <BaseLayout
@@ -80,7 +111,7 @@ const exampleCode = css({
   description="Compose a Splunk SPL search step by step — a base search plus stats, table, sort, where, eval, and head — and copy the assembled query. Syntax verified against Splunk's own Search Reference; runs entirely in your browser."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Splunk SPL Query Builder' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Splunk SPL Query Builder' }]}
     eyebrow="Query Builders"
     title="Splunk SPL Query Builder"
     description="Build a Splunk search a stage at a time — index and filters first, then the pipe commands — and copy the assembled SPL to run in your own environment."
@@ -140,7 +171,7 @@ const exampleCode = css({
   <h2 id="commands" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Supported pipe commands
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Supported pipe commands table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -176,7 +207,7 @@ const exampleCode = css({
   <h2 id="aggregations" class={sectionH2}>
     <Icon name="activity" size={20} class={css({ color: 'primary' })} /> Aggregation functions in stats
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Aggregation functions in stats table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -211,7 +242,7 @@ const exampleCode = css({
   <h2 id="filters" class={sectionH2}>
     <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Base-search comparison operators
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Base-search comparison operators table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -292,7 +323,8 @@ const exampleCode = css({
     Each of these loads into the builder from the dropdown at the top of the tool. They're here to show the{' '}
     <em>shape</em> of a query, not to be pasted as-is: the index, sourcetype, and field names below follow the conventions
     Splunk's own Windows and web add-ons create, but every deployment onboards data differently, so treat them as starting
-    points to adapt to your own field names.
+    points to adapt to your own field names. For searches aimed at a specific investigation rather than at a syntax
+    pattern, see the packages in the next section.
   </p>
   <div class={exampleList}>
     {
@@ -300,11 +332,60 @@ const exampleCode = css({
         <div>
           <h3 class={exampleTitle}>{ex.label}</h3>
           <p class={exampleDesc}>{ex.description}</p>
-          <pre class={exampleCode}><code>{ex.query}</code></pre>
+          <pre class={exampleCode} tabindex="0" role="region" aria-label={`${ex.label} — example SPL query`}><code>{ex.query}</code></pre>
         </div>
       ))
     }
   </div>
+
+  <h2 id="packages" class={sectionH2}>
+    <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> DFIR packages
+  </h2>
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '0.95rem', mb: '1.25rem' })}>
+    Where the worked examples above teach the query <em>shape</em>, these are the searches a responder actually reaches
+    for. Each one loads from the same dropdown at the top of the tool and stays fully editable afterwards. Because SPL has
+    no universal schema, every package says exactly which index, sourcetype and add-on it assumes — read that line first,
+    because an empty result here usually means the field names don't match your onboarding rather than that there is
+    nothing to find.
+  </p>
+  <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mb: '1.5rem' })}>
+    Two field families appear below. The Sysmon packages use Sysmon's <em>own</em> event field names —{' '}
+    <code class={inlineCode}>Image</code>, <code class={inlineCode}>CommandLine</code>,{' '}
+    <code class={inlineCode}>ParentImage</code>, <code class={inlineCode}>TargetObject</code> — which come from the event
+    schema itself and hold across deployments. The Windows Security packages use the underscore names the Splunk Add-on for
+    Microsoft Windows extracts from the event message body, which depend on the add-on and its version. Nothing here
+    assumes CIM normalization.
+  </p>
+  {
+    packageThemes.map((theme) => (
+      <>
+        <h3 class={themeH3}>{theme}</h3>
+        {packages
+          .filter((p) => p.theme === theme)
+          .map((p) => (
+            <div class={packageCard}>
+              <h4 class={exampleTitle}>{p.title}</h4>
+              <p class={exampleDesc}>{p.finds}</p>
+              <p class={packageMeta}>
+                <span class={metaKey}>Needs</span> — {p.dataSource}
+              </p>
+              <p class={packageMeta}>
+                <span class={metaKey}>Tuning</span> — {p.tuning}
+              </p>
+              {p.technique && (
+                <p class={packageMeta}>
+                  <span class={metaKey}>ATT&amp;CK</span> —{' '}
+                  <a href={`/reference/attack-map/${p.technique.id}/`} class={linkStyle}>
+                    {p.technique.id} {p.technique.name}
+                  </a>
+                </p>
+              )}
+              <pre class={exampleCode} tabindex="0" role="region" aria-label={`${p.title} — detection package SPL query`}><code>{p.query}</code></pre>
+            </div>
+          ))}
+      </>
+    ))
+  }
 
   <h2 id="scope" class={sectionH2}>
     <Icon name="alert-triangle" size={20} class={css({ color: 'primary' })} /> What this tool deliberately doesn't do
@@ -346,6 +427,16 @@ const exampleCode = css({
   </h2>
   <div class={relatedList}>
     <div>
+      <a href="/reference/spl-cheatsheet/" class={toolChip}>
+        <Icon name="book-open" size={13} /> Splunk SPL Cheat Sheet <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The language reference behind this builder — commands, time modifiers, the stats and eval function libraries,
+        transactions, joins and the accelerated tstats path, each with a runnable example and cited to the Splunk
+        Search Reference page it was verified against.
+      </p>
+    </div>
+    <div>
       <a href="/tools/sigma-tester/" class={toolChip}>
         <Icon name="target" size={13} /> Sigma Rule Tester <Icon name="arrow-right" size={13} />
       </a>
@@ -355,12 +446,30 @@ const exampleCode = css({
       </p>
     </div>
     <div>
-      <a href="/event-ids/" class={toolChip}>
+      <a href="/reference/event-ids/" class={toolChip}>
         <Icon name="list" size={13} /> Windows Event ID Reference <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
         Looking up which event code to filter on before you build the search — 4625 for a failed logon, Sysmon 1 for
         process creation, and what each one actually records.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/kql-builder/" class={toolChip}>
+        <Icon name="cpu" size={13} /> KQL Query Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        The same package library against Microsoft Defender XDR and Sentinel, where the schema is fixed and published
+        instead of depending on how the data was onboarded.
+      </p>
+    </div>
+    <div>
+      <a href="/tools/s1-builder/" class={toolChip}>
+        <Icon name="shield" size={13} /> SentinelOne PowerQuery Builder <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        And the same again against SentinelOne's Deep Visibility schema. Translating one hunt across all three is the
+        fastest way to learn what each platform actually calls the parent process.
       </p>
     </div>
     <div>

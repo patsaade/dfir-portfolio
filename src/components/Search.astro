@@ -1,13 +1,57 @@
 ---
 // Site-wide search — a ⌘K command palette. Fetches the prerendered
-// /search-index.json (posts, labs, glossary terms, key pages) once and filters
-// client-side. Opened by the nav trigger ([data-search-trigger]), ⌘K / Ctrl-K, or
-// "/"; closed by Esc or backdrop. Arrow keys move, Enter navigates. No dependency.
-// Ranking gets a small context-aware nudge from the current page's section (see
-// currentContextKind() below) so results feel relevant to where you are — a tie
-// break only, never strong enough to bury a better text match from elsewhere.
+// /search-index.json once and filters client-side. Opened by the nav trigger
+// ([data-search-trigger]), ⌘K / Ctrl-K, or "/"; closed by Esc or backdrop.
+// Arrow keys move, Enter navigates. No dependency.
+//
+// Every row shows its TYPE — Tool, Reference, Drill, Term, ATT&CK, … — as a
+// chip, and the result list is grouped under a heading per type, destinations
+// first. Ranking is tiered so that what you typed matching a thing's NAME beats
+// it matching that thing's metadata, which beats it appearing somewhere in body
+// text (see the WEIGHTS block in the script for the numbers and how to tune
+// them). The rows themselves are cloned from the two <template>s below rather
+// than built from HTML strings, so every Panda class here is a real, statically
+// extracted class name.
 import { css } from 'styled-system/css';
+import { tag } from 'styled-system/recipes';
 import Icon from './Icon.astro';
+
+// Type chips. Destination kinds (Tool/Reference/Drill/Page) get the primary
+// tone so they read as "go here"; long-tail content kinds stay muted.
+const chipDest = tag({ tone: 'primary', mono: true });
+const chipContent = tag({ tone: 'muted', mono: true });
+
+const groupItem = css({
+  listStyle: 'none',
+  // Panda has no `_notFirst` condition — a literal selector keyed off `&` is the
+  // supported way to write this, and it compiles to a real compound selector.
+  '&:not(:first-child)': { borderTop: '1px solid token(colors.border)', mt: '0.25rem', pt: '0.25rem' },
+});
+const groupHead = css({
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: '0.4rem',
+  px: '0.7rem',
+  pt: '0.5rem',
+  pb: '0.25rem',
+  fontFamily: 'mono',
+  fontSize: '0.66rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.09em',
+  color: 'textMuted',
+});
+const groupCount = css({ fontSize: '0.62rem', color: 'textMuted', opacity: 0.65 });
+const srOnly = css({
+  position: 'absolute',
+  w: '1px',
+  h: '1px',
+  p: 0,
+  m: '-1px',
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  border: 0,
+  clipPath: 'inset(50%)',
+});
 ---
 
 <div
@@ -30,7 +74,7 @@ import Icon from './Icon.astro';
         role="combobox"
         autocomplete="off"
         spellcheck="false"
-        placeholder="Search posts, labs, terms…"
+        placeholder="Search tools, reference, drills…"
         aria-label="Search query"
         aria-controls="search-results"
         aria-expanded="false"
@@ -40,9 +84,27 @@ import Icon from './Icon.astro';
       />
       <kbd class={css({ fontFamily: 'mono', fontSize: '0.7rem', color: 'textMuted', border: '1px solid token(colors.border)', borderRadius: 'sm', px: '0.35rem', py: '0.1rem' })}>Esc</kbd>
     </div>
-    <ul id="search-results" role="listbox" aria-label="Search results" class={css({ listStyle: 'none', m: 0, p: '0.4rem', overflowY: 'auto' })}></ul>
-    <p id="search-empty" hidden role="status" class={css({ color: 'textMuted', textAlign: 'center', py: '2rem', fontSize: '0.9rem' })}>No matches.</p>
-    <p id="search-hint" class={css({ color: 'textMuted', textAlign: 'center', py: '2rem', fontSize: '0.85rem' })}>Search posts, labs, and the glossary.</p>
+    <!--
+      The result rows are built by the script with createElement, so the Panda
+      class names they need are handed over as data attributes here — that keeps
+      every class a statically extracted literal in this file (Panda can't see a
+      class name that only exists inside the client bundle) without the script
+      ever assembling an HTML string.
+    -->
+    <ul
+      id="search-results"
+      role="listbox"
+      aria-label="Search results, grouped by type"
+      data-chip-dest={chipDest}
+      data-chip-content={chipContent}
+      data-group-cls={groupItem}
+      data-head-cls={groupHead}
+      data-count-cls={groupCount}
+      class={css({ listStyle: 'none', m: 0, p: '0.4rem', overflowY: 'auto' })}
+    ></ul>
+    <p id="search-count" role="status" aria-live="polite" class={srOnly}></p>
+    <p id="search-empty" hidden class={css({ color: 'textMuted', textAlign: 'center', py: '2rem', fontSize: '0.9rem' })}>No matches.</p>
+    <p id="search-hint" class={css({ color: 'textMuted', textAlign: 'center', py: '2rem', fontSize: '0.85rem' })}>Search every tool, reference page, drill and writeup on this site.</p>
   </div>
 </div>
 
@@ -64,7 +126,61 @@ import Icon from './Icon.astro';
     var list = document.getElementById('search-results');
     var empty = document.getElementById('search-empty');
     var hint = document.getElementById('search-hint');
+    var count = document.getElementById('search-count');
+    // Panda class names, authored in this file's frontmatter and handed over as
+    // data attributes (see the markup comment above #search-results).
+    var CHIP_DEST = list.getAttribute('data-chip-dest') || '';
+    var CHIP_CONTENT = list.getAttribute('data-chip-content') || '';
+    var GROUP_CLS = list.getAttribute('data-group-cls') || '';
+    var HEAD_CLS = list.getAttribute('data-head-cls') || '';
+    var COUNT_CLS = list.getAttribute('data-count-cls') || '';
     var data = null, results = [], sel = -1, lastFocused = null;
+
+    // ---- Types -------------------------------------------------------------
+    // Display order of the groups when two groups tie on match quality.
+    // Destinations first (a tool/reference/drill IS somewhere you go), then the
+    // long-tail datasets, then the written content.
+    var GROUP_ORDER = ['Tool', 'Reference', 'Drill', 'Page', 'Term', 'ATT&CK', 'D3FEND', 'Event ID', 'Port', 'Threat Actor', 'Software', 'Post', 'Lab'];
+    // Plural, human heading per group. A kind with no entry here just uses its
+    // own name, so a new kind in the index degrades gracefully.
+    var GROUP_HEADING = {
+      'Tool': 'Tools', 'Reference': 'Reference', 'Drill': 'Drills', 'Page': 'Pages',
+      'Term': 'Glossary', 'ATT&CK': 'ATT&CK techniques', 'D3FEND': 'D3FEND techniques',
+      'Event ID': 'Event IDs', 'Port': 'Network ports', 'Threat Actor': 'Threat actors',
+      'Software': 'Tool catalog', 'Post': 'Blog posts', 'Lab': 'Lab writeups',
+    };
+    var DEST_KINDS = { 'Tool': 1, 'Reference': 1, 'Drill': 1, 'Page': 1 };
+    // A small, order-derived nudge (30 down to 6) — enough to break a tie
+    // between two equally-matched rows of different types, never enough to
+    // cross a match tier. Tune GROUP_ORDER, not this.
+    var KIND_BONUS = {};
+    for (var gi = 0; gi < GROUP_ORDER.length; gi++) KIND_BONUS[GROUP_ORDER[gi]] = Math.max(6, 30 - gi * 2);
+
+    // ---- Ranking -----------------------------------------------------------
+    // Three tiers, and the gap between tiers is far larger than anything that
+    // can be added inside one — so a name match ALWAYS outranks a metadata
+    // match, which ALWAYS outranks a hit in free body text. That ordering is
+    // the point; the exact numbers inside a tier are tunable.
+    //
+    //   tier 3 — NAME: the query is (part of) what the thing is called.
+    //   tier 2 — METADATA: type, category, domain tags, curated keywords.
+    //   tier 1 — TEXT: the query only appears in the description prose.
+    var WEIGHTS = {
+      TITLE_EXACT: 1000,       // whole title === query          "hash calculator" → Hash Calculator
+      TITLE_PREFIX: 800,       // title starts with the query    "hash cal" → Hash Calculator
+      TITLE_WORD_START: 600,   // query starts a word in it      "calculator" → Hash Calculator
+      TITLE_SUBSTR: 450,       // query appears in the title     "alcul" → Hash Calculator
+      TITLE_ALL_TOKENS: 350,   // all words present, any order   "calculator hash" → Hash Calculator
+      KEYWORD_WORD_START: 220, // a keyword starts with it       "sha256" → Hash Calculator
+      KEYWORD_SUBSTR: 160,
+      KEYWORD_ALL_TOKENS: 120,
+      DESC_SUBSTR: 40,         // body text — deliberately last
+      DESC_ALL_TOKENS: 25,
+      CONTEXT: 10,             // same section as the page you opened ⌘K on
+      SHORT_TITLE: 15,         // of two matches, the more specific name wins
+    };
+    var PER_GROUP_MAX = 6;     // one huge group can't crowd out the rest
+    var TOTAL_MAX = 30;
 
     function load() {
       if (data) return Promise.resolve(data);
@@ -99,22 +215,29 @@ import Icon from './Icon.astro';
       input.setAttribute('aria-expanded', 'false');
       input.removeAttribute('aria-activedescendant');
       sel = -1; results = [];
+      count.textContent = '';
       // Return focus to whatever opened the palette (trigger button or prior element).
       if (lastFocused && lastFocused.focus) { try { lastFocused.focus(); } catch (e) {} }
       lastFocused = null;
     }
+
     // Kind relevant to the page the palette was opened from, so a tie between two
     // equally-matched results favors what you're already browsing (e.g. opening ⌘K
-    // on /tools/ nudges other Tool results above equally-scored Posts/Terms/etc.).
-    // A gentle fractional bonus: it only breaks ties, never outranks a stronger
-    // text match, so search always stays a reliable, predictable "find anything" tool.
+    // on a tool nudges other Tool results above equally-scored Terms/Posts).
+    // A gentle bonus: it only breaks ties, never outranks a stronger match.
     var KIND_BY_PATH = [
+      ['/tools/', 'Tool'],
+      ['/drills/', 'Drill'],
+      ['/reference/tool-catalog/', 'Software'],
+      ['/reference/glossary/', 'Term'],
+      ['/reference/attack-map/', 'ATT&CK'],
+      ['/reference/d3fend/', 'D3FEND'],
+      ['/reference/event-ids/', 'Event ID'],
+      ['/reference/network-ports/', 'Port'],
+      ['/reference/threat-actors/', 'Threat Actor'],
+      ['/reference/', 'Reference'],
       ['/blog/', 'Post'],
       ['/labs/', 'Lab'],
-      ['/glossary/', 'Term'],
-      ['/tools/', 'Tool'],
-      ['/attack-map/', 'ATT&CK'],
-      ['/d3fend/', 'D3FEND'],
     ];
     function currentContextKind() {
       var path = location.pathname;
@@ -123,57 +246,158 @@ import Icon from './Icon.astro';
       }
       return null;
     }
-    function score(e, q, ctxKind) {
-      var t = (e.title || '').toLowerCase();
-      var s = 0;
-      if (t.indexOf(q) === 0) s = 4;
-      else if (t.indexOf(q) !== -1) s = 3;
-      else if ((e.keywords || '').indexOf(q) !== -1) s = 2;
-      else if ((e.desc || '').toLowerCase().indexOf(q) !== -1) s = 1;
-      if (s > 0 && ctxKind && e.kind === ctxKind) s += 0.5;
-      return s;
+
+    // True when `q` sits at the start of a word in `hay` (both lowercase).
+    // Cheap boundary test — no split/allocation per entry per keystroke.
+    function wordStart(hay, q) {
+      var i = hay.indexOf(q);
+      while (i !== -1) {
+        if (i === 0) return true;
+        var c = hay.charCodeAt(i - 1);
+        var alnum = (c >= 97 && c <= 122) || (c >= 48 && c <= 57);
+        if (!alnum) return true;
+        i = hay.indexOf(q, i + 1);
+      }
+      return false;
     }
+    function allTokens(hay, tokens) {
+      for (var i = 0; i < tokens.length; i++) if (hay.indexOf(tokens[i]) === -1) return false;
+      return true;
+    }
+    // Returns null (no match) or { s, tier }. `tier` is what orders the GROUPS;
+    // `s` is what orders the rows inside one.
+    function score(e, q, tokens, ctxKind) {
+      var t = (e.title || '').toLowerCase();
+      var kw = e.keywords || '';        // already lowercase in the index
+      var d = (e.desc || '').toLowerCase();
+      var one = tokens.length === 1;
+      var s, tier;
+      if (t === q) { s = WEIGHTS.TITLE_EXACT; tier = 3; }
+      else if (t.indexOf(q) === 0) { s = WEIGHTS.TITLE_PREFIX; tier = 3; }
+      else if (one && wordStart(t, q)) { s = WEIGHTS.TITLE_WORD_START; tier = 3; }
+      else if (t.indexOf(q) !== -1) { s = WEIGHTS.TITLE_SUBSTR; tier = 3; }
+      else if (!one && allTokens(t, tokens)) { s = WEIGHTS.TITLE_ALL_TOKENS; tier = 3; }
+      else if (one && wordStart(kw, q)) { s = WEIGHTS.KEYWORD_WORD_START; tier = 2; }
+      else if (kw.indexOf(q) !== -1) { s = WEIGHTS.KEYWORD_SUBSTR; tier = 2; }
+      else if (!one && allTokens(kw, tokens)) { s = WEIGHTS.KEYWORD_ALL_TOKENS; tier = 2; }
+      else if (d.indexOf(q) !== -1) { s = WEIGHTS.DESC_SUBSTR; tier = 1; }
+      else if (!one && allTokens(d, tokens)) { s = WEIGHTS.DESC_ALL_TOKENS; tier = 1; }
+      else return null;
+      s += KIND_BONUS[e.kind] || 0;
+      if (ctxKind && e.kind === ctxKind) s += WEIGHTS.CONTEXT;
+      // Shorter titles are the more specific hit: "Hash Calculator" over
+      // "Hash Calculator & Verifier Notes". Sub-tier magnitude on purpose.
+      s += Math.max(0, WEIGHTS.SHORT_TITLE - t.length * 0.2);
+      return { s: s, tier: tier };
+    }
+
     function render(q) {
-      q = q.trim().toLowerCase();
+      q = q.trim().toLowerCase().replace(/\s+/g, ' ');
       list.innerHTML = '';
+      results = [];
       if (!q) {
-        hint.hidden = false; empty.hidden = true; results = [];
+        hint.hidden = false; empty.hidden = true;
+        count.textContent = '';
         input.setAttribute('aria-expanded', 'false');
         input.removeAttribute('aria-activedescendant');
         return;
       }
       hint.hidden = true;
+
+      var tokens = q.split(' ');
       var ctxKind = currentContextKind();
-      results = (data || [])
-        .map(function (e) { return { e: e, s: score(e, q, ctxKind) }; })
-        .filter(function (o) { return o.s > 0; })
-        .sort(function (a, b) { return b.s - a.s; })
-        .slice(0, 24)
-        .map(function (o) { return o.e; });
+      var all = data || [];
+      var scored = [];
+      for (var i = 0; i < all.length; i++) {
+        var r = score(all[i], q, tokens, ctxKind);
+        if (r) scored.push({ e: all[i], s: r.s, tier: r.tier });
+      }
+      scored.sort(function (a, b) { return b.s - a.s || (a.e.title || '').length - (b.e.title || '').length; });
+
+      // Bucket by kind, preserving the score order inside each bucket.
+      var buckets = {}, kinds = [];
+      for (var j = 0; j < scored.length; j++) {
+        var k = scored[j].e.kind || 'Page';
+        if (!buckets[k]) { buckets[k] = []; kinds.push(k); }
+        if (buckets[k].length < PER_GROUP_MAX) buckets[k].push(scored[j]);
+      }
+      // Group order: best match tier first (a group whose best hit is a name
+      // match outranks one that only matched body text), then the deliberate
+      // GROUP_ORDER above.
+      kinds.sort(function (a, b) {
+        var d = buckets[b][0].tier - buckets[a][0].tier;
+        if (d) return d;
+        var ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      });
+
+      var idx = 0;
+      for (var g = 0; g < kinds.length && idx < TOTAL_MAX; g++) {
+        var kind = kinds[g];
+        var rows = buckets[kind];
+        var heading = GROUP_HEADING[kind] || kind;
+        var groupEl = document.createElement('li');
+        groupEl.className = GROUP_CLS;
+        groupEl.setAttribute('role', 'group');
+        groupEl.setAttribute('aria-label', heading);
+        // The visible heading is aria-hidden: the group's own aria-label
+        // already carries it, so screen readers hear it once, not twice.
+        var head = document.createElement('div');
+        head.className = HEAD_CLS;
+        head.setAttribute('aria-hidden', 'true');
+        var headLabel = document.createElement('span');
+        headLabel.textContent = heading;
+        var headCount = document.createElement('span');
+        headCount.className = COUNT_CLS;
+        head.appendChild(headLabel); head.appendChild(headCount);
+        groupEl.appendChild(head);
+        var shown = 0;
+        for (var n = 0; n < rows.length && idx < TOTAL_MAX; n++) {
+          groupEl.appendChild(buildRow(rows[n].e, idx));
+          results.push(rows[n].e);
+          idx++; shown++;
+        }
+        headCount.textContent = String(shown);
+        list.appendChild(groupEl);
+      }
+
       empty.hidden = results.length !== 0;
       input.setAttribute('aria-expanded', results.length ? 'true' : 'false');
-      results.forEach(function (e, i) {
-        var li = document.createElement('li');
-        var a = document.createElement('a');
-        a.href = e.url;
-        a.className = 'search-opt';
-        a.id = 'search-opt-' + i;
-        a.setAttribute('role', 'option');
-        a.setAttribute('tabindex', '-1');
-        a.setAttribute('aria-selected', 'false');
-        a.setAttribute('data-i', String(i));
-        var kind = document.createElement('span'); kind.className = 'search-opt-kind'; kind.textContent = e.kind || '';
-        var main = document.createElement('span'); main.className = 'search-opt-main';
-        var title = document.createElement('span'); title.className = 'search-opt-title'; title.textContent = e.title || '';
-        var desc = document.createElement('span'); desc.className = 'search-opt-desc'; desc.textContent = e.desc || '';
-        main.appendChild(title); main.appendChild(desc);
-        a.appendChild(kind); a.appendChild(main);
-        a.addEventListener('mousemove', function () { sel = i; paint(); });
-        li.appendChild(a); list.appendChild(li);
-      });
+      count.textContent = results.length
+        ? results.length + (results.length === 1 ? ' result' : ' results')
+        : 'No matches.';
       sel = results.length ? 0 : -1;
       paint();
     }
+
+    function buildRow(e, i) {
+      var a = document.createElement('a');
+      a.className = 'search-opt';
+      a.href = e.url;
+      a.id = 'search-opt-' + i;
+      a.setAttribute('role', 'option');
+      a.setAttribute('tabindex', '-1');
+      a.setAttribute('aria-selected', 'false');
+      a.setAttribute('data-i', String(i));
+      // The type chip: read as part of the option's own name, so a screen
+      // reader announces "Tool, Hash Calculator, …" the way the row looks.
+      var chip = document.createElement('span');
+      chip.className = DEST_KINDS[e.kind] ? CHIP_DEST : CHIP_CONTENT;
+      chip.textContent = e.kind || 'Page';
+      var main = document.createElement('span');
+      main.className = 'search-opt-main';
+      var title = document.createElement('span');
+      title.className = 'search-opt-title';
+      title.textContent = e.title || '';
+      var desc = document.createElement('span');
+      desc.className = 'search-opt-desc';
+      desc.textContent = e.desc || '';
+      main.appendChild(title); main.appendChild(desc);
+      a.appendChild(chip); a.appendChild(main);
+      a.addEventListener('mousemove', function () { sel = i; paint(); });
+      return a;
+    }
+
     function paint() {
       var opts = list.querySelectorAll('.search-opt');
       for (var i = 0; i < opts.length; i++) {
@@ -195,8 +419,12 @@ import Icon from './Icon.astro';
       }
       if (!isOpen()) return;
       if (e.key === 'Escape') { e.preventDefault(); close(); }
+      // Arrows traverse the FLATTENED list, so they cross group boundaries the
+      // same way they'd move through an ungrouped one.
       else if (e.key === 'ArrowDown') { e.preventDefault(); if (results.length) { sel = (sel + 1) % results.length; paint(); } }
       else if (e.key === 'ArrowUp') { e.preventDefault(); if (results.length) { sel = (sel - 1 + results.length) % results.length; paint(); } }
+      else if (e.key === 'Home' && results.length) { e.preventDefault(); sel = 0; paint(); }
+      else if (e.key === 'End' && results.length) { e.preventDefault(); sel = results.length - 1; paint(); }
       else if (e.key === 'Enter') { if (sel >= 0 && results[sel]) { if (window.__sound) window.__sound.play('nav'); window.location.href = results[sel].url; } }
       // Focus trap: the input is the only tab stop (options are tabindex=-1, driven by arrows).
       else if (e.key === 'Tab') { e.preventDefault(); input.focus(); }

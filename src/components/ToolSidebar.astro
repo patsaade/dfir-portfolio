@@ -1,36 +1,31 @@
 ---
 // Site-wide "Quick Access" rail: a compact vertical dock on the left edge so a
-// visitor anywhere on the site can jump straight to any DFIR_GROUPS,
-// IT_GROUPS, or DRILLS_LINKS destination without detouring through the nav.
+// visitor anywhere on the site can jump straight to any SITE_ENTRIES
+// destination without detouring through the nav.
 //
 // SELF-EXPLANATION (railHeader below): a first-time visitor has no reason to
-// know what this floating panel is or where its links come from — it used to
-// open cold on a bare icon switch with no label at all, which read as an
-// unstyled, out-of-place box rather than a deliberate feature. `railHeader`
-// fixes that directly in the markup (not a dismissible tooltip that can be
-// missed once and never seen again): a badge icon, a static "Quick Access"
-// title, and a one-line, MODE-AWARE description (`MODE_DESCRIPTIONS` below)
-// that names exactly what the current mode surfaces — e.g. "Every DFIR
-// reference, tool, and framework on this site." The description updates
-// alongside the mode switch's own `render()` call (see the script), so it
-// never goes stale after a mode change. A colored top accent border
-// (`rail`'s own `borderTop`) plus `railHeader`'s own tinted background give
-// the panel visible internal structure instead of one flat slab of
-// near-white, which is what made it easy to mistake for a rendering glitch
-// at a glance.
+// know what this floating panel is, so it carries a badge icon and a static
+// "Quick Access" title rather than opening cold on a bare icon switch, which
+// read as an unstyled stray box rather than a deliberate feature. It's
+// always-visible markup, not a dismissible onboarding tooltip (so it can't be
+// missed once and never seen again). It used to also carry a one-line
+// mode-aware description; that was dropped as bloat — the three mode segments
+// directly below it already say what each dataset is.
 //
 // A 3-way MODE switch (the first top-toolbar control — a real segmented
 // switch, all 3 options always visible at once, not a single icon-swap
-// button) picks which dataset the rest of the rail shows — DFIR (Reference /
-// Frameworks / Extractors / Converters / Artifact Parsers / Query Builders),
-// IT (Reference / Tools), or Drills (the whole flat DRILLS_LINKS array
-// wrapped as a single implicit category, see DRILLS_GROUPS below) — never
+// button) picks which dataset the rest of the rail shows. The three modes
+// mirror the site's own navigation-by-OBJECT-TYPE split, not by domain —
+// Reference (Lookup Tables / Guides & Concepts / Frameworks & Maps), Tools
+// (Artifact Parsers / Decoders & Extractors / Converters & Calculators /
+// Rule & Query Builders), or Drills (the one `drills` category) — never
 // more than one at once. All three datasets' category blocks are rendered
 // server-side (so a no-JS visitor still gets real, fully labeled links for
 // whichever mode the current page belongs to — see `defaultMode` below); JS
 // only ever toggles which blocks are hidden, filtered by mode alone (see
 // `applyGroupVisibility()`). Desktop/tablet only (`md` and up) — on narrow
-// viewports the nav's own <details> accordion already covers this, and a
+// viewports the nav's own mobile menu (flat Reference/Tools/Drills links
+// straight to each section's landing page) already covers this, and a
 // fixed-left rail would just overlap body copy.
 //
 // Two view states: hidden (panel slid fully off-screen, only the edge handle
@@ -48,12 +43,12 @@
 // disable path at all.
 //
 // The hide/show handle toggles hidden ⟷ shown — a small edge tab while
-// hidden, docks flush at whichever edge is currently visible (left: 0/236px)
+// hidden, docks flush at whichever edge is currently visible (left: 0/240px)
 // and grows to the rail's full height once shown — all driven, animated, by
 // pure CSS sibling selectors reading `rail`'s own data-view, no JS position
 // math — see `handle`'s comment below.
 //
-// Because every category of a mode (DFIR has 6, 20 links total) is always
+// Because every category of a mode (Tools has 4, 25 links total) is always
 // on screen at once, the rail's own toolbar row (drag handle + mode switch)
 // stays fixed while everything below it — the actual category/link list —
 // scrolls in its own internal region, capped to whatever vertical room is
@@ -71,8 +66,8 @@
 //
 // Per-category color coding: a distinct hue-rotation degree per group index,
 // evenly spaced around the color wheel — computed separately per dataset
-// since IT_GROUPS' 2 categories need a different spacing than DFIR_GROUPS'
-// 6. Applied via CSS `filter: hue-rotate()` (inline `style`, since the exact
+// since Reference's 3 categories need a different spacing than Tools'
+// 4. Applied via CSS `filter: hue-rotate()` (inline `style`, since the exact
 // degree is a per-item computed value Panda's static token system can't
 // generate a class for) to small, isolated, childless decorative elements
 // only — `catDot`/`catAccentBar` below, never `catBlock` itself, since
@@ -95,57 +90,74 @@
 // that drives a CSS/JS transition, not just a fix local to this file.
 import { css } from 'styled-system/css';
 import Icon from './Icon.astro';
-import { DFIR_GROUPS, IT_GROUPS, DRILLS_LINKS } from '../consts';
+import { SITE_ENTRIES, groupsFor } from '../consts';
 
 const currentPath = Astro.url.pathname;
 
-// Drills wraps its whole flat link list as a single synthetic category — this
-// file only ever reads a group's `category`/`links`, so a bare {category,
-// links} pair is enough (no id/blurb/intro — those are /dfir//it/ landing-
-// page-only fields, unused here).
-const DRILLS_GROUPS = [{ category: 'Drills', links: DRILLS_LINKS }] as const;
+// `groupsFor` (consts.ts) is the exact same shape Navigation.astro and the
+// section index pages derive their menus from, so the rail can never drift
+// out of sync with the nav. This file only ever reads a group's `category`
+// and `links`; `id`/`blurb`/`intro` come along harmlessly and are consumed by
+// the landing pages instead.
 
-// Smart default: open on whichever MODE contains the current page, so a
-// first-time visitor lands on a relevant list instead of always DFIR. DFIR
-// is the fallback regardless of whether the current page is actually one of
-// its own destinations — matching DFIR's own "first/primary" position in
-// the nav.
-const itHasPage = IT_GROUPS.some((g) => g.links.some((l) => l.href === currentPath));
-const drillsHasPage = DRILLS_LINKS.some((l) => l.href === currentPath);
-const defaultMode = drillsHasPage ? 'drills' : itHasPage ? 'it' : 'dfir';
+// Smart default: open on whichever MODE owns the current page, so a
+// first-time visitor lands on a relevant list. `tools` is the fallback when
+// the current page isn't under any SITE_ENTRIES destination at all (a blog
+// post, the homepage) — Tools is both the largest dataset and the likeliest
+// reason a visitor reaches for this rail.
+//
+// Matched by LONGEST href prefix, not equality: most of this site's pages are
+// generated detail pages (/reference/glossary/<slug>/, /reference/attack-map/<id>/,
+// /reference/event-ids/<slug>/, …) that are Reference content but never appear in
+// SITE_ENTRIES themselves, so an exact match would fall through to `tools` on
+// the overwhelming majority of the site. Longest-match specifically (not any
+// prefix match): /tools/hash-calculator/ is under BOTH the "Tool Catalog"
+// reference entry at /reference/tool-catalog/ and its own tool entry, and only the longest
+// one picks the right mode. Same shape as Navigation's hrefOwner tie-break —
+// an exact/deeper entry always outranks a shallower hub prefix.
+const entry = SITE_ENTRIES.filter((e) => currentPath.startsWith(e.href)).sort(
+  (a, b) => b.href.length - a.href.length
+)[0];
+const defaultMode = entry
+  ? entry.type === 'reference'
+    ? 'reference'
+    : entry.type === 'drill'
+      ? 'drills'
+      : 'tools'
+  : 'tools';
 
-const DFIR_HUES = DFIR_GROUPS.map((_, i) => Math.round((360 / DFIR_GROUPS.length) * i));
-const IT_HUES = IT_GROUPS.map((_, i) => Math.round((360 / IT_GROUPS.length) * i));
-// A single-entry hue array is just [0] (no rotation) — there's nothing to
-// color-distinguish with only one category.
-const DRILLS_HUES = DRILLS_GROUPS.map((_, i) => Math.round((360 / DRILLS_GROUPS.length) * i));
-const HUES_BY_MODE = { dfir: DFIR_HUES, it: IT_HUES, drills: DRILLS_HUES };
-const GROUPS_BY_MODE = { dfir: DFIR_GROUPS, it: IT_GROUPS, drills: DRILLS_GROUPS };
+const GROUPS_BY_MODE = {
+  reference: groupsFor('reference'),
+  tools: groupsFor('tool'),
+  drills: groupsFor('drill'),
+};
+// Evenly-spaced hue rotations, one per category index, computed per mode
+// since each mode has a different category count (Reference 3, Tools 4,
+// Drills 1). A single-entry hue array is just [0] (no rotation) — there's
+// nothing to color-distinguish with only one category.
+const HUES_BY_MODE = {
+  reference: GROUPS_BY_MODE.reference.map((_, i) => Math.round((360 / GROUPS_BY_MODE.reference.length) * i)),
+  tools: GROUPS_BY_MODE.tools.map((_, i) => Math.round((360 / GROUPS_BY_MODE.tools.length) * i)),
+  drills: GROUPS_BY_MODE.drills.map((_, i) => Math.round((360 / GROUPS_BY_MODE.drills.length) * i)),
+};
 
 // Static — just drives the 3 segment buttons' own icon/label markup below;
 // the script keys off each button's own `data-mode-value`, not this array.
 const MODE_OPTIONS = [
-  { value: 'dfir', label: 'DFIR', icon: 'shield' },
-  { value: 'it', label: 'IT', icon: 'wifi' },
+  { value: 'reference', label: 'Reference', icon: 'book-open' },
+  { value: 'tools', label: 'Tools', icon: 'wrench' },
   { value: 'drills', label: 'Drills', icon: 'target' },
 ] as const;
-// Server-side mirror of the script's own `modeLabels` (define:vars below) —
+// Server-side mirror of the bundled client script's own `MODE_LABELS` —
 // used to compute the hide/show handle's default-mode-aware SSR label so a
 // no-JS visitor on a Drills page never sees pre-hydration HTML written for
-// the wrong mode (e.g. "Hide DFIR sidebar" on a page actually showing Drills).
-const MODE_LABELS = { dfir: 'DFIR', it: 'IT', drills: 'Drills' } as const;
+// the wrong mode (e.g. "Hide Tools sidebar" on a page actually showing Drills).
+// The client copy is a module-level const in that script rather than a
+// `define:vars` injection: `define:vars` forces `is:inline`, which is what
+// used to ship this whole 21KB script verbatim into all 1,730 pages instead
+// of one minified, content-hashed, cached chunk.
+const MODE_LABELS = { reference: 'Reference', tools: 'Tools', drills: 'Drills' } as const;
 
-// The one-line, mode-aware explanation `railHeader` shows below the "Quick
-// Access" title — see this file's own top comment for why this exists as
-// always-visible markup rather than a dismissible onboarding tooltip. Kept
-// here (not derived from DFIR_GROUPS/IT_GROUPS) since those blurbs are
-// per-category, not per-mode, and this needs one short sentence describing
-// the whole dataset a mode surfaces.
-const MODE_DESCRIPTIONS = {
-  dfir: 'Every DFIR reference, tool, and framework on this site.',
-  it: 'General IT & networking reference and tools.',
-  drills: "Practice quizzes built from this site's own real data.",
-} as const;
 
 const outer = css({
   position: 'fixed',
@@ -164,7 +176,7 @@ const outer = css({
 // sized so every label fits on one line with no ellipsis and no wrap,
 // without ballooning the rail's width. There is only ONE non-hidden width
 // now (no icons-only state to size separately).
-const RAIL_W = '236px';
+const RAIL_W = '240px';
 
 // `position: relative` purely so `handle` (now `position: absolute`, see
 // below) has something to dock against — `rail` itself stays in normal flow.
@@ -200,8 +212,21 @@ const rail = css({
   borderBottomRightRadius: 'lg',
   boxShadow: 'cardHover',
   overflow: 'hidden',
-  transition: 'transform 400ms ease',
-  '&[data-view="hidden"]': { transform: 'translateX(-100%)' },
+  // `visibility` is part of the transition (not just `transform`) because a
+  // transform alone hides NOTHING from the tab order — every link in the
+  // collapsed rail stayed focusable and focus landed off-screen (WCAG 2.4.3 /
+  // 2.4.7 / 2.4.11). `visibility: hidden` removes them from the tab order per
+  // spec, and the delay is split across the two states exactly the way
+  // `.nav-more-menu` does it in global.css: the transition on the DESTINATION
+  // state governs, so the hidden rule carries the 400ms delay (stay visible
+  // for the whole slide-out, then disappear) while the shown rule flips it
+  // back instantly (0s) so the slide-in is actually visible.
+  transition: 'transform 400ms ease, visibility 0s linear 0s',
+  '&[data-view="hidden"]': {
+    transform: 'translateX(-100%)',
+    visibility: 'hidden',
+    transition: 'transform 400ms ease, visibility 0s linear 400ms',
+  },
 });
 
 // Grab handle — the rail's own first child (in normal flow, not absolutely
@@ -233,50 +258,43 @@ const dragHandle = css({
 // The self-explaining header — see this file's own top comment. `bg:
 // 'bgSubtle'` (a different tone than `rail`'s own `bgCard`) is what gives the
 // panel internal visual layering instead of one flat slab of color.
+// Header row. Now that the mode-aware description is gone, this is a single
+// line — so it's styled as a compact eyebrow rather than the tinted card it was
+// (a 26px badge beside one short line left a lopsided block of empty space).
+// A small inline icon, the title, and a hairline rule that runs to the rail's
+// edge: it reads as a section header for the switch below it instead of a
+// floating box competing with it.
 const railHeader = css({
   display: 'flex',
-  alignItems: 'flex-start',
-  gap: '0.5rem',
-  px: '0.4rem',
-  py: '0.45rem',
-  mb: '0.3rem',
-  borderRadius: 'md',
-  bg: 'bgSubtle',
+  alignItems: 'center',
+  gap: '0.45rem',
+  px: '0.15rem',
+  pb: '0.5rem',
+  mb: '0.5rem',
+  borderBottom: '1px solid token(colors.border)',
 });
 
 const railHeaderIcon = css({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  w: '26px',
-  h: '26px',
-  mt: '0.05rem',
-  borderRadius: 'md',
-  bg: 'primary',
-  color: 'bg',
+  color: 'primary',
   flexShrink: 0,
 });
 
-const railHeaderText = css({ minW: 0 });
-
 const railHeaderTitle = css({
-  fontSize: '0.8rem',
-  fontWeight: 700,
-  color: 'text',
-  lineHeight: 1.2,
-});
-
-// Deliberately allowed to WRAP (unlike `itemLabel` below, which must never
-// wrap) — this is a short descriptive sentence, not a nav destination label.
-const railHeaderDesc = css({
+  fontFamily: 'sans',
   fontSize: '0.68rem',
+  fontWeight: 700,
+  textTransform: 'uppercase',
+  letterSpacing: '0.1em',
   color: 'textMuted',
-  lineHeight: 1.35,
-  mt: '0.15rem',
+  lineHeight: 1.2,
+  m: 0,
 });
 
 // Top-toolbar dataset switch — a real segmented switch (role="radiogroup" of
-// 3 role="radio" buttons, DFIR / IT / Drills, all three always rendered at
+// 3 role="radio" buttons, Reference / Tools / Drills, all three always rendered at
 // once — see this file's own top comment) rather than a single icon-swap
 // button. Wired into the shared, site-wide sliding-thumb system
 // (`src/scripts/animatedSwitch.ts`, mounted once via AnimatedSwitch.astro in
@@ -516,36 +534,36 @@ const itemLabel = css({
 // out of normal flow) is dictated purely by `rail`'s own intrinsic content
 // height, so this tracks correctly as the link list's own scroll-capped
 // height changes.
+// The hide/show tab. Deliberately the SAME compact size in both states and
+// vertically centred against the rail, rather than the full-height strip this
+// used to be: a 22px-wide bar stretched to the rail's entire height put a tiny
+// chevron floating in the middle of a long blank slab, which read as a stray
+// edge artifact rather than a control. A small pill with a clear chevron is
+// easier to spot AND easier to understand in both states. Because the height
+// is now fixed, the `--rail-h` custom property and the ResizeObserver that
+// used to keep it in sync with rail's live height are gone entirely.
 const handle = css({
   position: 'absolute',
-  top: 0,
+  top: '50%',
   left: RAIL_W,
+  transform: 'translateY(-50%)',
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  w: '22px',
-  h: '32px',
+  w: '24px',
+  h: '64px',
   bg: 'bgCard',
   color: 'textMuted',
   border: '1px solid token(colors.border)',
   borderLeft: 'none',
-  borderTopRightRadius: 'md',
-  borderBottomRightRadius: 'md',
+  borderTopRightRadius: 'lg',
+  borderBottomRightRadius: 'lg',
+  boxShadow: 'card',
   cursor: 'pointer',
-  transition: 'color 150ms ease, left 300ms ease, height 350ms ease',
-  _hover: { color: 'primary' },
-  // `var(--rail-h, …)`, not a literal `100%`: `handle` is `position: absolute`
-  // against `slideRow`, whose own height is "auto" (derived purely from
-  // `rail`'s in-flow content) — per spec, a percentage `height` on an
-  // absolutely-positioned element only resolves against a containing block
-  // with a DEFINITE (non-auto) height, which slideRow doesn't have. `100%`
-  // here would silently behave as `auto` and shrink to the button's own
-  // intrinsic content size instead of matching rail. `--rail-h` is a real
-  // measured pixel value the script below keeps in sync with `rail`'s live
-  // height via ResizeObserver, and `350ms` is enough for `transition: height`
-  // to still animate smoothly between two concrete px values.
-  '[data-tool-sidebar-rail]:not([data-view="hidden"]) ~ &': { h: 'var(--rail-h, 100%)' },
-  '[data-tool-sidebar-rail][data-view="hidden"] ~ &': { left: 0, h: '32px' },
+  transition: 'color 150ms ease, background 150ms ease, left 300ms ease',
+  _hover: { color: 'primary', bg: 'bgSubtle' },
+  _focusVisible: { color: 'primary', outline: '2px solid token(colors.primary)', outlineOffset: '2px' },
+  '[data-tool-sidebar-rail][data-view="hidden"] ~ &': { left: 0 },
   // Explicit rotate(0deg) base (not just the absence of a transform rule) so
   // both endpoints of the toggle are concrete values for the transition to
   // interpolate between, rather than relying on an implicit "no transform".
@@ -554,7 +572,7 @@ const handle = css({
 });
 ---
 
-<div class={outer} data-tool-sidebar>
+<div class={outer} data-tool-sidebar data-default-mode={defaultMode}>
   <div class={slideRow}>
     <div class={`tool-sidebar-slide ${rail}`} data-tool-sidebar-rail data-view="shown">
       <div class={toolbar} data-tool-sidebar-toolbar>
@@ -570,12 +588,9 @@ const handle = css({
 
         <div class={railHeader}>
           <span class={railHeaderIcon} aria-hidden="true">
-            <Icon name="grid" size={15} />
+            <Icon name="grid" size={13} />
           </span>
-          <div class={railHeaderText}>
-            <p class={railHeaderTitle}>Quick Access</p>
-            <p class={railHeaderDesc} data-tool-sidebar-desc>{MODE_DESCRIPTIONS[defaultMode]}</p>
-          </div>
+          <p class={railHeaderTitle}>Quick Access</p>
         </div>
 
         <div class={modeSwitchTrack} role="radiogroup" aria-label="Sidebar dataset" aria-orientation="vertical" data-tool-sidebar-mode-toggle>
@@ -604,7 +619,7 @@ const handle = css({
 
       <div class={scrollRegion} data-tool-sidebar-scroll>
         {
-          (['dfir', 'it', 'drills'] as const).map((m) =>
+          (['reference', 'tools', 'drills'] as const).map((m) =>
             GROUPS_BY_MODE[m].map((group, i) => (
               <div class={catBlock} data-tool-sidebar-mode={m} hidden={m !== defaultMode}>
                 <span class={catAccentBar} aria-hidden="true" style={{ filter: `hue-rotate(${HUES_BY_MODE[m][i]}deg)` }} />
@@ -642,29 +657,120 @@ const handle = css({
       aria-label={`Hide ${MODE_LABELS[defaultMode]} sidebar`}
       title={`Hide ${MODE_LABELS[defaultMode]} sidebar`}
     >
-      <Icon name="chevron-right" size={13} class="tool-sidebar-chev" />
+      <Icon name="chevron-right" size={16} strokeWidth={2.5} class="tool-sidebar-chev" />
     </button>
   </div>
 </div>
 
-<script
-  is:inline
-  define:vars={{
-    modeLabels: MODE_LABELS,
-    modeDescriptions: MODE_DESCRIPTIONS,
-    defaultMode,
-  }}
->
+{/*
+  PRE-PAINT STATE HYDRATION — deliberately the ONLY thing left inline here.
+
+  Everything else (all the behavior) lives in the bundled module below, which
+  Astro hoists into a minified, content-hashed, cached chunk. This block stays
+  inline because it genuinely cannot wait for that chunk: a bundled component
+  script is a deferred ES module, so it runs AFTER the document is parsed —
+  which is after first paint. Four things would visibly flash if this ran then:
+
+    1. `--sidebar-reserve` drives `<main>`'s own left margin (BaseLayout.astro,
+       see its comment), and ToolSidebar renders BEFORE `<main>` — a visitor
+       who has hidden the rail would get the whole content column laid out at
+       240px of reserve and then shifted to 0 (a real CLS hit, not a subtlety).
+    2. `rail` transitions `transform 400ms` — restoring a hidden rail post-paint
+       animates it sliding out on every page load instead of it simply never
+       being there.
+    3. A stored mode other than the server-rendered `defaultMode` would show
+       the wrong category list first, then swap.
+    4. A stored drag position would jump the rail vertically after paint.
+
+  So this reads localStorage once and writes the answer into DOM attributes;
+  the module below then reads its initial state back OUT of those attributes
+  rather than re-reading storage, so there is exactly one place that
+  interprets what's stored and the two can't drift.
+
+  Two details the shim itself only points at, because an `is:inline` script
+  ships its comments verbatim into all 1,730 pages while THIS comment (an
+  Astro expression comment) is stripped at build and costs nothing:
+
+  - MODE WHITELIST. The `tool-sidebar-mode` key name is unchanged, but its
+    VALUES were renamed when the rail moved from domain-based modes to
+    object-type ones — a returning visitor can still be holding a legacy
+    'dfir'/'it' string. Anything unrecognized falls back to the
+    server-rendered `data-default-mode` rather than rendering an empty rail.
+  - POSITION IS WRITTEN UNCLAMPED. It's stored as a FRACTION of viewport
+    height (0–1), not raw px, so a position saved on a differently-sized
+    viewport re-scales sensibly. Clamping it needs a layout read (the rail's
+    own height) that this pre-paint block deliberately skips; the module's own
+    render() → reclampPosition() corrects it against the real bounds
+    immediately after.
+*/}
+<script is:inline>
   // @ts-nocheck — vanilla DOM client script
   (function () {
     var root = document.querySelector('[data-tool-sidebar]');
     if (!root) return;
     var rail = root.querySelector('[data-tool-sidebar-rail]');
+    var toggle = root.querySelector('[data-tool-sidebar-toggle]');
+    if (!rail || !toggle) return;
+    function get(k) {
+      try {
+        return localStorage.getItem(k);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    var hidden = get('tool-sidebar-hidden') === '1';
+    rail.setAttribute('data-view', hidden ? 'hidden' : 'shown');
+    toggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+    document.documentElement.style.setProperty('--sidebar-reserve', hidden ? '0px' : '240px');
+
+    // Whitelist — see the comment above this script for why.
+    var mode = get('tool-sidebar-mode');
+    if (mode !== 'reference' && mode !== 'tools' && mode !== 'drills')
+      mode = root.getAttribute('data-default-mode') || 'tools';
+    var btns = root.querySelectorAll('[data-tool-sidebar-mode-btn]');
+    for (var i = 0; i < btns.length; i++) {
+      var on = btns[i].getAttribute('data-mode-value') === mode;
+      if (on) btns[i].setAttribute('data-active', '');
+      else btns[i].removeAttribute('data-active');
+      btns[i].setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    var blocks = root.querySelectorAll('[data-tool-sidebar-mode]');
+    for (var j = 0; j < blocks.length; j++)
+      blocks[j].hidden = blocks[j].getAttribute('data-tool-sidebar-mode') !== mode;
+
+    // Fraction of viewport height, written unclamped — see the comment above.
+    var storedFraction = get('tool-sidebar-y');
+    if (storedFraction !== null) {
+      var f = Number(storedFraction);
+      if (!isNaN(f)) root.style.top = f * window.innerHeight + 'px';
+    }
+  })();
+</script>
+
+<script>
+  // @ts-nocheck — vanilla DOM client script
+  // Bundled (NOT `is:inline`): Astro hoists this into one minified,
+  // content-hashed chunk shared by every page, and astro.config.mjs's
+  // `assetsInlineLimit` override keeps hoisted script chunks from being
+  // re-inlined back into each page. It therefore runs as a deferred ES module
+  // (strict mode, after parse) — see the pre-paint shim above for the state
+  // that genuinely can't wait for it.
+
+  // Client mirror of MODE_LABELS in this component's frontmatter. A plain
+  // module-level const rather than a `define:vars` injection — `define:vars`
+  // forces `is:inline`, which is exactly what this conversion removes.
+  const MODE_LABELS = { reference: 'Reference', tools: 'Tools', drills: 'Drills' };
+
+  (function () {
+    var root = document.querySelector('[data-tool-sidebar]');
+    if (!root) return;
+    var defaultMode = root.getAttribute('data-default-mode') || 'tools';
+    var rail = root.querySelector('[data-tool-sidebar-rail]');
     var hideToggle = root.querySelector('[data-tool-sidebar-toggle]');
     var toolbarEl = root.querySelector('[data-tool-sidebar-toolbar]');
     var scrollRegionEl = root.querySelector('[data-tool-sidebar-scroll]');
-    var descEl = root.querySelector('[data-tool-sidebar-desc]');
-    // The 3 mode segment buttons (DFIR/IT/Drills) — `data-tool-sidebar-mode-toggle`
+    // The 3 mode segment buttons (Reference/Tools/Drills) — `data-tool-sidebar-mode-toggle`
     // itself marks the group/track (see markup). animatedSwitch.ts finds it
     // generically via `[role="radiogroup"]` for the sliding thumb, so this
     // script never needs it for that; it does need its own reference below
@@ -699,7 +805,7 @@ const handle = css({
     // fallback). `centerY` (viewport px) is only meaningful once positioned.
     var positioned = false;
     var centerY = 0;
-    // Mode (dfir/it/drills) picks which dataset is shown.
+    // Mode (reference/tools/drills) picks which dataset is shown.
     var mode = defaultMode;
 
     // The rail's true, currently-PAINTED vertical center — reads off
@@ -807,18 +913,17 @@ const handle = css({
 
     function render() {
       rail.setAttribute('data-view', hidden ? 'hidden' : 'shown');
-      var modeLabel = modeLabels[mode];
+      var modeLabel = MODE_LABELS[mode];
       hideToggle.setAttribute('aria-expanded', hidden ? 'false' : 'true');
       hideToggle.setAttribute('aria-label', hidden ? 'Show ' + modeLabel + ' sidebar' : 'Hide ' + modeLabel + ' sidebar');
       hideToggle.setAttribute('title', hidden ? 'Show ' + modeLabel + ' sidebar' : 'Hide ' + modeLabel + ' sidebar');
-      if (descEl) descEl.textContent = modeDescriptions[mode];
       // Keeps <main>'s own reserved left margin (BaseLayout.astro, see its
       // own comment) in sync with whether the rail is actually occupying
       // that space — a visitor who's hidden the rail gets the full
       // originally-centered column back, not a permanent empty gutter.
       // Same "script keeps a CSS custom property in sync" pattern this file
-      // already uses for --sidebar-max-h/--rail-h below.
-      document.documentElement.style.setProperty('--sidebar-reserve', hidden ? '0px' : '236px');
+      // already uses for --sidebar-max-h below.
+      document.documentElement.style.setProperty('--sidebar-reserve', hidden ? '0px' : '240px');
       // A hide/show or mode change can change the rail's own height —
       // re-clamp a custom drag position against the new height so it never
       // ends up pushing the rail off-screen (see reclampPosition's own
@@ -861,32 +966,34 @@ const handle = css({
       scrollRegionEl.style.setProperty('--sidebar-max-h', Math.max(120, available) + 'px');
     }
 
-    try {
-      hidden = localStorage.getItem(HIDDEN_KEY) === '1';
-      var storedMode = localStorage.getItem(MODE_KEY);
-      if (storedMode === 'dfir' || storedMode === 'it' || storedMode === 'drills') mode = storedMode;
-      // Stored as a FRACTION of viewport height (0–1), not a raw px value —
-      // a raw px position from a previous, differently-sized viewport
-      // (an external monitor vs a laptop screen, say) wouldn't mean the same
-      // thing on this one; a fraction re-scales sensibly and still gets
-      // clamped against the real bounds below regardless. Restoring this
-      // here (before render() runs below) means the very first render()'s
-      // own reclampPosition() call already has the right
-      // `positioned`/`centerY` to work with — no separate apply step needed.
-      var storedFraction = localStorage.getItem(POSITION_KEY);
-      if (storedFraction !== null) {
-        var f = Number(storedFraction);
-        if (!isNaN(f)) {
-          centerY = f * window.innerHeight;
-          positioned = true;
-        }
+    // Initial state is read back out of the DOM, NOT out of localStorage: the
+    // pre-paint shim above already read storage (before first paint, which is
+    // the whole reason it's still inline) and wrote the result into these
+    // attributes. Reading it back here keeps exactly ONE place that interprets
+    // what's stored — including the legacy-mode-value whitelist — so the two
+    // scripts can't drift, and means this module never re-applies state that's
+    // already painted. If the shim somehow didn't run, these reads fall
+    // through to the server-rendered defaults, which is the correct fallback.
+    hidden = rail.getAttribute('data-view') === 'hidden';
+    for (var mi = 0; mi < modeSegBtns.length; mi++) {
+      if (modeSegBtns[mi].hasAttribute('data-active')) {
+        mode = modeSegBtns[mi].getAttribute('data-mode-value');
+        break;
       }
-    } catch (e) {}
+    }
+    // The shim writes `top` unclamped (clamping needs a layout read it
+    // deliberately skips); render() → reclampPosition() just below corrects it
+    // against this viewport's real bounds.
+    var restoredTop = parseFloat(root.style.top);
+    if (!isNaN(restoredTop)) {
+      centerY = restoredTop;
+      positioned = true;
+    }
 
     // Single source of truth for which of the 3 mode segment buttons is
-    // marked active — used both here (restoring from localStorage, which can
-    // disagree with the server-rendered defaultMode) and from each button's
-    // own click handler below. Setting `data-active` is also what
+    // marked active — used both here (re-asserting whatever the pre-paint shim
+    // resolved, and covering the case where it never ran) and from each
+    // button's own click handler below. Setting `data-active` is also what
     // animatedSwitch.ts's MutationObserver picks up to (re)place the sliding
     // thumb — see modeSwitchTrack's own comment.
     function syncModeButtons() {
@@ -910,23 +1017,6 @@ const handle = css({
         reclampPosition();
       }, 150);
     });
-
-    // `handle` is `position: absolute` and reads this custom property for its
-    // own height (see `handle`'s CSS comment for why a plain `height: 100%`
-    // can't work here) — keep it in sync with rail's REAL measured height,
-    // not a guess. ResizeObserver re-fires on every layout change (mode
-    // switch, font load, viewport resize, scroll-cap change), not just once
-    // on load.
-    function syncHandleHeight() {
-      var h = rail.getBoundingClientRect().height;
-      if (h > 0) hideToggle.style.setProperty('--rail-h', h + 'px');
-    }
-    syncHandleHeight();
-    if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(syncHandleHeight).observe(rail);
-    } else {
-      window.addEventListener('resize', syncHandleHeight);
-    }
 
     // Debounce every toggle in this rail: while a button's own cooldown is
     // running, further clicks on it are ignored outright (not queued) — see
@@ -957,8 +1047,8 @@ const handle = css({
     // same documented exception animatedSwitch.ts's own MutationObserver
     // comment makes: that hard rule (CLAUDE.md invariant 12) guards against
     // a rapid SECOND click re-triggering a toggle that fully REVERSES the
-    // first. A 3-way switch has no such failure mode — clicking DFIR→IT→
-    // Drills in rapid succession is three independent, absolute selections,
+    // first. A 3-way switch has no such failure mode — clicking Reference→
+    // Tools→Drills in rapid succession is three independent, absolute selections,
     // not a reversal, and motion/mini's thumb naturally redirects mid-slide
     // from wherever it currently is (see animatedSwitch.ts's
     // currentTranslate()). The cheap `value === mode` guard below is about

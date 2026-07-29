@@ -23,6 +23,18 @@
 // imported, from commands.ts — deliberately, since commands.ts is deleted
 // once this replacement ships (see the top-level task plan), and importing
 // from a file slated for deletion would leave this one broken.
+//
+// The 3 destructive challenges (bash `kill`, cmd.exe `taskkill`, PowerShell
+// `Stop-Process`) additionally carry an `investigate` gate — see the
+// interface doc below and terminalDrill.ts's checkChallenge(), which
+// requires every predicate here to already match something in the
+// session's own command history before the syntactically-correct
+// destructive command is allowed to finish the challenge. Every gate below
+// is built only from facts terminalEnvironments.ts already models (the
+// PID 4521 / port 4444 listener bash's netstat -tulpn exposes; the fact
+// that tasklist/Get-Process are this environment's only way to confirm a
+// PID is a real running process on the two Windows tracks, which have no
+// netstat equivalent modeled) — no new simulated facts are invented here.
 
 function collapse(s: string): string {
   return String(s ?? '').trim().replace(/\s+/g, ' ');
@@ -45,6 +57,19 @@ export interface TerminalChallenge {
   grade: (raw: string) => boolean;
   referenceHref?: string;
   referenceLabel?: string;
+  /**
+   * Optional "investigate before you act" gate, used on the 3 destructive
+   * challenges (bash `kill`, cmd.exe `taskkill`, PowerShell `Stop-Process`).
+   * Even once `grade()` returns true for a typed command, every predicate
+   * here must ALSO already match some earlier command in the session's own
+   * continuous history — see terminalDrill.ts's checkChallenge() and its
+   * unmetInvestigateGates()/investigateSatisfied() helpers. If a gate is
+   * unmet, the challenge stays open (the real simulated command output
+   * still plays in full either way) and a `description` line naming what
+   * to check first is appended to the terminal instead of the usual
+   * "✓ Correct" callout.
+   */
+  investigate?: { description: string; test: (raw: string) => boolean }[];
 }
 
 // Shared across all three tracks as each one's first/intro challenge —
@@ -103,6 +128,15 @@ export const BASH_CHALLENGES: TerminalChallenge[] = [
     hint: 'Signal number 9 = SIGKILL, no mercy.',
     explanation: "-9 sends SIGKILL — a signal the process can't catch, block, or ignore, so it dies immediately.",
     grade: (ans) => /^kill\s+-(9|sigkill|kill)\s+4521$/i.test(collapse(ans)),
+    investigate: [
+      {
+        description: 'Check what is actually bound to port 4444 before killing PID 4521 — run netstat -tulpn first.',
+        test: (raw) => {
+          const m = collapse(raw).match(/^netstat\s+-([a-z]+)/i);
+          return m ? hasExactFlagSet(m[1], 'tulpn') : false;
+        },
+      },
+    ],
   },
   {
     id: 'bash-netstat',
@@ -113,7 +147,7 @@ export const BASH_CHALLENGES: TerminalChallenge[] = [
       const m = collapse(ans).match(/^netstat\s+-([a-z]+)$/i);
       return m ? hasExactFlagSet(m[1], 'tulpn') : false;
     },
-    referenceHref: '/network-ports/',
+    referenceHref: '/reference/network-ports/',
     referenceLabel: 'Network Port Reference',
   },
   {
@@ -125,7 +159,7 @@ export const BASH_CHALLENGES: TerminalChallenge[] = [
       const m = collapse(ans).match(/^netstat\s+-([a-z]+)\s*\|\s*grep\s+4444$/i);
       return m ? hasExactFlagSet(m[1], 'tulpn') : false;
     },
-    referenceHref: '/network-ports/',
+    referenceHref: '/reference/network-ports/',
     referenceLabel: 'Network Port Reference',
   },
 ];
@@ -166,6 +200,12 @@ export const CMD_CHALLENGES: TerminalChallenge[] = [
     hint: "/PID <id> /F — order doesn't matter.",
     explanation: '/PID targets the process by its numeric ID; /F forces termination without prompting. The two flags can appear in either order.',
     grade: (ans) => /^taskkill\s+(\/pid\s+4521\s+\/f|\/f\s+\/pid\s+4521)$/i.test(collapse(ans)),
+    investigate: [
+      {
+        description: 'Confirm PID 4521 actually shows up as a running chrome.exe process before force-killing it — run tasklist first.',
+        test: (raw) => /^tasklist\b/i.test(collapse(raw)),
+      },
+    ],
   },
   {
     id: 'cmd-schtasks',
@@ -210,5 +250,11 @@ export const POWERSHELL_CHALLENGES: TerminalChallenge[] = [
     hint: 'Stop-Process -Id <id> -Force.',
     explanation: "-Id targets the process by its numeric ID; -Force skips the confirmation prompt Stop-Process shows for processes you don't own.",
     grade: (ans) => /^stop-process\s+(-id\s+4521\s+-force|-force\s+-id\s+4521)$/i.test(collapse(ans)),
+    investigate: [
+      {
+        description: 'Confirm PID 4521 actually shows up as a running process before force-stopping it — run Get-Process first.',
+        test: (raw) => /^get-process\b/i.test(collapse(raw)),
+      },
+    ],
   },
 ];

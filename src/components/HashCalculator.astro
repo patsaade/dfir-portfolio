@@ -69,7 +69,7 @@ const textarea = css({
   fontSize: '0.88rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.7rem 0.85rem',
   minH: '9rem',
@@ -106,6 +106,10 @@ const fileBtn = css({
   cursor: 'pointer',
   transition: 'border-color 150ms ease',
   _hover: { borderColor: 'primary', color: 'primary' },
+  // The file input inside this label is visually hidden but focusable, so the
+  // label has to surface the focus ring on its behalf — otherwise tabbing to
+  // it puts focus somewhere with no visible indicator (WCAG 2.4.7).
+  '&:has(input:focus-visible)': { outline: '2px solid token(colors.primary)', outlineOffset: '2px', borderColor: 'primary' },
 });
 const fileName = css({ fontFamily: 'mono', fontSize: '0.85rem', color: 'textMuted', wordBreak: 'break-all' });
 
@@ -220,6 +224,7 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
           data-hash-text
           data-session-field="text"
           placeholder="Paste text to hash…"
+          aria-label="Text to hash"
           autocomplete="off"
           spellcheck="false"
         ></textarea>
@@ -227,7 +232,7 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
         <div class={fileRow} data-hash-file-row hidden>
           <label class={fileBtn}>
             <Icon name="download" size={15} /> Choose file
-            <input type="file" data-hash-file class={css({ display: 'none' })} />
+            <input type="file" data-hash-file class={css({ position: 'absolute', w: '1px', h: '1px', p: 0, m: '-1px', overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0 })} />
           </label>
           <span class={fileName} data-hash-file-name>No file chosen — nothing is uploaded, it's read locally in your browser.</span>
         </div>
@@ -238,7 +243,7 @@ const candidateNote = css({ fontSize: '0.82rem', color: 'textMuted', lineHeight:
           HASH_ALGORITHMS.map((a) => (
             <div class={resultRow} data-hash-result-row data-hash-algo={a.id}>
               <span class={resultBadge}>{a.label}</span>
-              <pre class={resultBox} data-hash-output>&nbsp;</pre>
+              <pre class={resultBox} data-hash-output tabindex="0" role="region" aria-label={`${a.label} hash output`}>&nbsp;</pre>
               <button type="button" class={rowCopyBtn} data-hash-copy={a.id} data-copy-pop data-sound="copy" aria-label={`Copy ${a.label} hash`} title="Copy">
                 <Icon name="copy" size={13} />
               </button>

@@ -1,5 +1,5 @@
-// MITRE D3FEND — the defensive counterpart to ATT&CK. Drives the /d3fend/ map and
-// the per-technique /d3fend/[id]/ pages. The dataset is generated from MITRE's
+// MITRE D3FEND — the defensive counterpart to ATT&CK. Drives the /reference/d3fend/
+// map and the per-technique /reference/d3fend/[id]/ pages. The dataset is generated from MITRE's
 // official D3FEND ontology + inferred ATT&CK mappings by scripts/gen-d3fend-map.mjs
 // → d3fend-techniques.generated.ts (re-run to refresh). Each technique knows the
 // ATT&CK techniques it `counters`, which powers the two-way cross-link with the

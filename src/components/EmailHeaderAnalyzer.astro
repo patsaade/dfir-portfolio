@@ -81,7 +81,7 @@ const textarea = css({
   lineHeight: 1.5,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.75rem',
   py: '0.6rem',
@@ -241,7 +241,7 @@ const fieldDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5
     <div>
       <p class={paneLabel}>Received chain — oldest hop first</p>
       <p class={caption} data-eha-hop-summary role="status" aria-live="polite">Paste headers above to see the delivery path.</p>
-      <ol class={hopList} data-eha-hop-list></ol>
+      <ol class={hopList} data-eha-hop-list tabindex="0" aria-label="Delivery hops"></ol>
       <template data-eha-hop-template>
         <li class={hopRow}>
           <span class={hopIndex} data-hop-index-el aria-hidden="true"></span>
@@ -276,7 +276,7 @@ const fieldDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5
                   no header
                 </span>
               </div>
-              <p class={authDetail} data-auth-detail></p>
+              <p class={authDetail} data-auth-detail tabindex="0" role="region" aria-label={`${mech.toUpperCase()} result detail`}></p>
             </div>
           ))
         }
@@ -320,11 +320,11 @@ const fieldDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5
         <div data-eha-m365-content hidden>
           <div>
             <p class={miniLabel}>Organization headers</p>
-            <ul class={fieldList} data-eha-org-list></ul>
+            <ul class={fieldList} data-eha-org-list tabindex="0" aria-label="Organization headers"></ul>
           </div>
           <div class={css({ mt: '0.85rem' })}>
             <p class={miniLabel}>Anti-spam report fields (X-Forefront-Antispam-Report)</p>
-            <ul class={fieldList} data-eha-antispam-list></ul>
+            <ul class={fieldList} data-eha-antispam-list tabindex="0" aria-label="Anti-spam report fields"></ul>
           </div>
         </div>
       </div>

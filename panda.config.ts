@@ -166,8 +166,18 @@ export default defineConfig({
           bgCard: {
             value: { base: '#ffffff', _dark: '{colors.slate.900}' },
           },
+          // Soft, decorative hairline (dividers, card outlines, table rules).
+          // Deliberately low-contrast; WCAG 1.4.11 exempts decorative
+          // boundaries. Never the sole delineation of an interactive control.
           border: {
             value: { base: '{colors.slate.200}', _dark: '{colors.slate.800}' },
+          },
+          // Perceivable boundary for interactive controls — text inputs,
+          // textareas, selects, outline/ghost buttons. Clears WCAG 1.4.11 (3:1)
+          // against every surface in both modes; per-theme override in
+          // src/themes.ts keeps that true in all 10 palettes.
+          borderStrong: {
+            value: { base: '{colors.slate.500}', _dark: '{colors.slate.500}' },
           },
           text: {
             value: { base: '{colors.slate.900}', _dark: '#ffffff' },
@@ -192,6 +202,17 @@ export default defineConfig({
           // light primaries (e.g. dark text on the matrix/amber greens).
           onPrimary: {
             value: { base: '#ffffff', _dark: '#ffffff' },
+          },
+          // Error / failure state (drill fail glyphs, invalid-input messages).
+          // Replaces the raw `red` CSS keyword, which only reached ~3.8-4.2:1 on
+          // bgCard; every per-theme override in src/themes.ts clears 4.5:1 as
+          // normal text on bg / bgCard / bgSubtle / codeBg.
+          danger: {
+            value: { base: '#b91c1c', _dark: '#f87171' },
+          },
+          // Text/icon color to use on top of a `danger` fill.
+          onDanger: {
+            value: { base: '#ffffff', _dark: '{colors.slate.950}' },
           },
         },
       },

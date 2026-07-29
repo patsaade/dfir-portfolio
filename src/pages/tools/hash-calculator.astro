@@ -49,7 +49,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   description="Compute MD5/SHA-1/SHA-256/SHA-384/SHA-512 for text or a local file, verify against a known hash, and identify a bare hash's likely algorithm(s) with a confidence level — entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Hash Calculator' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Hash Calculator' }]}
     eyebrow="Converters"
     title="Hash Calculator & Verifier"
     description="Compute file/text hashes, verify against a known value, or identify a bare hash's likely algorithm — entirely local."
@@ -92,7 +92,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Algorithm reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Algorithm reference table">
     <table class={refTable}>
       <thead>
         <tr>

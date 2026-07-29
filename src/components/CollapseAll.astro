@@ -39,6 +39,26 @@ const btn = css({
   '&[data-all-open] .cfa-expand': { display: 'none' },
   '&[data-all-open] .cfa-collapse': { display: 'inline-flex' },
 });
+
+// Both labels are rendered and stacked in a SINGLE grid cell, so the cell — and
+// therefore the button — is always as wide as the longer one ("Collapse all").
+// The button then never changes size when the state flips, which matters because
+// it sits in a wrapping flex row: a width change re-flowed the whole control row
+// on the ATT&CK map, popping the List/Matrix toggle up onto the filter line and
+// pushing it off the right edge. Visibility (not display) keeps the inactive
+// label occupying its cell so the reserved width holds.
+const labelStack = css({
+  display: 'grid',
+  '& > *': { gridArea: '1 / 1' },
+});
+const labelExpand = css({
+  visibility: 'visible',
+  '[data-all-open] &': { visibility: 'hidden' },
+});
+const labelCollapse = css({
+  visibility: 'hidden',
+  '[data-all-open] &': { visibility: 'visible' },
+});
 ---
 
 <button
@@ -51,7 +71,10 @@ const btn = css({
 >
   <Icon name="chevrons-up-down" size={15} class="cfa-expand" />
   <Icon name="chevrons-down-up" size={15} class="cfa-collapse" />
-  <span data-collapse-label>Expand all</span>
+  <span class={labelStack} data-collapse-label>
+    <span class={labelExpand}>Expand all</span>
+    <span class={labelCollapse}>Collapse all</span>
+  </span>
 </button>
 
 <script>
@@ -63,7 +86,6 @@ const btn = css({
         var sel = btn.getAttribute('data-collapse-target');
         var items = sel ? Array.prototype.slice.call(document.querySelectorAll(sel)) : [];
         if (!items.length) return; // nothing to control — leave the button hidden
-        var label = btn.querySelector('[data-collapse-label]');
 
         function allOpen() {
           return items.every(function (d) { return d.open; });
@@ -73,7 +95,11 @@ const btn = css({
           if (open) btn.setAttribute('data-all-open', '');
           else btn.removeAttribute('data-all-open');
           btn.setAttribute('aria-pressed', open ? 'true' : 'false');
-          if (label) label.textContent = open ? 'Collapse all' : 'Expand all';
+          // The visible label is swapped in CSS off [data-all-open] (both are in
+          // the DOM, stacked) so the button's width never changes. Only the
+          // ACCESSIBLE name needs setting here — otherwise a screen reader would
+          // read both labels, including the hidden one.
+          btn.setAttribute('aria-label', open ? 'Collapse all' : 'Expand all');
         }
 
         btn.addEventListener('click', function () {

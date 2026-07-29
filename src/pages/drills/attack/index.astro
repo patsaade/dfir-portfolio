@@ -17,12 +17,21 @@ import { toolChip } from '../../../components/RelatedTools.astro';
 import ExternalResources from '../../../components/ExternalResources.astro';
 import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
 import { ATTACK_TECHNIQUES, ATTACK_VERSION } from '../../../data/references';
-import { getAttackDrillQuestion, ATTACK_DRILL_TOTAL } from '../../../data/drills/attackDrill';
+import { attackDrillQuestionBank, ATTACK_DRILL_TOTAL } from '../../../data/drills/attackDrill';
 
-// Called once here (build time, for the no-JS shell) and again by the
-// client <script> below on mount — see DrillEngine.astro's own header
-// comment for why question 0 must be deterministic to avoid a flash.
-const q0 = getAttackDrillQuestion(0);
+// The ENTIRE question bank, materialised at build time and handed to the
+// client as a JSON island below. The generator is a pure, deterministic
+// function of the question index, so there's nothing the client needs it for
+// at runtime — and keeping it out of the client bundle is what stops Rollup
+// pulling the whole ATT&CK Enterprise dataset (~490 KB raw) into this page to
+// ask fourteen questions. See src/data/drills/graders.ts for how the `grade`
+// closures survive the JSON round-trip.
+const QUESTIONS = attackDrillQuestionBank();
+// Question 0 renders for real server-side (DrillEngine's no-JS contract). It's
+// the SAME object the client hydrates for index 0, not a second call to the
+// generator, so SSR and hydration cannot drift.
+const q0 = QUESTIONS[0];
+const questionsJson = JSON.stringify(QUESTIONS).replace(/</g, '\\u003c');
 
 const sectionH2 = css({
   display: 'flex',
@@ -70,27 +79,31 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </aside>
 
   <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
-    Two question shapes alternate: given a real, documented adversary procedure, type the{' '}
-    <Term slug="mitre-attack">MITRE ATT&amp;CK</Term> technique ID it describes (e.g. "T1059"); and given a
-    technique's name and id, type the tactic it maps to in the Enterprise matrix. No multiple choice — every answer
-    is typed and graded against the real dataset, and links straight to that technique's own detail page for the
-    full definition, platforms, detection guidance, and mitigations.
+    Three question shapes rotate: given a real, documented adversary procedure, type the{' '}
+    <Term slug="mitre-attack">MITRE ATT&amp;CK</Term> technique ID it describes (e.g. "T1059"); given a
+    technique's name and id, type the tactic it maps to in the Enterprise matrix; and a handful of "Order the
+    intrusion" questions drag a small set of real techniques from a single tactic into the sequence an attacker
+    would actually execute them. No multiple choice on the recall questions — every typed answer is graded against
+    the real dataset, and links straight to that technique's own detail page for the full definition, platforms,
+    detection guidance, and mitigations.
   </p>
 
   <DrillEngine
     drill="attack"
     heading="MITRE ATT&CK Drill"
-    intro="Ten questions, drawn from across the full Enterprise matrix — not just the handful of techniques this site's writeups happen to cover."
+    intro="Fourteen questions, drawn from across the full Enterprise matrix — not just the handful of techniques this site's writeups happen to cover."
     totalQuestions={ATTACK_DRILL_TOTAL}
     firstQuestion={q0}
   />
+
+  <script type="application/json" data-drill-questions="attack" is:inline set:html={questionsJson} />
 
   <h2 id="related" class={sectionH2}>
     <Icon name="crosshair" size={20} class={css({ color: 'primary' })} /> Related
   </h2>
   <div class={relatedList}>
     <div>
-      <a href="/attack-map/" class={toolChip}>
+      <a href="/reference/attack-map/" class={toolChip}>
         <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
@@ -99,7 +112,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </p>
     </div>
     <div>
-      <a href="/d3fend/" class={toolChip}>
+      <a href="/reference/d3fend/" class={toolChip}>
         <Icon name="shield" size={13} /> D3FEND Countermeasure Map <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
@@ -113,8 +126,22 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 </BaseLayout>
 
 <script>
+  // Imports the drill engine and the tiny grader shim ONLY — never
+  // ../../../data/drills/attackDrill, which would drag the whole ATT&CK
+  // dataset into this page's bundle. The questions come from the JSON island
+  // the frontmatter above emitted.
   import { initDrill } from '../../../scripts/drillEngine';
-  import { getAttackDrillQuestion, ATTACK_DRILL_TOTAL } from '../../../data/drills/attackDrill';
+  import { hydrateQuestion, type SerialisableDrillQuestion } from '../../../data/drills/graders';
   const root = document.querySelector('[data-drill="attack"]');
-  if (root) initDrill({ root, totalQuestions: ATTACK_DRILL_TOTAL, nextQuestion: getAttackDrillQuestion });
+  const dataEl = document.querySelector('[data-drill-questions="attack"]');
+  if (root && dataEl) {
+    const questions: SerialisableDrillQuestion[] = JSON.parse(dataEl.textContent || '[]');
+    if (questions.length) {
+      initDrill({
+        root,
+        totalQuestions: questions.length,
+        nextQuestion: (i: number) => hydrateQuestion(questions[((i % questions.length) + questions.length) % questions.length]),
+      });
+    }
+  }
 </script>

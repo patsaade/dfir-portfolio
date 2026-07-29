@@ -1,0 +1,283 @@
+---
+// Public/Private IP & CIDR Reference — a cheat sheet for special-use IPv4/
+// IPv6 address blocks (src/data/ipRanges.ts) plus a computed CIDR
+// prefix/netmask/host-count quick-reference table. Same "searchable card
+// list, grouped" shape as the Network Port Reference, just one level deep
+// (family -> flat grid) since this dataset is far smaller. Every range entry
+// is sourced directly from IANA's own special-purpose address registries —
+// see ipRanges.ts's own header for the exact URLs. Static page — prerender
+// to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag, card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import FilterToggle from '../../components/FilterToggle.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import { toolChip } from '../../components/RelatedTools.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { IP_RANGES, CIDR_QUICK_REF, type IpRangeEntry } from '../../data/ipRanges';
+
+const GROUPS = [
+  { id: 'ipv4', title: 'IPv4 Special-Use Ranges', icon: 'server' as const },
+  { id: 'ipv6', title: 'IPv6 Special-Use Ranges', icon: 'globe' as const },
+] as const;
+const byFamily = (id: 'ipv4' | 'ipv6') => IP_RANGES.filter((r) => r.family === id);
+const totalCount = IP_RANGES.length;
+
+const catLabel: Record<string, string> = {
+  'private-use': 'Private-use',
+  'shared-address-space': 'Shared address space',
+  loopback: 'Loopback',
+  'link-local': 'Link-local',
+  multicast: 'Multicast',
+  documentation: 'Documentation',
+  benchmarking: 'Benchmarking',
+  translation: 'Translation',
+  reserved: 'Reserved',
+  broadcast: 'Broadcast',
+  'unique-local': 'Unique local (ULA)',
+  'global-unicast': 'Global unicast',
+};
+const catCounts: Record<string, number> = {};
+for (const e of IP_RANGES) catCounts[e.category] = (catCounts[e.category] ?? 0) + 1;
+const catOptions = Object.keys(catCounts)
+  .sort()
+  .map((c) => ({ value: c, label: catLabel[c] ?? c, count: catCounts[c] }));
+
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer',
+  listStyle: 'none',
+  userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' },
+  '&::marker': { display: 'none' },
+  _hover: { '& .ipr-grp-title': { color: 'primary' } },
+});
+const groupHead = css({ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', m: 0, fontSize: '1.25rem', fontWeight: 700 });
+const chevCls = css({
+  color: 'textMuted',
+  flexShrink: 0,
+  transition: 'transform 200ms ease',
+  'details[open] > summary &': { transform: 'rotate(90deg)' },
+});
+const grpCount = css({
+  fontFamily: 'sans',
+  fontSize: '0.68rem',
+  fontWeight: 600,
+  color: 'textMuted',
+  bg: 'bgSubtle',
+  border: '1px solid token(colors.border)',
+  borderRadius: 'full',
+  px: '0.5rem',
+  py: '0.1rem',
+});
+const iprGrid = css({ mt: '1rem' });
+const iprCard = `${card()} ${css({ cursor: 'default' })}`;
+const iprHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' });
+const iprCidr = css({ fontFamily: 'mono', fontWeight: 700, fontSize: '0.95rem', color: 'primary' });
+const iprName = css({ fontFamily: 'sans', fontWeight: 700, fontSize: '0.88rem', color: 'text' });
+const iprNote = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, mt: '0.5rem' });
+const tagRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', mt: '0.6rem' });
+const refLinks = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', mt: '0.6rem' });
+const refLink = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem', color: 'textMuted', _hover: { color: 'primary' } });
+
+const filterRow = css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' });
+
+const quickRefCard = css({ p: '1rem 1.25rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md', mb: '1.5rem' });
+const quickRefTableWrap = css({ maxH: '20rem', overflowY: 'auto', overflowX: 'auto', mt: '0.85rem', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const quickRefTable = css({ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' });
+const qrTh = css({
+  position: 'sticky',
+  top: 0,
+  textAlign: 'left',
+  color: 'textMuted',
+  fontFamily: 'sans',
+  fontWeight: 600,
+  fontSize: '0.68rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  bg: 'bgCard',
+  p: '0.45rem 0.65rem',
+  borderBottom: '1px solid token(colors.border)',
+});
+const qrTd = css({ fontFamily: 'mono', fontSize: '0.82rem', color: 'text', p: '0.4rem 0.65rem', borderBottom: '1px solid token(colors.border)' });
+const sectionH2 = css({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '1.3rem',
+  fontWeight: 700,
+  mt: '2.5rem',
+  mb: '1rem',
+  pt: '1.5rem',
+  borderTop: '1px solid token(colors.border)',
+  scrollMarginTop: '90px',
+});
+const relatedList = css({ display: 'flex', flexDirection: 'column', gap: '0.85rem' });
+const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35rem', lineHeight: 1.6 });
+---
+
+<BaseLayout
+  title="IP & CIDR Reference"
+  description="A cheat sheet for special-use IPv4/IPv6 address blocks (private, CGNAT, loopback, link-local, multicast, documentation) plus a CIDR prefix/netmask/host-count quick reference — every range sourced from IANA's own registries."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'IP & CIDR Reference' }]}
+    eyebrow="Reference"
+    title="IP & CIDR Reference"
+    description={`${totalCount} special-use IPv4/IPv6 address blocks — private ranges, CGNAT, loopback, link-local, multicast, and documentation — plus a CIDR prefix/netmask/host-count quick reference. Pairs with the CIDR & VLAN Calculator for computing an individual block.`}
+  />
+
+  <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
+    Recognizing a special-use range at a glance is a genuinely fast triage step: is this beaconing host actually
+    internal, or does that "private-looking" address only look that way because it's inside a CGNAT range? Is this
+    IP in a report real, or one of the RFC 5737/3849 documentation blocks a vendor write-up (or this site's own tool
+    examples) uses for illustration? Every block below is sourced directly from IANA's own special-purpose address
+    registries, not a second-hand summary — see each entry's own citation.
+  </p>
+
+  <div class={quickRefCard}>
+    <h2 class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 700, m: 0 })}>
+      <Icon name="cpu" size={18} class={css({ color: 'primary' })} /> CIDR quick reference (IPv4)
+    </h2>
+    <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.7, mt: '0.6rem', mb: 0 })}>
+      Computed directly from RFC 4632 CIDR arithmetic — the same math the <a href="/tools/cidr-calculator/" class={css({ color: 'primary', textDecoration: 'underline' })}>CIDR & VLAN Calculator</a> uses
+      for a specific network. /31 and /32 have no broadcast/usable-host split in the ordinary sense (see that tool's
+      own notes on RFC 3021).
+    </p>
+    <div class={quickRefTableWrap} tabindex="0" role="region" aria-label="CIDR quick reference table">
+      <table class={quickRefTable}>
+        <thead>
+          <tr>
+            <th class={qrTh}>Prefix</th>
+            <th class={qrTh}>Netmask</th>
+            <th class={qrTh}>Total addresses</th>
+            <th class={qrTh}>Usable hosts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {CIDR_QUICK_REF.map((r) => (
+            <tr>
+              <td class={qrTd}>/{r.prefix}</td>
+              <td class={qrTd}>{r.netmask}</td>
+              <td class={qrTd}>{r.totalAddresses.toLocaleString()}</td>
+              <td class={qrTd}>{r.usableHosts.toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="ipr-cb"
+      options={catOptions}
+      placeholder={`Search ${totalCount} ranges, or type a category…`}
+      label="Search IP ranges or filter by category"
+    />
+  </div>
+
+  <div class={filterRow}>
+    <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.6rem', color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span><span id="ipr-result-count">{totalCount}</span> ranges across {GROUPS.length} families</span>
+    </p>
+    <div class={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', ml: { sm: 'auto' } })}>
+      <FilterToggle id="ipr-v6-toggle" icon="globe" label="IPv6 only" tone="primary" />
+      <CollapseAll target="[data-ipr-group]" />
+    </div>
+  </div>
+
+  <div class={css({ display: 'flex', flexDirection: 'column' })}>
+    {
+      GROUPS.map((g) => {
+        const items = byFamily(g.id);
+        return (
+          <details id={`ipr-${g.id}`} data-ipr-group open class={groupDetails}>
+            <summary class={groupSummary}>
+              <h2 class={groupHead}>
+                <Icon name="chevron-right" size={18} class={chevCls} />
+                <Icon name={g.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class="ipr-grp-title">{g.title}</span>
+                <span class={grpCount}>{items.length}</span>
+              </h2>
+            </summary>
+            <div class={`card-grid ${iprGrid}`}>
+              {items.map((e: IpRangeEntry) => (
+                <div
+                  class={iprCard}
+                  data-ipr-card={`${e.cidr} ${e.name} ${catLabel[e.category] ?? e.category}`.toLowerCase()}
+                  data-cat={e.category}
+                  {...(e.family === 'ipv6' ? { 'data-v6': true } : {})}
+                >
+                  <span class={iprHead}>
+                    <span class={iprCidr}>{e.cidr}</span>
+                  </span>
+                  <span class={iprName}>{e.name}</span>
+                  <p class={iprNote}>{e.note}</p>
+                  <span class={tagRow}>
+                    <span class={tag({ tone: 'muted' })}>{catLabel[e.category] ?? e.category}</span>
+                  </span>
+                  <span class={refLinks}>
+                    {e.references.map((ref) => (
+                      <a href={ref.url} target="_blank" rel="noopener" class={refLink}>
+                        <Icon name="external-link" size={11} /> {ref.name}
+                      </a>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </details>
+        );
+      })
+    }
+  </div>
+
+  <p id="ipr-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No ranges match your search.
+  </p>
+
+  <h2 id="related" class={sectionH2}>
+    <Icon name="wrench" size={20} class={css({ color: 'primary' })} /> Related
+  </h2>
+  <div class={relatedList}>
+    <div>
+      <a href="/tools/cidr-calculator/" class={toolChip}>
+        <Icon name="globe" size={13} /> CIDR &amp; VLAN Calculator <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Recognized a range here — now compute its network/broadcast address, netmask, and usable host range.
+      </p>
+    </div>
+    <div>
+      <a href="/drills/ip-cidr/" class={toolChip}>
+        <Icon name="wifi" size={13} /> Subnetting Drill <Icon name="arrow-right" size={13} />
+      </a>
+      <p class={relatedReason}>
+        Practice recognizing special-use ranges and subnet arithmetic together, drawn from this same dataset.
+      </p>
+    </div>
+  </div>
+
+  <ListFilter
+    config={{
+      comboboxId: 'ipr-cb',
+      cardSelector: '[data-ipr-card]',
+      searchAttr: 'data-ipr-card',
+      groupSelector: '[data-ipr-group]',
+      countId: 'ipr-result-count',
+      emptyId: 'ipr-empty',
+      facetAttr: 'data-cat',
+      toggles: [{ id: 'ipr-v6-toggle', attr: 'data-v6' }],
+      urlSync: { queryParam: 'q', facetParam: 'category' },
+    }}
+  />
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['ip-reference']} />
+</BaseLayout>

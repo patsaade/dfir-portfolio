@@ -4,7 +4,7 @@
 // Vendor-agnostic on purpose: every entry is a concept, technique, artifact, or
 // model — never a product. Each field is natural prose (see docs/STYLE_GUIDE.md →
 // "Glossary terms"); task instructions must never leak into a definition. This
-// data drives the /glossary/ index, the prerendered /glossary/[slug]/ detail pages,
+// data drives the /reference/glossary/ index, the prerendered /reference/glossary/[slug]/ detail pages,
 // and the site-wide "Term of the Day" ticker.
 //
 // A small curated core lives in src/data/terms/curated.json; the bulk is authored

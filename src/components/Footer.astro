@@ -1,7 +1,8 @@
 ---
-// Site footer — brand + social, two link columns, and a version/commit line.
+// Site footer — brand + social, four link columns (Explore / Reference /
+// Tools / More), and a version/commit line.
 import { css } from 'styled-system/css';
-import { SITE, SOCIALS, NAV_LINKS, DFIR_GROUPS, MORE_LINKS } from '../consts';
+import { SITE, SOCIALS, NAV_LINKS, DOMAINS, MORE_LINKS, PERSONAL_HREFS, groupsFor, type EntryType } from '../consts';
 import { VERSION, SHORT_COMMIT, COMMIT_URL } from '../utils/version';
 import PixelStar from './PixelStar.astro';
 import Icon from './Icon.astro';
@@ -38,18 +39,30 @@ const socialBtn = css({
 });
 
 const moreLinks = MORE_LINKS;
+// Flat, single-level selector on purpose — never nested (Panda gotcha).
+const hideOnCyberkit = css({ '[data-brand="cyberkit"] &': { display: 'none' } });
 
-// The DFIR column used to flat-dump all 6 DFIR_GROUPS subgroups (17 links)
-// through a 2-column CSS multicol hack — 3x the Explore/More columns' size
-// and still growing every time a tool was added. Now that /dfir/ exists as
-// the single "browse everything" landing page (src/pages/dfir.astro), this
-// column just points there: one overview link + one link per category
-// anchor (`/dfir/#${id}`), 7 flat rows total — comparable to Explore/More's
-// 3 each, same fLink treatment, no multicol layout needed.
-const dfirFooterLinks = [
-  { href: '/dfir/', label: 'Overview' },
-  ...DFIR_GROUPS.map((g) => ({ href: `/dfir/#${g.id}`, label: g.category })),
+// `groupsFor` comes from consts.ts — the one shape Navigation.astro and
+// ToolSidebar.astro derive their menus from too, so all three stay in sync.
+
+// Each section column is one overview link plus one anchor per category of
+// that type — never a flat dump of all 48 entries (an earlier version of this
+// footer dumped every DFIR link through a 2-column CSS multicol hack and grew
+// every time a tool shipped). Derived, so a new category shows up here for
+// free and the anchors can't drift from the section page's own `id`s.
+const sectionFooterLinks = (type: EntryType, base: string) => [
+  { href: base, label: 'Overview' },
+  ...groupsFor(type).map((g) => ({ href: `${base}#${g.id}`, label: g.category })),
 ];
+
+const referenceFooterLinks = sectionFooterLinks('reference', '/reference/');
+const toolsFooterLinks = sectionFooterLinks('tool', '/tools/');
+
+// Topic hubs — the domains that earned their own hub page (`hub: true`).
+// Derived from DOMAINS so promoting/demoting a hub in consts.ts is the only
+// edit needed. These are topic-hub pages for domain tags (see DOMAINS in
+// consts.ts), not personal-identity content, so no cyberkit brand toggle.
+const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: `/${d.id}/`, label: d.label }));
 ---
 
 <footer
@@ -85,8 +98,12 @@ const dfirFooterLinks = [
       px: '1.25rem',
       py: { base: '2rem', sm: '2.25rem' },
       display: 'grid',
-      gridTemplateColumns: { base: '1fr', sm: '1.3fr 0.8fr 1.3fr 0.8fr' },
-      gap: { base: '1.75rem', sm: '2rem' },
+      // Brand + four nav columns (Explore / Reference / Tools / More). Two
+      // columns on small screens, the full five once there's room — the nav
+      // columns share one `1fr` each so no category label gets a column
+      // narrower than its neighbours.
+      gridTemplateColumns: { base: '1fr', sm: 'repeat(2, 1fr)', md: '1.4fr repeat(4, 1fr)' },
+      gap: { base: '1.75rem', sm: '1.75rem 1.5rem' },
     })}
   >
     {/* Brand + social — domain-based swap, see Navigation.astro's own comment
@@ -108,6 +125,17 @@ const dfirFooterLinks = [
         <span class={css({ '[data-brand="cyberkit"] &': { display: 'none' } })}>{SITE.tagline} — writeups, labs, tooling, and a daily security term.</span>
         <span class={css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } })}>Free, browser-based DFIR &amp; IT tools — nothing you enter ever leaves your browser.</span>
       </p>
+      {/* Provenance — cyberkit.win only. The social row below is hidden there
+          (personal profiles), so this is the one place on that domain a
+          visitor can find out who maintains the toolkit and where the
+          portfolio side lives. Flat single-level selector, never nested. */}
+      <p class={css({ display: 'none', fontSize: '0.8rem', color: 'textMuted', mt: '0.75rem', lineHeight: 1.65, maxW: '320px', '[data-brand="cyberkit"] &': { display: 'block' } })}>
+        Built and maintained by{' '}
+        <a
+          href={SITE.url}
+          class={css({ color: 'textMuted', textDecoration: 'underline', transition: 'color 150ms ease', _hover: { color: 'primary' } })}
+        >{SITE.author}</a>, with support from Claude Code.
+      </p>
       <div class={css({ display: 'flex', gap: '0.6rem', mt: '1.4rem', '[data-brand="cyberkit"] &': { display: 'none' } })}>
         <a href={SOCIALS.linkedin} target="_blank" rel="noopener" aria-label="LinkedIn" class={socialBtn}><Icon name="linkedin" size={17} /></a>
         <a href={SOCIALS.github} target="_blank" rel="noopener" aria-label="GitHub" class={socialBtn}><Icon name="github" size={17} /></a>
@@ -119,21 +147,27 @@ const dfirFooterLinks = [
     {/* Explore — NAV_LINKS (Blog/Labs/About) is exactly the personal-content
         set redirected away on cyberkit.win (see vercel.json), so each row
         hides individually there rather than dropping the whole column
-        (IT/Drills below stay visible on every domain). */}
+        (Drills and the topic hubs below stay visible on every domain). */}
     <nav aria-label="Footer — site sections">
       <p class={colHead}>Explore</p>
-      {NAV_LINKS.map((l) => <a href={l.href} class={`${fLink} ${css({ '[data-brand="cyberkit"] &': { display: 'none' } })}`}>{l.label}</a>)}
-      {/* IT and Drills are nav dropdowns, not NAV_LINKS entries (see
-          Navigation.astro), so each needs its own row here rather than
-          coming along for free. */}
-      <a href="/it/" class={fLink}>IT</a>
+      {NAV_LINKS.map((l) => <a href={l.href} class={`${fLink} ${hideOnCyberkit}`}>{l.label}</a>)}
+      {/* Drills is a single-category menu with no sub-anchors worth listing,
+          and the topic hubs are cross-cutting tag pages rather than a menu at
+          all — so both fold in here as plain rows instead of earning columns. */}
       <a href="/drills/" class={fLink}>Drills</a>
+      {hubLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
     </nav>
 
-    {/* DFIR */}
-    <nav aria-label="Footer — DFIR">
-      <p class={colHead}>DFIR</p>
-      {dfirFooterLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
+    {/* Reference — read-it content (lookup tables, guides, frameworks). */}
+    <nav aria-label="Footer — reference">
+      <p class={colHead}>Reference</p>
+      {referenceFooterLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
+    </nav>
+
+    {/* Tools — feed-it-input content (parsers, decoders, converters, builders). */}
+    <nav aria-label="Footer — tools">
+      <p class={colHead}>Tools</p>
+      {toolsFooterLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
     </nav>
 
     {/* More — Certifications is credentials tied to Patrick's own name, so it
@@ -141,7 +175,7 @@ const dfirFooterLinks = [
         not personal, so they stay everywhere). */}
     <nav aria-label="Footer — more">
       <p class={colHead}>More</p>
-      {moreLinks.map((l) => <a href={l.href} class={l.href === '/certifications/' ? `${fLink} ${css({ '[data-brand="cyberkit"] &': { display: 'none' } })}` : fLink}>{l.label}</a>)}
+      {moreLinks.map((l) => <a href={l.href} class={PERSONAL_HREFS.includes(l.href) ? `${fLink} ${hideOnCyberkit}` : fLink}>{l.label}</a>)}
     </nav>
   </div>
 
@@ -167,8 +201,14 @@ const dfirFooterLinks = [
         <span class={css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } })}>© {year} CyberKit. Built with Astro + Panda CSS.</span>
       </span>
 
-      {/* Live status line — a forensic/terminal touch. The UTC clock ties to the
-          UTC-keyed Term of the Day, which rolls over at 00:00 UTC. */}
+      {/* Live status line — a forensic/terminal touch. Defaults to UTC, which
+          ties to the UTC-keyed Term of the Day (it rolls over at 00:00 UTC) and
+          matches every timestamp this site prints; click it to swap to local
+          time and back. Resolution is HH:MM, not HH:MM:SS — a seconds field is
+          what forced a 1 Hz timer to run for the life of every open tab (see the
+          script below); at minute resolution the page wakes up 60× less often
+          for a status line that sits below the fold. The no-JS fallback is the
+          inert "UTC --:--" label. */}
       <span
         class={css({ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'mono', fontSize: '0.72rem', color: 'textMuted' })}
       >
@@ -177,7 +217,26 @@ const dfirFooterLinks = [
           style="animation: totd-pulse 2.4s ease-in-out infinite;"
           aria-hidden="true"
         ></span>
-        <span id="footer-utc">UTC&nbsp;--:--:--</span>
+        <button
+          type="button"
+          id="footer-clock"
+          data-sound="tick"
+          aria-live="off"
+          title="Show this time in your local timezone"
+          class={css({
+            fontFamily: 'mono',
+            fontSize: '0.72rem',
+            color: 'textMuted',
+            bg: 'transparent',
+            border: 'none',
+            p: 0,
+            cursor: 'pointer',
+            borderBottom: '1px dotted token(colors.border)',
+            transition: 'color 150ms ease, border-color 150ms ease',
+            _hover: { color: 'primary', borderBottomColor: 'primary' },
+            _focusVisible: { color: 'primary', outline: '2px solid token(colors.primary)', outlineOffset: '2px' },
+          })}
+        >UTC&nbsp;--:--</button>
         <span aria-hidden="true" class={css({ color: 'border' })}>·</span>
         <span>static</span>
       </span>
@@ -207,17 +266,78 @@ const dfirFooterLinks = [
   <script>
     // @ts-nocheck — vanilla DOM client script
     (function () {
-      var el = document.getElementById('footer-utc');
+      var el = document.getElementById('footer-clock');
       if (!el) return;
-      function pad(n) { return n < 10 ? '0' + n : '' + n; }
-      function tick() {
-        if (document.hidden) return; // don't churn while backgrounded
-        var d = new Date();
-        el.textContent = 'UTC ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+      // UTC is the default because the Term of the Day rolls over at 00:00 UTC
+      // and every timestamp this site prints is UTC — but a visitor reading a
+      // log against their own wall clock wants local, so one click swaps it.
+      // Persisted like every other stateful control here (see privacy.astro).
+      var KEY = 'clock-tz';
+      var local = false;
+      try { local = localStorage.getItem(KEY) === 'local'; } catch (e) {}
+      // Short zone label ("PDT", "CET") when the browser offers one; falls back
+      // to a UTC±H offset so the button always says which zone it is showing.
+      function localLabel() {
+        try {
+          var parts = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date());
+          for (var i = 0; i < parts.length; i++) if (parts[i].type === 'timeZoneName') return parts[i].value;
+        } catch (e) {}
+        var off = -new Date().getTimezoneOffset() / 60;
+        return 'UTC' + (off >= 0 ? '+' : '') + off;
       }
-      tick();
-      setInterval(tick, 1000);
-      document.addEventListener('visibilitychange', tick);
+      function pad(n) { return n < 10 ? '0' + n : '' + n; }
+      function render() {
+        var d = new Date();
+        el.textContent = local
+          ? localLabel() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+          : 'UTC ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+        el.title = local ? 'Show this time in UTC' : 'Show this time in your local timezone';
+      }
+
+      // A self-scheduling setTimeout rather than a 1 Hz setInterval. Two wins
+      // over the old `setInterval(tick, 1000)` + `if (document.hidden) return;`
+      // shape: (1) at HH:MM resolution there is nothing to redraw between minute
+      // boundaries, so the tab wakes once a minute instead of 60×; (2) the old
+      // hidden-check only skipped the WORK — the timer itself kept firing every
+      // second for as long as the tab existed. Here a hidden tab has no pending
+      // timer at all.
+      //
+      // Each timeout is aimed at the next wall-clock minute boundary (+50ms of
+      // slack so a slightly-early wakeup doesn't render the minute that is about
+      // to end), so the display flips when the minute actually flips and cannot
+      // drift with how long the page has been open. Every timezone offset in use
+      // is a whole number of minutes, so a UTC minute boundary is a local minute
+      // boundary too — one schedule serves both modes.
+      var timer = null;
+      function stop() {
+        if (timer !== null) { clearTimeout(timer); timer = null; }
+      }
+      function schedule() {
+        stop();
+        timer = setTimeout(function () {
+          timer = null;
+          run();
+        }, 60000 - (Date.now() % 60000) + 50);
+      }
+      function run() {
+        render();
+        if (!document.hidden) schedule();
+      }
+
+      el.addEventListener('click', function () {
+        local = !local;
+        try { localStorage.setItem(KEY, local ? 'local' : 'utc'); } catch (e) {}
+        // Redraw only — the pending timeout is already aimed at the next minute
+        // boundary, which the timezone swap doesn't move.
+        render();
+      });
+      document.addEventListener('visibilitychange', function () {
+        // Backgrounded: drop the timer entirely. Foregrounded: catch up on
+        // whatever minutes passed, then re-arm.
+        if (document.hidden) stop();
+        else run();
+      });
+      run();
     })();
   </script>
 </footer>

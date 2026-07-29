@@ -154,7 +154,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   description="Pick the eight CVSS v3.1 Base metrics — or paste a Base vector string — and get the Base Score, severity band, and canonical vector back instantly, computed entirely in your browser."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'CVSS Score Calculator' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'CVSS Score Calculator' }]}
     eyebrow="Converters"
     title="CVSS Score Calculator"
     description="Set the eight CVSS v3.1 Base metrics — or paste a Base vector string — and get the score, severity band, and the Impact/Exploitability terms behind it, computed locally."
@@ -206,7 +206,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     trouble starts, because the other two are where a generic severity number turns into something specific to
     your organization and this moment in time.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="The three metric groups table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -240,7 +240,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     by calling this tool's own rating function on a score inside each band, so the table and the calculator can
     never disagree.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="Qualitative severity bands table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -282,7 +282,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     Guide is the document to read, linked at the bottom of this page. The calculator above is driven by this
     exact same table, so the two can't drift apart.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="Base metric reference table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -336,7 +336,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     one of these vectors is additionally checked against FIRST's own published answer in this site's test suite,
     so a wrong number here would fail the build rather than ship.
   </p>
-  <div class={css({ overflowX: 'auto', mb: '1.5rem' })}>
+  <div class={css({ overflowX: 'auto', mb: '1.5rem' })} tabindex="0" role="region" aria-label="Worked examples table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -433,7 +433,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       </p>
     </div>
     <div>
-      <a href="/attack-map/" class={toolChip}>
+      <a href="/reference/attack-map/" class={toolChip}>
         <Icon name="crosshair" size={15} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>

@@ -1,11 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { getThreatActorsQuestion, THREAT_ACTORS_DRILL_TOTAL } from '../src/data/drills/threatActorsDrill';
+import { getThreatActorsQuestion, threatActorsDrillQuestionBank, THREAT_ACTORS_DRILL_TOTAL } from '../src/data/drills/threatActorsDrill';
+import { hydrateGrader } from '../src/data/drills/graders';
+import { assertBankSerialisesFaithfully } from './helpers/graderEquivalence';
 import { THREAT_ACTORS } from '../src/data/threatActors';
 import { VENDOR_NAMING_SCHEMES } from '../src/data/threatActorNaming';
 
 const apt29 = THREAT_ACTORS.find((a) => a.id === 'G0016')!;
 const lazarus = THREAT_ACTORS.find((a) => a.id === 'G0032')!;
 const fin7 = THREAT_ACTORS.find((a) => a.id === 'G0046')!;
+
+// #0-26 are the original free-text recall questions (aliasToName/clueToName/
+// software/namingConvention/applyNaming) — every one of them is answerType
+// 'text' with a working grade()/correctAnswer, which the generic loops below
+// rely on. #27+ are the newer 'match' (deconfliction) questions, which are
+// graded per-matchItem instead (no top-level grade()/correctAnswer at all —
+// see threatActorsDrill.ts's DrillQuestion contract), so every generic loop
+// that calls `q.grade!(...)` is deliberately scoped to stop before this
+// boundary; the deconfliction questions get their own dedicated describe
+// block below instead.
+const TEXT_RECALL_COUNT = 27;
 
 // Helper for the namingConvention/applyNaming cross-checks below: find a
 // vendor's own scheme by name, and assert it actually exists (a typo'd
@@ -41,11 +54,21 @@ describe('getThreatActorsQuestion', () => {
     expect(getThreatActorsQuestion(THREAT_ACTORS_DRILL_TOTAL * 3 + 2).prompt).toBe(getThreatActorsQuestion(2).prompt);
   });
 
-  it('no question is multiple choice — every question is free-text recall', () => {
-    for (let i = 0; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
+  it('no question in the original #0-26 range is multiple choice — every one is free-text recall', () => {
+    for (let i = 0; i < TEXT_RECALL_COUNT; i++) {
       const q = getThreatActorsQuestion(i);
       expect(q.answerType).toBe('text');
       expect(q.choices).toBeUndefined();
+    }
+  });
+
+  it('every question from TEXT_RECALL_COUNT onward is a "match" (deconfliction) question, never text/choice', () => {
+    for (let i = TEXT_RECALL_COUNT; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
+      const q = getThreatActorsQuestion(i);
+      expect(q.answerType).toBe('match');
+      expect(q.choices).toBeUndefined();
+      expect(q.correctAnswer).toBeUndefined();
+      expect(q.grade).toBeUndefined();
     }
   });
 
@@ -57,26 +80,33 @@ describe('getThreatActorsQuestion', () => {
     }
   });
 
-  it('every question has a non-empty prompt/explanation/hint, a working grade() that accepts its own correctAnswer and rejects an obviously wrong answer, and a real reference link into /threat-actors/', () => {
+  it('every question (including deconfliction) has a non-empty prompt/explanation/hint and a real reference link into /threat-actors/', () => {
     for (let i = 0; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
       const q = getThreatActorsQuestion(i);
       expect(q.prompt.length).toBeGreaterThan(0);
       expect(q.explanation.length).toBeGreaterThan(0);
       expect(q.hint && q.hint.length).toBeGreaterThan(0);
+      // Either a specific group's profile page (the group-derived modes AND
+      // the deconfliction/match modes — see threatActorsDrill.ts's
+      // refForPair) or the reference's own "Naming conventions" section
+      // anchor (the namingConvention/applyNaming modes — those facts aren't
+      // about any one group, see threatActorsDrill.ts's header comment) —
+      // both are real, working links into /threat-actors/, just two
+      // legitimately different target shapes.
+      const isGroupProfile = /^\/reference\/threat-actors\/[a-z0-9-]+\/$/.test(q.referenceHref ?? '');
+      const isNamingSection = q.referenceHref === '/reference/threat-actors/#naming-conventions';
+      expect(isGroupProfile || isNamingSection, `question ${i} has an unexpected referenceHref "${q.referenceHref}"`).toBe(true);
+    }
+  });
+
+  it('every #0-26 text-recall question has a working grade() that accepts its own correctAnswer and rejects an obviously wrong answer', () => {
+    for (let i = 0; i < TEXT_RECALL_COUNT; i++) {
+      const q = getThreatActorsQuestion(i);
       expect(typeof q.grade).toBe('function');
-      expect(q.grade!(q.correctAnswer), `question ${i} grade() rejected its own correctAnswer "${q.correctAnswer}"`).toBe(true);
+      expect(q.grade!(q.correctAnswer!), `question ${i} grade() rejected its own correctAnswer "${q.correctAnswer}"`).toBe(true);
       expect(q.grade!('definitely not a real threat actor fact'), `question ${i} grade() accepted an obviously wrong answer`).toBe(
         false,
       );
-      // Either a specific group's profile page (the group-derived modes) or
-      // the reference's own "Naming conventions" section anchor (the
-      // namingConvention/applyNaming modes — those facts aren't about any
-      // one group, see threatActorsDrill.ts's header comment) — both are
-      // real, working links into /threat-actors/, just two legitimately
-      // different target shapes.
-      const isGroupProfile = /^\/threat-actors\/[a-z0-9-]+\/$/.test(q.referenceHref ?? '');
-      const isNamingSection = q.referenceHref === '/threat-actors/#naming-conventions';
-      expect(isGroupProfile || isNamingSection, `question ${i} has an unexpected referenceHref "${q.referenceHref}"`).toBe(true);
     }
   });
 
@@ -169,7 +199,7 @@ describe('getThreatActorsQuestion', () => {
     it('every namingConvention question points at the "Naming conventions" section, not a specific group profile', () => {
       for (let i = 9; i <= 17; i++) {
         const q = getThreatActorsQuestion(i);
-        expect(q.referenceHref).toBe('/threat-actors/#naming-conventions');
+        expect(q.referenceHref).toBe('/reference/threat-actors/#naming-conventions');
         expect(q.answerType).toBe('text');
       }
     });
@@ -266,7 +296,7 @@ describe('getThreatActorsQuestion', () => {
       const vendorsSeen = new Set<string>();
       for (let i = 18; i <= 26; i++) {
         const q = getThreatActorsQuestion(i);
-        expect(q.referenceHref).toBe('/threat-actors/#naming-conventions');
+        expect(q.referenceHref).toBe('/reference/threat-actors/#naming-conventions');
         expect(q.answerType).toBe('text');
         // The prompt must name a real vendor whose scheme actually contains
         // this exact code — otherwise this would be an invented fact.
@@ -348,10 +378,157 @@ describe('getThreatActorsQuestion', () => {
     });
   });
 
-  it('every acceptableAnswers-graded question accepts its own displayed correctAnswer (so a learner who types the exact displayed answer is never marked wrong)', () => {
-    for (let i = 9; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
+  it('every #9-26 acceptableAnswers-graded question accepts its own displayed correctAnswer (so a learner who types the exact displayed answer is never marked wrong)', () => {
+    for (let i = 9; i < TEXT_RECALL_COUNT; i++) {
       const q = getThreatActorsQuestion(i);
-      expect(q.grade!(q.correctAnswer), `question ${i}: grade() rejected its own correctAnswer`).toBe(true);
+      expect(q.grade!(q.correctAnswer!), `question ${i}: grade() rejected its own correctAnswer`).toBe(true);
+    }
+  });
+
+  describe('deconfliction (attribution) "match" questions (#27-29) — two REAL, MITRE-linked groups; sort real facts into whichever one each actually belongs to', () => {
+    // Real fact = present in that group's own THREAT_ACTORS aliases/software.
+    function ownFacts(name: string): Set<string> {
+      const actor = THREAT_ACTORS.find((a) => a.name === name);
+      expect(actor, `"${name}" is not a real THREAT_ACTORS name`).toBeDefined();
+      return new Set([...actor!.aliases, ...actor!.software]);
+    }
+
+    it('every deconfliction question is a real "match" question: 2 real group categories, matchItems only, non-empty prompt/hint/explanation, and a real group-profile referenceHref', () => {
+      for (let i = TEXT_RECALL_COUNT; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
+        const q = getThreatActorsQuestion(i);
+        expect(q.answerType).toBe('match');
+        expect(q.matchCategories).toHaveLength(2);
+        expect(q.matchItems && q.matchItems.length).toBeGreaterThan(0);
+        expect(q.prompt.length).toBeGreaterThan(0);
+        expect(q.hint && q.hint.length).toBeGreaterThan(0);
+        expect(q.explanation.length).toBeGreaterThan(0);
+        expect(q.referenceHref, `question ${i} referenceHref should be a real group profile page`).toMatch(
+          /^\/reference\/threat-actors\/[a-z0-9-]+\/$/,
+        );
+        const [nameA, nameB] = q.matchCategories!;
+        expect(THREAT_ACTORS.some((a) => a.name === nameA), `question ${i}: category "${nameA}" is not a real THREAT_ACTORS name`).toBe(
+          true,
+        );
+        expect(THREAT_ACTORS.some((a) => a.name === nameB), `question ${i}: category "${nameB}" is not a real THREAT_ACTORS name`).toBe(
+          true,
+        );
+      }
+    });
+
+    it('every matchItem is a real alias/software entry for its OWN assigned group and is verifiably NOT present in the other group\'s own aliases/software (never a shared item used as a discriminator)', () => {
+      for (let i = TEXT_RECALL_COUNT; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
+        const q = getThreatActorsQuestion(i);
+        const [nameA, nameB] = q.matchCategories!;
+        const factsA = ownFacts(nameA);
+        const factsB = ownFacts(nameB);
+        for (const item of q.matchItems!) {
+          expect([nameA, nameB], `question ${i}: matchItem "${item.text}" has an unrecognized correctCategory "${item.correctCategory}"`).toContain(
+            item.correctCategory,
+          );
+          const own = item.correctCategory === nameA ? factsA : factsB;
+          const other = item.correctCategory === nameA ? factsB : factsA;
+          expect(
+            own.has(item.text),
+            `question ${i}: "${item.text}" is not a real alias/software entry for ${item.correctCategory}`,
+          ).toBe(true);
+          expect(
+            other.has(item.text),
+            `question ${i}: "${item.text}" is ALSO present in the other group's own aliases/software — bad discriminator, both groups genuinely share it`,
+          ).toBe(false);
+        }
+      }
+    });
+
+    it('every deconfliction question sorts at least 2 items per category — a meaningful sort, not a single-item giveaway', () => {
+      for (let i = TEXT_RECALL_COUNT; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
+        const q = getThreatActorsQuestion(i);
+        const [nameA, nameB] = q.matchCategories!;
+        const countA = q.matchItems!.filter((it) => it.correctCategory === nameA).length;
+        const countB = q.matchItems!.filter((it) => it.correctCategory === nameB).length;
+        expect(countA, `question ${i}: fewer than 2 items for "${nameA}"`).toBeGreaterThanOrEqual(2);
+        expect(countB, `question ${i}: fewer than 2 items for "${nameB}"`).toBeGreaterThanOrEqual(2);
+      }
+    });
+
+    it('#27: Axiom vs. Winnti Group — MITRE\'s own reporting notes overlap between the two but assesses them as distinct', () => {
+      const q = getThreatActorsQuestion(27);
+      expect(q.matchCategories).toEqual(['Axiom', 'Winnti Group']);
+      const texts = q.matchItems!.map((it) => it.text);
+      expect(texts).toContain('Group 72'); // real Axiom alias
+      expect(texts).toContain('Blackfly'); // real Winnti Group alias
+      expect(texts).not.toContain('PlugX'); // shared by both groups' real software lists — must be excluded as a discriminator
+    });
+
+    it('#28: APT19 vs. Deep Panda — MITRE notes some analysts track them as the same group, but it is unclear', () => {
+      const q = getThreatActorsQuestion(28);
+      expect(q.matchCategories).toEqual(['APT19', 'Deep Panda']);
+      const texts = q.matchItems!.map((it) => it.text);
+      expect(texts).toContain('Codoso'); // real APT19 alias
+      expect(texts).toContain('Shell Crew'); // real Deep Panda alias
+    });
+
+    it('#29: Scarlet Mimic vs. Putter Panda — MITRE notes IP-infrastructure overlap, not concluded to be the same group', () => {
+      const q = getThreatActorsQuestion(29);
+      expect(q.matchCategories).toEqual(['Scarlet Mimic', 'Putter Panda']);
+      const texts = q.matchItems!.map((it) => it.text);
+      expect(texts).toContain('FakeM'); // real Scarlet Mimic software
+      expect(texts).toContain('APT2'); // real Putter Panda alias
+    });
+  });
+});
+
+// The /drills/threat-actors/ page no longer imports this generator
+// client-side — it materialises the whole bank at build time and ships it as
+// JSON, so the generated THREAT_ACTORS dataset stays out of the page bundle
+// (see src/data/drills/graders.ts). That only holds together if the serialised
+// `grader` descriptors grade EXACTLY like the closures they replace — the
+// alias-tolerance in particular is easy to lose, and losing it would start
+// marking real, correct alias answers wrong.
+describe('threatActorsDrillQuestionBank (build-time serialisation)', () => {
+  it('every question serialises, round-trips through JSON, and grades identically to its original closure', () => {
+    assertBankSerialisesFaithfully(THREAT_ACTORS_DRILL_TOTAL, getThreatActorsQuestion, threatActorsDrillQuestionBank);
+  });
+
+  it("group-recall questions carry a 'group-name' descriptor listing the canonical name plus every real alias, in that order", () => {
+    // #0-14 are the group-backed recall modes (aliasToName/clueToName/
+    // software); the naming/apply-naming ones after them are vendor-taxonomy
+    // facts with no group behind them (see this file's TEXT_RECALL_COUNT note).
+    for (let i = 0; i < TEXT_RECALL_COUNT; i++) {
+      const q = getThreatActorsQuestion(i);
+      expect(q.grader, `#${i} has no grader descriptor`).toBeTruthy();
+      expect(['group-name', 'any-of']).toContain(q.grader!.kind);
+      if (q.grader!.kind === 'group-name') {
+        const actor = THREAT_ACTORS.find((a) => a.name === q.correctAnswer)!;
+        expect(actor, `#${i}: correctAnswer "${q.correctAnswer}" is not a real group name`).toBeTruthy();
+        expect(q.grader).toEqual({ kind: 'group-name', names: [actor.name, ...actor.aliases] });
+      }
+    }
+  });
+
+  it("a serialised group question still accepts any of that group's own real aliases, case-insensitively", () => {
+    const bank = threatActorsDrillQuestionBank();
+    const groupQ = bank.find((q) => q.grader?.kind === 'group-name')!;
+    const grader = hydrateGrader(JSON.parse(JSON.stringify(groupQ.grader!)));
+    const names = (groupQ.grader as { kind: 'group-name'; names: string[] }).names;
+    for (const name of names) {
+      expect(grader(name), `"${name}" should grade correct`).toBe(true);
+      expect(grader(name.toUpperCase())).toBe(true);
+      expect(grader(`  ${name.toLowerCase()}  `)).toBe(true);
+    }
+    expect(grader(''), 'an empty answer is never correct for a group question').toBe(false);
+    expect(grader('   ')).toBe(false);
+    expect(grader('Not A Real Group')).toBe(false);
+  });
+
+  it("deconfliction ('match') questions serialise with no grader at all — the engine grades them per item", () => {
+    for (let i = TEXT_RECALL_COUNT; i < THREAT_ACTORS_DRILL_TOTAL; i++) {
+      const q = getThreatActorsQuestion(i);
+      expect(q.answerType).toBe('match');
+      expect(q.grade).toBeUndefined();
+      expect(q.grader).toBeUndefined();
+      const serialised = threatActorsDrillQuestionBank()[i];
+      expect(serialised.matchItems).toEqual(q.matchItems);
+      expect(serialised.matchCategories).toEqual(q.matchCategories);
     }
   });
 });

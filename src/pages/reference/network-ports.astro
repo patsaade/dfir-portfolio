@@ -1,0 +1,304 @@
+---
+// Network Port Reference — TCP/UDP well-known + registered ports that matter
+// for DFIR (src/data/networkPorts.ts). Same "grouped, searchable list" shape
+// as the Windows Event ID / Sysmon Reference: two-tier collapsible groups
+// (here, transport protocol -> category), search across port/name/category,
+// and quick toggles for IANA-registered confidence and a documented MITRE
+// ATT&CK mapping. Each card links to its own detail page
+// (/reference/network-ports/[slug]/). Static page — prerender to HTML served from the CDN.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import { tag, card } from 'styled-system/recipes';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/PageHeader.astro';
+import Icon from '../../components/Icon.astro';
+import CollapseAll from '../../components/CollapseAll.astro';
+import TagCombobox from '../../components/TagCombobox.astro';
+import FilterToggle from '../../components/FilterToggle.astro';
+import ListFilter from '../../components/ListFilter.astro';
+import GroupOverview from '../../components/GroupOverview.astro';
+import ExternalResources from '../../components/ExternalResources.astro';
+import { EXTERNAL_RESOURCES } from '../../data/externalResources';
+import { NETWORK_PORTS, type NetworkPortEntry } from '../../data/networkPorts';
+
+// Top-level split by transport — the same "which bucket would an analyst
+// open first" question event-ids.astro answers with source (Security log vs.
+// Sysmon). No entry lives in 'dynamic' by design (see networkPorts.ts) so
+// only these three groups ever render.
+const GROUPS = [
+  { id: 'tcp', title: 'TCP Ports', icon: 'server' as const, blurb: 'Connection-oriented services — the majority of well-known and registered ports, from web and mail to remote access and databases.' },
+  { id: 'udp', title: 'UDP Ports', icon: 'radio' as const, blurb: 'Connectionless services — name resolution, network infrastructure (DHCP/TFTP/NTP), and logging, where low overhead matters more than delivery guarantees.' },
+  { id: 'dual', title: 'TCP/UDP Ports', icon: 'layers' as const, blurb: 'Genuinely dual-protocol services — verified against IANA to actually run on both transports, not just commonly assumed to.' },
+];
+const byProtocol = (id: string) =>
+  NETWORK_PORTS.filter((p) => (id === 'dual' ? p.protocol === 'tcp/udp' : p.protocol === id)).sort((a, b) => a.port - b.port);
+const totalCount = NETWORK_PORTS.length;
+const attackMappedCount = NETWORK_PORTS.filter((e) => e.attackTechniques.length > 0).length;
+const ianaRegisteredCount = NETWORK_PORTS.filter((e) => e.confidence === 'iana-registered').length;
+
+// "Browse by transport" overview tiles, mirroring the Tools/Glossary/Event-ID jump-to strip.
+const groupTiles = GROUPS.map((g) => ({ id: `net-${g.id}`, icon: g.icon, title: g.title, blurb: g.blurb, count: byProtocol(g.id).length }));
+
+// Category facet for the search combobox — pooled across all three transport groups.
+const catCounts: Record<string, number> = {};
+for (const e of NETWORK_PORTS) catCounts[e.category] = (catCounts[e.category] ?? 0) + 1;
+const catSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const catOptions = Object.keys(catCounts).sort().map((c) => ({ value: catSlug(c), label: c, count: catCounts[c] }));
+
+// Sub-group a transport's entries by their own `category` field — same
+// mechanical nested-collapsible pattern as event-ids.astro's byCategory.
+const byCategory = (items: NetworkPortEntry[]): [string, NetworkPortEntry[]][] => {
+  const map = new Map<string, NetworkPortEntry[]>();
+  for (const e of items) {
+    if (!map.has(e.category)) map.set(e.category, []);
+    map.get(e.category)!.push(e);
+  }
+  return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+};
+
+const groupDetails = css({ borderTop: '1px solid token(colors.border)', py: '1.25rem', scrollMarginTop: '90px' });
+const groupSummary = css({
+  cursor: 'pointer', listStyle: 'none', userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' }, '&::marker': { display: 'none' },
+  _hover: { '& .net-grp-title': { color: 'primary' } },
+});
+const groupHead = css({ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap', m: 0, fontSize: '1.25rem', fontWeight: 700 });
+const chevCls = css({
+  color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease',
+  // Same reasoning as event-ids.astro: scoped to THIS chevron's own
+  // details/summary pair, not "any details ancestor is open" — required
+  // once category sub-groups nest a second <details> inside the always-open
+  // transport-level one.
+  'details[open] > summary &': { transform: 'rotate(90deg)' },
+});
+const grpCount = css({
+  fontFamily: 'sans', fontSize: '0.68rem', fontWeight: 600, color: 'textMuted', bg: 'bgSubtle',
+  border: '1px solid token(colors.border)', borderRadius: 'full', px: '0.5rem', py: '0.1rem',
+});
+const grpBlurb = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.5rem', mb: 0 });
+const subGroupWrap = css({ mt: '1rem', display: 'flex', flexDirection: 'column' });
+const subGroupDetails = css({ '& + &': { borderTop: '1px solid token(colors.border)', mt: '1rem', pt: '1rem' } });
+const subGroupSummary = css({
+  cursor: 'pointer', listStyle: 'none', userSelect: 'none',
+  '&::-webkit-details-marker': { display: 'none' }, '&::marker': { display: 'none' },
+  _hover: { '& .net-subgrp-title': { color: 'primary' } },
+});
+const subGroupHead = css({ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', m: 0, fontSize: '0.95rem', fontWeight: 700, color: 'textMuted' });
+const netGrid = css({ mt: '1rem' });
+const netCard = `${card()} ${css({
+  transition: 'border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease',
+  _hover: { boxShadow: 'card', '& .net-go': { transform: 'translateX(2px)', color: 'primary' } },
+})}`;
+const netHead = css({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' });
+const netPortBadge = css({ fontFamily: 'mono', fontWeight: 700, fontSize: '0.95rem', color: 'primary', flexShrink: 0 });
+const netName = css({ flex: 1, minW: 0, fontFamily: 'sans', fontWeight: 700, fontSize: '0.88rem', color: 'text', lineHeight: 1.3 });
+const goCls = css({ color: 'textMuted', flexShrink: 0, transition: 'transform 200ms ease, color 200ms ease' });
+// Same nowrap discipline as event-ids.astro's tagRow (see that file's own
+// comment) — a variable-length category tag (flexShrink:1) plus a
+// fixed-width ATT&CK badge (flexShrink:0) must never wrap onto a second
+// line, or this card grows taller than its .card-grid neighbors.
+const tagRow = css({ display: 'flex', flexWrap: 'nowrap', gap: '0.3rem', mt: 'auto', pt: '0.15rem', minW: 0 });
+const categoryTag = `${tag({ tone: 'muted' })} ${css({ minW: 0, flexShrink: 1, maxW: '100%', overflow: 'hidden', textOverflow: 'ellipsis' })}`;
+const attackBadge = `${tag({ tone: 'accent' })} ${css({ flexShrink: 0 })}`;
+
+const filterRow = css({ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap', mb: '0.75rem' });
+
+const rangeCard = css({
+  p: '1rem 1.25rem', bg: 'bgCard', border: '1px solid token(colors.border)', borderRadius: 'md',
+});
+const rangeGrid = css({ display: 'grid', gridTemplateColumns: { base: '1fr', md: 'repeat(3, 1fr)' }, gap: '0.85rem', mt: '0.85rem' });
+const rangeCell = css({ p: '0.75rem 0.9rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md' });
+const rangeCellTitle = css({ fontFamily: 'mono', fontWeight: 700, fontSize: '0.85rem', color: 'primary', display: 'block' });
+const rangeCellDesc = css({ color: 'textMuted', fontSize: '0.85rem', lineHeight: 1.6, mt: '0.3rem' });
+const confidenceRow = css({ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', mt: '0.75rem' });
+---
+
+<BaseLayout
+  title="Network Port Reference"
+  description="A comprehensive, fully-cited reference for TCP/UDP ports that matter for DFIR — well-known and registered services, what each is used for, why it matters for an investigation, and MITRE ATT&CK cross-links where a mapping is well-established."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Network Port Reference' }]}
+    eyebrow="Reference"
+    title="Network Port Reference"
+    description={`${totalCount} TCP/UDP ports that matter for DFIR, each with what it's used for, why it matters for an investigation, common triggers, and MITRE ATT&CK cross-links where a mapping is well-established.`}
+  />
+
+  <div class={rangeCard}>
+    <h2 class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', fontWeight: 700, m: 0 })}>
+      <Icon name="layers" size={18} class={css({ color: 'primary' })} /> Understanding port ranges
+    </h2>
+    <p class={css({ color: 'textMuted', fontSize: '0.9rem', lineHeight: 1.7, mt: '0.6rem', mb: 0 })}>
+      RFC 6335 splits every TCP/UDP port number into three IANA-defined tiers. This reference only catalogs
+      individual entries in the first two — a <strong class={css({ color: 'text' })}>dynamic</strong> port isn't a
+      named service to look up, it's a value the operating system hands out per-connection, so there's nothing
+      fixed to document beyond the range itself.
+    </p>
+    <div class={rangeGrid}>
+      <div class={rangeCell}>
+        <span class={rangeCellTitle}>0 – 1023 · Well-Known</span>
+        <p class={rangeCellDesc}>System ports, assigned by IANA. On Unix-like systems, binding to one of these historically requires root/an elevated capability — a non-privileged process listening here is itself worth a second look.</p>
+      </div>
+      <div class={rangeCell}>
+        <span class={rangeCellTitle}>1024 – 49151 · Registered</span>
+        <p class={rangeCellDesc}>User ports — assignable by IANA on request, but nothing stops any application from binding one without registering it, which is exactly how several de-facto-standard ports below ended up here.</p>
+      </div>
+      <div class={rangeCell}>
+        <span class={rangeCellTitle}>49152 – 65535 · Dynamic / Ephemeral</span>
+        <p class={rangeCellDesc}>Never assigned to a named service — the range a client's own OS picks a transient source port from for each outbound connection. Linux defaults to 32768–60999 instead of the IANA range; modern Windows uses 49152–65535, matching IANA exactly. Knowing which range a captured source port falls in is a quick, real signal when correlating NAT/firewall logs or guessing at an unfamiliar OS's behavior.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class={css({ mt: '1.25rem' })}>
+    <p class={css({ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 700, color: 'text', m: 0 })}>
+      <Icon name="check" size={15} class={css({ color: 'primary' })} /> Confidence levels
+    </p>
+    <p class={css({ color: 'textMuted', fontSize: '0.88rem', lineHeight: 1.7, mt: '0.4rem', mb: 0 })}>
+      Every entry is tagged with how solid its port-to-service mapping actually is — not every well-known port is
+      officially assigned to the service it's famous for.
+    </p>
+    <div class={confidenceRow}>
+      <span class={tag({ tone: 'primary' })}>IANA-registered</span>
+      <span class={css({ color: 'textMuted', fontSize: '0.82rem' })}>IANA's own registry assigns this port to this service.</span>
+    </div>
+    <div class={confidenceRow}>
+      <span class={tag({ tone: 'accent' })}>De facto standard</span>
+      <span class={css({ color: 'textMuted', fontSize: '0.82rem' })}>Overwhelmingly used this way in practice, but IANA registers the port to something else (or nothing) — Squid/3128, Oracle/1521, and Elasticsearch/9200 are the concrete examples below.</span>
+    </div>
+    <div class={confidenceRow}>
+      <span class={tag({ tone: 'muted' })}>Historical / documented</span>
+      <span class={css({ color: 'textMuted', fontSize: '0.82rem' })}>No registration authority applies — the entire "Malware &amp; C2" category, resting on vendor/threat-intel documentation rather than a protocol spec. Treat these as a pivot point, never a confirmed finding.</span>
+    </div>
+  </div>
+
+  {/* Cross-link to where the ATT&CK-mapped entries above actually lead */}
+  <a
+    href="/reference/attack-map/"
+    class={css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.6rem',
+      mt: '1.25rem',
+      p: '0.7rem 1rem',
+      borderRadius: 'md',
+      border: '1px solid token(colors.border)',
+      bg: 'bgCard',
+      fontSize: '0.9rem',
+      color: 'text',
+      transition: 'border-color 200ms ease, color 200ms ease',
+      _hover: { borderColor: 'primary', color: 'primary', '& .x-arrow': { transform: 'translateX(3px)' } },
+    })}
+  >
+    <Icon name="crosshair" size={16} class={css({ color: 'primary', flexShrink: 0 })} />
+    <span>See every technique a port here maps to — <strong class={css({ fontWeight: 700 })}>MITRE ATT&amp;CK Coverage Map</strong></span>
+    <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
+  </a>
+
+  {/* ── Browse by transport (jump-to overview strip) ── */}
+  <GroupOverview items={groupTiles} heading="Browse by transport" />
+
+  <div class={css({ mb: '0.6rem' })}>
+    <TagCombobox
+      id="net-cb"
+      options={catOptions}
+      placeholder={`Search ${totalCount} ports, or type a category…`}
+      label="Search network ports or filter by category"
+    />
+  </div>
+
+  <div class={filterRow}>
+    <p role="status" aria-live="polite" class={css({ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.3rem 0.6rem', color: 'textMuted', fontSize: '0.9rem', m: 0 })}>
+      <span><span id="net-result-count">{totalCount}</span> ports across {GROUPS.length} transports</span>
+      <span aria-hidden="true">·</span>
+      <span>{attackMappedCount} mapped to ATT&amp;CK</span>
+      <span aria-hidden="true">·</span>
+      <span>{ianaRegisteredCount} IANA-registered</span>
+    </p>
+    <div class={css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', ml: { sm: 'auto' } })}>
+      <FilterToggle id="net-attack-toggle" icon="target" label="Maps to ATT&CK" tone="primary" />
+      <FilterToggle id="net-iana-toggle" icon="check" label="IANA-registered" tone="accent" />
+      <CollapseAll target="[data-net-group]" />
+    </div>
+  </div>
+
+  <div class={css({ display: 'flex', flexDirection: 'column' })}>
+    {
+      GROUPS.map((g) => {
+        const items = byProtocol(g.id);
+        const catGroups = byCategory(items);
+        return (
+          <details id={`net-${g.id}`} data-net-group open class={groupDetails}>
+            <summary class={groupSummary}>
+              <h2 class={groupHead}>
+                <Icon name="chevron-right" size={18} class={chevCls} />
+                <Icon name={g.icon} size={20} class={css({ color: 'primary', flexShrink: 0 })} />
+                <span class="net-grp-title">{g.title}</span>
+                <span class={grpCount}>{items.length}</span>
+              </h2>
+            </summary>
+            <p class={grpBlurb}>{g.blurb}</p>
+            <div class={subGroupWrap}>
+              {catGroups.map(([cat, entries]) => (
+                <details id={`net-${g.id}-${catSlug(cat)}`} data-net-group open class={subGroupDetails}>
+                  <summary class={subGroupSummary}>
+                    <h3 class={subGroupHead}>
+                      <Icon name="chevron-right" size={15} class={chevCls} />
+                      <span class="net-subgrp-title">{cat}</span>
+                      <span class={grpCount}>{entries.length}</span>
+                    </h3>
+                  </summary>
+                  <div class={`card-grid ${netGrid}`}>
+                    {entries.map((e) => (
+                      <a
+                        href={`/reference/network-ports/${e.slug}/`}
+                        class={netCard}
+                        data-net-card={`${e.port} ${e.name} ${e.category} ${e.protocol}`.toLowerCase()}
+                        data-cat={catSlug(e.category)}
+                        {...(e.attackTechniques.length > 0 ? { 'data-attack-mapped': true } : {})}
+                        {...(e.confidence === 'iana-registered' ? { 'data-iana': true } : {})}
+                      >
+                        <span class={netHead}>
+                          <span class={netPortBadge}>{e.port}/{e.protocol === 'tcp/udp' ? 'tcp,udp' : e.protocol}</span>
+                          <Icon name="arrow-right" size={14} class={`net-go ${goCls}`} />
+                        </span>
+                        <span class={netName}>{e.name}</span>
+                        <span class={tagRow}>
+                          <span class={categoryTag} title={e.category}>{e.category}</span>
+                          {e.attackTechniques.length > 0 && <span class={attackBadge}>ATT&amp;CK</span>}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </details>
+              ))}
+            </div>
+          </details>
+        );
+      })
+    }
+  </div>
+
+  <p id="net-empty" hidden role="status" aria-live="polite" class={css({ color: 'textMuted', textAlign: 'center', py: '3rem' })}>
+    No ports match your search.
+  </p>
+
+  <ListFilter
+    config={{
+      comboboxId: 'net-cb',
+      cardSelector: '[data-net-card]',
+      searchAttr: 'data-net-card',
+      groupSelector: '[data-net-group]',
+      countId: 'net-result-count',
+      emptyId: 'net-empty',
+      facetAttr: 'data-cat',
+      toggles: [
+        { id: 'net-attack-toggle', attr: 'data-attack-mapped' },
+        { id: 'net-iana-toggle', attr: 'data-iana' },
+      ],
+      urlSync: { queryParam: 'q', facetParam: 'category' },
+    }}
+  />
+
+  <ExternalResources resources={EXTERNAL_RESOURCES['network-ports']} />
+</BaseLayout>

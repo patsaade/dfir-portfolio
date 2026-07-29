@@ -68,7 +68,7 @@ const WORKED_EXAMPLE: { source: string; kind: string; result: string }[] = [
   description="Build a YARA rule string by string — text strings with ascii/wide/nocase, hex patterns with wildcards — and scan it live against a pasted sample. Real byte-level matching, entirely in your browser."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'YARA Rule Tester' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'YARA Rule Tester' }]}
     eyebrow="Query Builders"
     title="YARA Rule Tester"
     description="Build a YARA rule string by string, or paste one in, and scan it live against a sample — real byte-level matching, entirely local."
@@ -121,7 +121,7 @@ const WORKED_EXAMPLE: { source: string; kind: string; result: string }[] = [
   <h2 id="strings" class={sectionH2}>
     <Icon name="file-text" size={20} class={css({ color: 'primary' })} /> The two string kinds
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="The two string kinds table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -161,7 +161,7 @@ const WORKED_EXAMPLE: { source: string; kind: string; result: string }[] = [
   <h2 id="modifiers" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Supported text-string modifiers
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Supported text-string modifiers table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -191,7 +191,7 @@ const WORKED_EXAMPLE: { source: string; kind: string; result: string }[] = [
   <h2 id="conditions" class={sectionH2}>
     <Icon name="link" size={20} class={css({ color: 'primary' })} /> Supported condition forms
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Supported condition forms table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -231,7 +231,7 @@ const WORKED_EXAMPLE: { source: string; kind: string; result: string }[] = [
     <code class={inlineCode}>all of them</code>, the rule matches. The offsets are taken from the same scanner the
     tool itself runs and are checked by this project's test suite, so they can't drift out of date.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Worked example table">
     <table class={refTable}>
       <thead>
         <tr>
@@ -268,7 +268,7 @@ const WORKED_EXAMPLE: { source: string; kind: string; result: string }[] = [
     reported by name when a pasted rule uses it — the tool will tell you what it can't handle instead of loading a
     partial rule and producing a confidently wrong result. For any of it, use YARA itself.
   </p>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Outside this tool's scope table">
     <table class={refTable}>
       <thead>
         <tr>

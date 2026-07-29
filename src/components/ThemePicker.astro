@@ -5,9 +5,11 @@ import Icon from './Icon.astro';
 
 // The picker sets a *preferred* palette for each mode independently; it does not
 // change the active light/dark mode (that's the ModeToggle's job).
+// Light on the LEFT, dark on the RIGHT — matching the ModeToggle's own
+// sun-then-moon order, so the two controls read the same way round.
 const groups: { label: string; themes: Theme[] }[] = [
-  { label: 'Dark mode', themes: DARK_THEMES },
   { label: 'Light mode', themes: LIGHT_THEMES },
+  { label: 'Dark mode', themes: DARK_THEMES },
 ];
 
 // Each mode's palette list is its own vertical segmented switch — the shared
@@ -246,6 +248,14 @@ const itemClass = css({
     }
     function onKey(e) {
       if (e.key === 'Escape') { close(); btn.focus(); return; }
+      // This listener lives on `document` (so Escape works from anywhere while
+      // the menu is open), which means the arrow/Home/End branches below would
+      // otherwise hijack those keys for the WHOLE PAGE — an unconditional
+      // preventDefault() that breaks scrolling and every other arrow-key
+      // control while the picker happens to be open (WCAG 2.4.3, borderline
+      // 2.1.2). Scope them to focus actually being inside the menu; Escape
+      // above deliberately stays global.
+      if (!menu.contains(document.activeElement)) return;
       // Arrow-key + Home/End cycling, scoped to whichever group currently has
       // focus, per the ARIA radiogroup pattern these roles advertise to
       // assistive tech.

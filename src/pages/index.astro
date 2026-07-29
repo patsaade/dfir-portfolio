@@ -16,7 +16,7 @@ import { css } from 'styled-system/css';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Icon from '../components/Icon.astro';
 import PixelStar from '../components/PixelStar.astro';
-import { SOCIALS } from '../consts';
+import { SITE, SOCIALS } from '../consts';
 
 // Sizing shared by both hero variants — `minH` is the viewport height minus
 // the known fixed chrome above <main>: Ticker (~35px base / ~37px sm+) +
@@ -40,10 +40,12 @@ const heroSizing = {
 const defaultHeroWrap = css({ ...heroSizing }, { '[data-brand="cyberkit"] &': { display: 'none' } });
 const cyberkitHeroWrap = css({ ...heroSizing, display: 'none' }, { '[data-brand="cyberkit"] &': { display: 'flex' } });
 
-// The three top-level sections CyberKit spans.
+// The three top-level sections CyberKit spans — these mirror the site's own
+// nav exactly (see consts.ts: the site navigates by object type + verb, not by
+// domain), so a visitor landing here sees the same three doors the nav offers.
 const CYBERKIT_SECTIONS = [
-  { href: '/dfir/', label: 'DFIR tools', icon: 'shield' },
-  { href: '/it/', label: 'IT tools', icon: 'wifi' },
+  { href: '/reference/', label: 'Reference', icon: 'book-open' },
+  { href: '/tools/', label: 'Tools', icon: 'wrench' },
   { href: '/drills/', label: 'Practice drills', icon: 'target' },
 ] as const;
 
@@ -96,6 +98,12 @@ const ctaGhost = css({
 });
 const signOffLink = css({ color: 'primary', fontWeight: 600, _hover: { textDecoration: 'underline' } });
 const signOffRow = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', mt: '1rem' });
+// CyberKit's provenance line — deliberately quiet (muted, small, below the
+// CTAs) so the hero still leads with what the site *is*, not who made it.
+// The footer carries the same credit, but this hero fills the viewport, so
+// without this a first-time visitor would have to scroll to find one.
+const creditRow = css({ fontSize: '0.85rem', color: 'textMuted', mt: '1.4rem' });
+const creditLink = css({ color: 'textMuted', textDecoration: 'underline', transition: 'color 150ms ease', _hover: { color: 'primary' } });
 ---
 
 <BaseLayout>
@@ -124,6 +132,13 @@ const signOffRow = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', 
       <span class={css({ color: 'border' })}>·</span>
       <a href={SOCIALS.github} target="_blank" rel="noopener" class={signOffLink}>GitHub</a>
     </div>
+    {/* Mirror of the CyberKit hero's credit line — same quiet treatment, same
+        position, pointing the other way. Someone who landed here for the
+        toolkit rather than the writeups gets told where it lives. */}
+    <p class={creditRow}>
+      Here for the reference material and tools? They live at{' '}
+      <a class={creditLink} href="https://cyberkit.win/">cyberkit.win</a>
+    </p>
   </section>
 
   {/* CyberKit's own homepage hero — cyberkit.win's actual landing page. No
@@ -134,10 +149,17 @@ const signOffRow = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', 
       <PixelStar size={14} />
       Free &amp; Browser-Based
     </p>
-    <h1 class={`declassify-hero ${heroH1}`}>CyberKit</h1>
+    {/* Deliberately a <p>, not an <h1>: both hero variants render server-side
+        (only one is ever visible, toggled by the brand CSS), so making both
+        headings would ship two <h1>s in one document. patricksaade.com is the
+        canonical domain and keeps the real <h1> above; cyberkit.win's wordmark
+        is styled identically but is not a heading. Properly fixing this needs
+        the per-domain build CLAUDE.md invariant 14 documents and declines. */}
+    <p class={`declassify-hero ${heroH1}`}>CyberKit</p>
     <p class={tagline}>
-      A free digital forensics, incident response, and IT security toolkit — every tool runs
-      entirely in your browser. Nothing you enter is ever uploaded, logged, or sent anywhere.
+      Reference material, browser-based tools, and practice drills for digital forensics,
+      incident response, networking, and systems — all free. Every tool runs entirely in your
+      browser: nothing you enter is uploaded, logged, or sent anywhere.
     </p>
     <div class={ctaRow}>
       {
@@ -148,5 +170,9 @@ const signOffRow = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', 
         ))
       }
     </div>
+    <p class={creditRow}>
+      Built and maintained by{' '}
+      <a class={creditLink} href={SITE.url}>Patrick Saade</a>, with support from Claude Code
+    </p>
   </section>
 </BaseLayout>

@@ -1,6 +1,6 @@
 // Windows Security auditing log + Sysmon event-ID reference — the single
-// source of truth for the /event-ids/ index and per-event detail pages
-// (/event-ids/[slug]/). Every entry was researched then independently
+// source of truth for the /reference/event-ids/ index and per-event detail
+// pages (/reference/event-ids/[slug]/). Every entry was researched then independently
 // fact-checked against live, authoritative documentation (Microsoft Learn's
 // per-event auditing pages, the official Sysinternals Sysmon docs) before
 // being included -- entries that couldn't be confirmed were dropped rather

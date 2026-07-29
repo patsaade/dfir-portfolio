@@ -59,7 +59,7 @@ const STEP_NOTES: Record<string, string> = {
   description="Chain Base64/hex/URL encode or decode, ROT13/ROT47, single-byte XOR, and Gzip/Deflate inflate to build or peel back an obfuscated loader or dropper payload one step at a time — entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Codec Builder' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Codec Builder' }]}
     eyebrow="Converters"
     title="Codec Builder"
     description="Chain reversible transforms — encode/decode, rotate, XOR, inflate — to peel back an obfuscated payload one step at a time, entirely local."
@@ -106,7 +106,7 @@ const STEP_NOTES: Record<string, string> = {
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Step reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Step reference table">
     <table class={refTable}>
       <thead>
         <tr>

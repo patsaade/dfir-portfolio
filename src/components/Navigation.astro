@@ -1,7 +1,7 @@
 ---
 // Sticky top nav — brand, links, theme picker, mode toggle, mobile menu.
 import { css } from 'styled-system/css';
-import { NAV_LINKS, DFIR_GROUPS, IT_GROUPS, DRILLS_LINKS, MORE_LINKS, SITE } from '../consts';
+import { NAV_LINKS, MORE_LINKS, PERSONAL_HREFS, SITE, groupsFor } from '../consts';
 import ThemePicker from './ThemePicker.astro';
 import ModeToggle from './ModeToggle.astro';
 import SoundToggle from './SoundToggle.astro';
@@ -11,42 +11,74 @@ import Icon from './Icon.astro';
 const pathname = Astro.url.pathname;
 const isActive = (href: string) =>
   href === '/' ? pathname === '/' : pathname.startsWith(href);
-// Two dropdowns — desktop menus, mobile collapsible <details>. Each is a list
-// of categories (a category's `label` renders as a small header inside the
-// menu; "More" has just one, unlabeled category so it stays a flat list).
-// Single source of truth for the gap between the nav and BOTH dropdown
-// panels (moreMenuOuter/dfirMenuOuter's own `pt` below) — a literal value
-// duplicated in two places is exactly how they drifted out of sync before
-// (see moreWrap's own comment for that history); one constant means they
-// physically can't diverge again. Tightened from an earlier 0.6rem, which
-// read as too much distance once both dropdowns actually shared it.
+// Four dropdowns — desktop menus, plus a flat link each in the mobile menu.
+// Each is a list of categories (a category's label renders as a small header
+// inside the menu; "More" has just one, unlabeled category so it stays a flat
+// list).
+// Single source of truth for the gap between the nav and EVERY dropdown
+// panel (moreMenuOuter/menuPanelOuter/menuPanelOuterWide/drillsMenuOuter's own
+// `pt` below) — a literal value duplicated in several places is exactly how
+// they drifted out of sync before (see moreWrap's own comment for that
+// history); one constant means they physically can't diverge again. Tightened
+// from an earlier 0.6rem, which read as too much distance once every dropdown
+// actually shared it.
 const navMenuGap = '0.3rem';
-// Order here IS nav order: DFIR, IT, Drills, More.
+// Flat, single-level selector on purpose — never nest it with a second
+// self-selector (the documented Panda compound-selector gotcha).
+const hideOnCyberkit = css({ '[data-brand="cyberkit"] &': { display: 'none' } });
+// `groupsFor` is imported from consts.ts — the nav, the sidebar, the footer
+// and the section index pages all derive their menus through that one shape,
+// so none of them can drift apart. Note it takes the SINGULAR EntryType value
+// ('reference' | 'tool' | 'drill'), which is deliberately not the same string
+// as the dropdown ids below ('reference' | 'tools' | 'drills') — don't
+// conflate the two: passing an id where a type belongs yields an EMPTY menu.
+// Order here IS nav order: Reference, Tools, Drills, More. The site navigates
+// by OBJECT TYPE + VERB (you read a reference, you feed a tool input, you
+// practice a drill) rather than by domain — domain is a multi-valued tag
+// (see DOMAINS in consts.ts), never a menu.
 const dropdowns = [
-  { id: 'dfir', label: 'DFIR', groups: DFIR_GROUPS },
-  { id: 'it', label: 'IT', groups: IT_GROUPS },
-  { id: 'drills', label: 'Drills', groups: [{ category: undefined, links: DRILLS_LINKS }] },
+  { id: 'reference', label: 'Reference', groups: groupsFor('reference') },
+  { id: 'tools', label: 'Tools', groups: groupsFor('tool') },
+  { id: 'drills', label: 'Drills', groups: groupsFor('drill') },
   { id: 'more', label: 'More', groups: [{ category: undefined, links: MORE_LINKS }] },
 ] as const;
-// Each real-link dropdown's own landing page (DFIR/IT/Drills all have one;
-// "More" doesn't, so it stays a button rather than a link — see the trigger
-// markup below).
+// Each real-link dropdown's own landing page (Reference/Tools/Drills all have
+// one; "More" doesn't, so it stays a button rather than a link — see the
+// trigger markup below).
 const LANDING_HREF: Partial<Record<(typeof dropdowns)[number]['id'], string>> = {
-  dfir: '/dfir/',
-  it: '/it/',
+  reference: '/reference/',
+  tools: '/tools/',
   drills: '/drills/',
 };
 // Every explicit link href across all four dropdowns, mapped to whichever
-// dropdown owns it. Needed because DFIR's "Tool Catalog" entry links to the
-// bare hub page "/tools/" — a prefix match meant to catch its own dynamically
-// generated catalog-entry detail pages (e.g. "/tools/volatility-3/", which
-// isn't individually listed anywhere) — but several IT_GROUPS tool pages
-// (e.g. "/tools/cidr-calculator/") live under that same "/tools/*" URL
-// prefix while being explicitly, individually owned by IT instead. Without a
-// tie-break, viewing an IT tool page satisfied both DFIR's loose "/tools/"
-// prefix AND IT's own exact entry, underlining both nav triggers at once. An
-// exact match on a specific page is always more specific than another
-// section's looser hub prefix, so exact ownership wins outright.
+// dropdown owns it. This is NOT a legacy safeguard — under the type+verb
+// taxonomy it is load-bearing on 19 of the site's own pages, MORE so than
+// under the old domain menus it was written for.
+//
+// The rule: an exact match on a specific page always outranks another link's
+// looser hub prefix. It exists because one entry's href can legitimately be
+// the URL prefix of a completely different entry's, and a bare
+// `.some(isActive)` would then light up both triggers at once.
+//
+// The live case today: "Tool Catalog" (/reference/tool-catalog/) is a REFERENCE entry —
+// you read it — and its loose prefix match is deliberate, so its dynamically
+// generated catalog-entry detail pages (e.g. /reference/tool-catalog/volatility-3/, which
+// isn't individually listed anywhere) still highlight Reference. But 19
+// interactive TOOLS (e.g. /tools/hash-calculator/) live under that same
+// /reference/tool-catalog/* prefix while being explicitly, individually owned by the Tools
+// dropdown. Each of those satisfies both Reference's loose prefix and Tools'
+// own exact entry; without the tie-break below, every one of them would
+// underline Reference AND Tools simultaneously. Verified: a bare
+// `.some(isActive)` double-highlights exactly those 19 routes.
+//
+// (The original bug was the same shape across the old DFIR/IT menus, before
+// each moved under its own /dfir//it/ prefix. Splitting by domain fixed that
+// instance; splitting by type+verb reintroduced the shape, because "the
+// catalog of tools" and "the tools themselves" are now different object types
+// sharing one URL subtree. The move onto /reference/ and /tools/ URLs did not
+// retire the tie-break either — it separated the two subtrees, so there are
+// currently zero entry-href prefix collisions, but the same shape of bug has
+// recurred under two different URL schemes already.)
 const hrefOwner = new Map<string, (typeof dropdowns)[number]['id']>();
 for (const d of dropdowns) {
   for (const g of d.groups) {
@@ -72,19 +104,19 @@ const isDropdownActive = (d: (typeof dropdowns)[number]) => {
 };
 
 // Desktop nav "More" dropdown (mirrors the footer's More column). Opens on
-// hover/focus via CSS (the `.nav-more` ancestor) and on click/tap via JS.
+// hover/focus via CSS (the `.nav-more` ancestor) only — no click-to-pin.
 // `h: '64px'` matches <nav>'s own fixed height on purpose: this LI is
 // `position: relative`, so `moreMenuOuter`'s `top: 100%` below measures
 // against THIS element's own height, not the nav's — and without an
 // explicit height, the LI just shrink-wraps to its "More ⌄" text (~24px),
 // centered within the 64px nav by the parent <ul>'s `align-items: center`.
 // That made `top: 100%` land partway up the nav bar rather than at its
-// bottom edge, sitting visibly closer to the nav than DFIR's panel (which
-// isn't `position: relative` — see `dfirWrap` below — so ITS `top: 100%`
-// falls through to <nav> itself, i.e. the real 64px). Forcing this LI to be
-// genuinely 64px tall (rather than switching it to the same
-// resolve-through-to-<nav> trick DFIR uses) keeps `right: 0` anchored to
-// this trigger's own edge — doing what `dfirWrap` does here would recenter
+// bottom edge, sitting visibly closer to the nav than the mega-menu panels
+// (which aren't `position: relative` — see `linkTriggerWrap` below — so
+// THEIR `top: 100%` falls through to <nav> itself, i.e. the real 64px).
+// Forcing this LI to be genuinely 64px tall (rather than switching it to the
+// same resolve-through-to-<nav> trick they use) keeps `right: 0` anchored to
+// this trigger's own edge — doing what `linkTriggerWrap` does here would recenter
 // `right: 0` on the whole nav's right edge instead, well past this trigger,
 // since More sits before the search/sound/theme/mode controls, not at the
 // nav's own right edge. The forced height cascades the same 64px up through
@@ -94,14 +126,15 @@ const isDropdownActive = (d: (typeof dropdowns)[number]) => {
 // exact same nav-center line either way, just via one 64px box instead of
 // several stacked auto-sized ones.
 const moreWrap = css({ position: 'relative', display: 'flex', alignItems: 'center', h: '64px' });
-// DFIR's own trigger LI is deliberately NOT `position: relative` — its mega-
-// menu panel (dfirMenuOuter below) needs to be centered under the whole nav
-// bar, not hugging this narrow "DFIR ⌄" trigger, so its containing block is
+// The Reference/Tools/Drills trigger LIs are deliberately NOT `position:
+// relative` — their mega-menu panels (menuPanelOuter/menuPanelOuterWide/
+// drillsMenuOuter below) need to be centered under the whole nav bar, not
+// hugging the narrow "Reference ⌄" trigger, so the containing block is
 // left to resolve up to `<nav>` itself (which IS position:relative — see the
 // <nav> element below) instead of stopping at this LI. `h: '64px'` here is a
 // SEPARATE fix from that containing-block trick, for a separate bug: without
-// it, this LI's own rendered box is just its "DFIR ⌄" text's natural height
-// (~24px), centered within the 64px nav — but dfirMenuOuter's panel (a
+// it, this LI's own rendered box is just its "Reference ⌄" text's natural
+// height (~24px), centered within the 64px nav — but the panel (a
 // sibling, positioned via the nav) starts at the nav's true bottom edge
 // (64px down). That left a real gap in HOVERABLE area between this LI's own
 // bottom edge and the panel's top edge — not the visible `navMenuGap`
@@ -113,7 +146,7 @@ const moreWrap = css({ position: 'relative', display: 'flex', alignItems: 'cente
 // <nav>'s own height) closes that gap without touching `navMenuGap` at all
 // — the LI's hoverable area now runs continuously from y=0 to y=64px,
 // exactly where the panel's own hoverable area picks up.
-const dfirWrap = css({ display: 'flex', alignItems: 'center', h: '64px' });
+const linkTriggerWrap = css({ display: 'flex', alignItems: 'center', h: '64px' });
 const moreBtn = css({
   display: 'inline-flex',
   alignItems: 'center',
@@ -140,20 +173,21 @@ const moreMenuOuter = css({
   // relative`, so this resolves against that trigger LI, not <nav>) — used
   // to be `right: 0`, which flush-aligned the panel's right edge to the
   // trigger's own right edge instead, leaving it hanging off to the left
-  // and visibly off-center under the button, unlike DFIR's mega-menu (which
-  // IS centered, just under the whole nav bar — see dfirMenuOuter's own
+  // and visibly off-center under the button, unlike the mega-menus (which
+  // ARE centered, just under the whole nav bar — see menuPanelOuter's own
   // comment, a different technique for a much wider, fixed-size panel).
   left: '50%',
   pt: navMenuGap, // transparent hover-bridge so the menu stays open between button and panel
   zIndex: 60,
-  // DFIR and More are two separate .nav-more groups whose panels (each
-  // min-width ~210px, right: 0) can genuinely overlap in screen space at
-  // typical nav widths. Both panels share this same base z-index, so with
+  // Reference/Tools/Drills/More are four separate .nav-more groups whose
+  // panels (the first three centered under the whole nav, More's own
+  // min-width ~210px) genuinely overlap in screen space at typical nav
+  // widths. Every panel shares this same base z-index, so with
   // no further rule, plain DOM order decides the tie — the later-in-markup
-  // dropdown (More) always paints on top of the earlier one (DFIR),
-  // regardless of which one you're actually interacting with. That means
-  // moving the pointer from More back to DFIR hid DFIR's entire 1500ms
-  // opening slide behind More's still-fading-out panel — "only one slide
+  // dropdown (More) always paints on top of the earlier ones (Reference,
+  // Tools, Drills), regardless of which one you're actually interacting
+  // with. That means moving the pointer from More back to Reference hid
+  // Reference's entire opening slide behind More's still-fading-out panel — "only one slide
   // visible at a time," and always the wrong one when going in that
   // direction. Fix: whichever dropdown is currently open/opening (hovered or
   // focus-within) always wins the stacking order over its sibling, so the
@@ -167,9 +201,9 @@ const moreMenuInner = css({
   // moreMenuOuter (which carries the `.nav-more-menu` class and already
   // owns `transform: translateY()` for the open/close slide in global.css —
   // a second `transform` on that same element would silently clobber it,
-  // per dfirMenuOuter's own comment on the identical hazard). This element
+  // per menuPanelOuter's own comment on the identical hazard). This element
   // has no transform of its own, so `translateX(-50%)` here is free, and —
-  // unlike DFIR's fixed `w` + `left: calc(50% - w/2)` math — it centers
+  // unlike the mega-menus' fixed `w` + `left: calc(50% - w/2)` math — it centers
   // correctly against this panel's real auto/min-width content without
   // needing to hardcode a pixel width up front.
   transform: 'translateX(-50%)',
@@ -183,19 +217,23 @@ const moreMenuInner = css({
   gap: '0.15rem',
 });
 
-// DFIR's own mega-menu — a 3-column grid (17 links across 6 categories no
-// longer fits any single stacked column without spilling well past the nav
-// bar). Centered under the WHOLE nav, not the narrow "DFIR ⌄" trigger: fixed
-// width + a matching fixed `left: calc(50% - width/2)` rather than the more
-// obvious `left: 50%; transform: translateX(-50%)` — `.nav-more-menu` in
+// Shared mega-menu panel — one grid CELL per CATEGORY (a category header plus
+// its own sub-list of links). Used by Reference (3 categories / 16 links) at
+// the standard 600px width below, and by Tools (4 categories / 25 links) via
+// the wider variant after it. Centered under the WHOLE nav, not the narrow
+// "Reference ⌄" trigger: fixed width + a matching fixed
+// `left: calc(50% - width/2)` rather than the more obvious
+// `left: 50%; transform: translateX(-50%)` — `.nav-more-menu` in
 // global.css already owns `transform: translateY(...)` for the open/close
 // slide, and a second `transform` here would silently clobber it (only one
-// `transform` declaration on an element ever wins, they don't merge). Fixed
-// pixel math is safe specifically because this dropdown only ever renders at
-// the `md` breakpoint and up (768px, this whole `<ul>` is `md:flex`) and the
-// nav's own `maxW` is 960px — 600px comfortably fits with margin at every
-// width in that whole range, so there's no responsive case to account for.
-const dfirMenuOuter = css({
+// `transform` declaration on an element ever wins, they don't merge). Do not
+// "simplify" this back to a translate; it is a real, previously-shipped bug.
+// Fixed pixel math is safe specifically because these dropdowns only ever
+// render at the `md` breakpoint and up (768px, this whole `<ul>` is `md:flex`)
+// and the nav's own `maxW` is 960px — both 600px and the 720px variant
+// comfortably fit with margin at every width in that whole range, so there's
+// no responsive case to account for.
+const menuPanelOuter = css({
   position: 'absolute',
   top: '100%',
   left: 'calc(50% - 300px)',
@@ -205,36 +243,70 @@ const dfirMenuOuter = css({
   '.nav-more:hover &': { zIndex: 70 },
   '.nav-more:focus-within &': { zIndex: 70 },
 });
-const dfirMenuInner = css({
+// Tools' own wider panel — Tools has 4 categories to Reference's 3, so it
+// needs a 4th column, and squeezing that into the 600px above would leave
+// ~124px per column (600 − 32px padding − 3×24px gap, ÷ 4), well under the
+// 3-column layout's own ~173px. 720px is the widest that still clears the
+// nav's own 960px `maxW` with real margin, and — paired with the tighter
+// 1rem column gap in menuGridCols4 below — gives ~160px per column, close
+// enough to Reference's ~173px that the wrap behavior is unchanged for every
+// current label (the handful long enough to wrap at 173px, e.g. "Data Size &
+// Storage Unit Converter", already wrapped to two lines there and still wrap
+// to two here; nothing that fit on one line stops fitting). Same fixed
+// `left: calc(50% - width/2)` math as above, for exactly the same reason
+// (never a second `transform`).
+const menuPanelOuterWide = css({
+  position: 'absolute',
+  top: '100%',
+  left: 'calc(50% - 360px)',
+  w: '720px',
+  pt: navMenuGap,
+  zIndex: 60,
+  '.nav-more:hover &': { zIndex: 70 },
+  '.nav-more:focus-within &': { zIndex: 70 },
+});
+const menuPanelInner = css({
   bg: 'bgCard',
   border: '1px solid token(colors.border)',
   borderRadius: 'lg',
   boxShadow: 'cardHover',
   p: '1rem',
-  // Safety net, not an expected case: 6 categories in a 3-column grid is 2
-  // rows, comfortably under this even on the shortest realistic viewport —
-  // kept anyway so a future 7th/8th category degrades to a scrollbar instead
-  // of quietly pushing past the viewport bottom again.
+  // Safety net, not an expected case: every category fits on a single grid
+  // row today (3-of-3 for Reference, 4-of-4 for Tools), and the tallest
+  // column is 8 links — comfortably under this even on the shortest
+  // realistic viewport. Kept anyway so a future extra category degrades to a
+  // scrollbar instead of quietly pushing past the viewport bottom again.
   maxH: '75vh',
   overflowY: 'auto',
 });
-const dfirGrid = css({
+const menuGridCols3 = css({
   display: 'grid',
   gridTemplateColumns: 'repeat(3, 1fr)',
   gap: '0.5rem 1.5rem',
   mt: '0.75rem',
 });
-// Drills' own dropdown — same "real link + centered-under-whole-nav" DFIR
-// treatment (see dfirMenuOuter's own comment for the technique), but sized
-// for 6 FLAT links rather than DFIR's 20-links-across-6-categories: DFIR's
-// `dfirGrid` lays out one grid CELL per CATEGORY (`d.groups.map`, each cell
-// a header + sub-list), which only works because DFIR always has 6 of them
-// to fill a 3-column row. Drills has exactly one ungrouped group (see
-// DRILLS_LINKS above), so reusing dfirGrid as-is would render a single
-// lonely column with the other two thirds of a 600px panel sitting empty.
-// Instead this maps DRILLS_LINKS directly — one grid cell per LINK, not per
-// group — in a narrower 2-column panel sized for 6 items (3 rows) rather
-// than DFIR's wider 3-column one.
+// Column gap tightened from menuGridCols3's 1.5rem to 1rem — with a 4th
+// column to fit, every 8px of gutter comes straight out of label width (see
+// menuPanelOuterWide's own arithmetic). Row gap stays matched to the 3-column
+// grid so the two panels read as the same system.
+const menuGridCols4 = css({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(4, 1fr)',
+  gap: '0.5rem 1rem',
+  mt: '0.75rem',
+});
+// Drills' own dropdown — same "real link + centered-under-whole-nav"
+// treatment as the two mega-menus above (see menuPanelOuter's own comment for
+// the technique), but sized for 7 FLAT links rather than a grid of
+// categories: `menuGridCols3`/`menuGridCols4` lay out one grid CELL per
+// CATEGORY (`d.groups.map`, each cell a header + sub-list), which only works
+// because Reference and Tools have exactly 3 and 4 of them to fill their own
+// row. Drills is a single category ('Drills' — the only CategoryId of type
+// 'drill'), so reusing either grid as-is would render a single lonely column
+// with the rest of a 600px panel sitting empty. Instead this maps that one
+// group's links directly — one grid cell per LINK, not per group — in a
+// narrower 2-column panel, and skips the redundant category header (the
+// trigger already says "Drills").
 const drillsMenuOuter = css({
   position: 'absolute',
   top: '100%',
@@ -258,37 +330,7 @@ const drillsGrid = css({
   gap: '0.15rem 1rem',
   mt: '0.75rem',
 });
-// IT's own dropdown — same centered-under-whole-nav treatment as DFIR/Drills
-// (see dfirMenuOuter's own comment) and now the SAME category-grid shape as
-// DFIR too (IT_GROUPS moved to the same {category,id,blurb,intro,links}[]
-// structure — see consts.ts), just narrower and 2 columns instead of 3 since
-// IT currently has 2 categories to DFIR's 6. Reuses dfirGroupLabel/dfirLink
-// for the actual category-label/link styling — only the outer panel
-// dimensions and column count differ.
-const itMenuOuter = css({
-  position: 'absolute',
-  top: '100%',
-  left: 'calc(50% - 170px)',
-  w: '340px',
-  pt: navMenuGap,
-  zIndex: 60,
-  '.nav-more:hover &': { zIndex: 70 },
-  '.nav-more:focus-within &': { zIndex: 70 },
-});
-const itMenuInner = css({
-  bg: 'bgCard',
-  border: '1px solid token(colors.border)',
-  borderRadius: 'lg',
-  boxShadow: 'cardHover',
-  p: '1rem',
-});
-const itGrid = css({
-  display: 'grid',
-  gridTemplateColumns: 'repeat(2, 1fr)',
-  gap: '0.5rem 1rem',
-  mt: '0.75rem',
-});
-const dfirGroupLabel = css({
+const menuCatLabel = css({
   fontFamily: 'sans',
   fontSize: '0.68rem',
   fontWeight: 700,
@@ -299,10 +341,12 @@ const dfirGroupLabel = css({
   pb: '0.3rem',
 });
 // Unlike `moreLink` (a flat single-column list with room to spare), a 600px
-// panel split 3 ways leaves ~170px per column — plenty for most labels, but
-// a couple of the longer ones ("MITRE ATT&CK Coverage Map") wrap to two
-// lines rather than overflow their column, so no `whiteSpace: nowrap` here.
-const dfirLink = css({
+// panel split 3 ways leaves ~170px per column (and the 720px Tools panel
+// ~180px split 4 ways) — plenty for most labels, but a couple of the longer
+// ones ("MITRE ATT&CK Coverage Map", "ASCII Table & Character Encoding
+// Reference") wrap to two lines rather than overflow their column, so no
+// `whiteSpace: nowrap` here.
+const menuGridLink = css({
   display: 'block',
   px: '0.5rem',
   py: '0.35rem',
@@ -475,12 +519,13 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
           ))
         }
         {dropdowns.map((d) => (
-          <li class={`nav-more ${d.id === 'more' ? moreWrap : dfirWrap}`}>
+          <li class={`nav-more ${d.id === 'more' ? moreWrap : linkTriggerWrap}`}>
             {d.id === 'more' ? (
               <button
                 type="button"
                 id={`nav-${d.id}-btn`}
                 aria-expanded="false"
+                aria-haspopup="true"
                 aria-controls={`nav-${d.id}-menu`}
                 aria-label={`${d.label} links`}
                 title={`${d.label} links`}
@@ -491,26 +536,25 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
                 <Icon name="chevron-down" size={13} strokeWidth={2.5} class="nav-more-chev" />
               </button>
             ) : (
-              // DFIR and Drills, desktop only (this whole <ul> is md:flex —
-              // see its own class above): a real link, not a button. Hovering
-              // it still previews the dropdown below (CSS :hover/:focus-within
-              // on the shared .nav-more ancestor, untouched by the tag
-              // change), but a click navigates straight to the section's own
-              // landing page instead of just toggling a menu — this trigger
-              // IS that landing page, so clicking its own label should go
-              // there, mirroring how a mega-menu trigger link behaves on
-              // other sites. The mobile accordion below (<details
-              // class="nav-mobile-section">) is a completely separate markup
-              // block and keeps its own tap-to-expand behavior — a link can't
-              // both navigate and expand on a single tap, so mobile
-              // intentionally does not get this behavior.
+              // Reference, Tools and Drills, desktop only (this whole <ul> is
+              // md:flex — see its own class above): a real link, not a button.
+              // Hovering it still previews the dropdown below (CSS
+              // :hover/:focus-within on the shared .nav-more ancestor,
+              // untouched by the tag change), but a click navigates straight
+              // to the section's own landing page instead of just toggling a
+              // menu — this trigger IS that landing page, so clicking its own
+              // label should go there, mirroring how a mega-menu trigger link
+              // behaves on other sites. The mobile list below renders the same
+              // three as plain flat links to the same landing pages (no
+              // accordion, no hover preview) — a separate markup block
+              // entirely.
               <a
                 href={LANDING_HREF[d.id]}
                 id={`nav-${d.id}-btn`}
                 aria-expanded="false"
                 aria-haspopup="true"
                 aria-controls={`nav-${d.id}-menu`}
-                aria-current={LANDING_HREF[d.id] && isActive(LANDING_HREF[d.id]!) ? 'page' : undefined}
+                aria-current={pathname === LANDING_HREF[d.id] ? 'page' : undefined}
                 data-sound="tick"
                 class={`nav-more-btn ${moreBtn} ${isDropdownActive(d) ? moreBtnActive : ''}`}
               >
@@ -518,21 +562,21 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
                 <Icon name="chevron-down" size={13} strokeWidth={2.5} class="nav-more-chev" />
               </a>
             )}
-            {d.id === 'dfir' ? (
-              <div id={`nav-${d.id}-menu`} class={`nav-more-menu ${dfirMenuOuter}`}>
-                <div class={dfirMenuInner}>
-                  <a href="/dfir/" aria-current={isActive('/dfir/') ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
-                    Browse all DFIR pages →
+            {d.id === 'reference' ? (
+              <div id={`nav-${d.id}-menu`} class={`nav-more-menu ${menuPanelOuter}`}>
+                <div class={menuPanelInner}>
+                  <a href={LANDING_HREF[d.id]} aria-current={pathname === LANDING_HREF[d.id] ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
+                    Browse all Reference pages →
                   </a>
                   <div class={menuGroupDivider} />
-                  <div class={dfirGrid}>
+                  <div class={menuGridCols3}>
                     {d.groups.map((g) => (
                       <div>
-                        {g.category && <p class={`nav-declassify ${dfirGroupLabel}`}>{g.category}</p>}
+                        {g.category && <p class={`nav-declassify ${menuCatLabel}`}>{g.category}</p>}
                         <ul class={menuGroup} aria-label={g.category ?? d.label}>
                           {g.links.map((link) => (
                             <li>
-                              <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={`nav-declassify ${dfirLink}`}>
+                              <a href={link.href} aria-current={isLinkActive(link.href, d.id) ? 'page' : undefined} class={`nav-declassify ${menuGridLink}`}>
                                 {link.label}
                               </a>
                             </li>
@@ -543,21 +587,21 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
                   </div>
                 </div>
               </div>
-            ) : d.id === 'it' ? (
-              <div id={`nav-${d.id}-menu`} class={`nav-more-menu ${itMenuOuter}`}>
-                <div class={itMenuInner}>
-                  <a href="/it/" aria-current={isActive('/it/') ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
-                    Browse all IT pages →
+            ) : d.id === 'tools' ? (
+              <div id={`nav-${d.id}-menu`} class={`nav-more-menu ${menuPanelOuterWide}`}>
+                <div class={menuPanelInner}>
+                  <a href={LANDING_HREF[d.id]} aria-current={pathname === LANDING_HREF[d.id] ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
+                    Browse all Tools →
                   </a>
                   <div class={menuGroupDivider} />
-                  <div class={itGrid}>
+                  <div class={menuGridCols4}>
                     {d.groups.map((g) => (
                       <div>
-                        {g.category && <p class={`nav-declassify ${dfirGroupLabel}`}>{g.category}</p>}
+                        {g.category && <p class={`nav-declassify ${menuCatLabel}`}>{g.category}</p>}
                         <ul class={menuGroup} aria-label={g.category ?? d.label}>
                           {g.links.map((link) => (
                             <li>
-                              <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={`nav-declassify ${dfirLink}`}>
+                              <a href={link.href} aria-current={isLinkActive(link.href, d.id) ? 'page' : undefined} class={`nav-declassify ${menuGridLink}`}>
                                 {link.label}
                               </a>
                             </li>
@@ -571,17 +615,28 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
             ) : d.id === 'drills' ? (
               <div id={`nav-${d.id}-menu`} class={`nav-more-menu ${drillsMenuOuter}`}>
                 <div class={drillsMenuInner}>
-                  <a href="/drills/" aria-current={isActive('/drills/') ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
+                  <a href={LANDING_HREF[d.id]} aria-current={pathname === LANDING_HREF[d.id] ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
                     Browse all Drills →
                   </a>
                   <div class={menuGroupDivider} />
-                  <div class={drillsGrid}>
-                    {DRILLS_LINKS.map((link) => (
-                      <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={`nav-declassify ${dfirLink}`}>
-                        {link.label}
-                      </a>
+                  {/* Flattened deliberately — Drills is one category, so this
+                      renders one cell per LINK rather than one per group (see
+                      drillsMenuOuter's own comment). flatMap over `d.groups`
+                      rather than indexing [0] so the panel still renders every
+                      link if a second drill category is ever added. The grid
+                      lives on the <ul> itself so the links keep list semantics
+                      (the other panels get theirs from their per-category
+                      <ul>s); the group name comes from the trigger, since this
+                      panel deliberately renders no category header. */}
+                  <ul class={`${menuGroup} ${drillsGrid}`} aria-label={d.label}>
+                    {d.groups.flatMap((g) => g.links).map((link) => (
+                      <li>
+                        <a href={link.href} aria-current={isLinkActive(link.href, d.id) ? 'page' : undefined} class={`nav-declassify ${menuGridLink}`}>
+                          {link.label}
+                        </a>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               </div>
             ) : (
@@ -593,8 +648,8 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
                       {g.category && <p class={`nav-declassify ${menuGroupLabel}`}>{g.category}</p>}
                       <ul class={menuGroup} aria-label={g.category ?? d.label}>
                         {g.links.map((link) => (
-                          <li>
-                            <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
+                          <li class={PERSONAL_HREFS.includes(link.href) ? hideOnCyberkit : undefined}>
+                            <a href={link.href} aria-current={isLinkActive(link.href, d.id) ? 'page' : undefined} class={`nav-declassify ${moreLink}`}>
                               {link.label}
                             </a>
                           </li>
@@ -720,18 +775,19 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
     </li>
     {
       NAV_LINKS.map((link) => (
-        <li class={css({ '[data-brand="cyberkit"] &': { display: 'none' } })}>
+        <li class={hideOnCyberkit}>
           <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={mobileLink}>
             {link.label}
           </a>
         </li>
       ))
     }
-    {/* DFIR / IT / Drills — flat links straight to each section's own landing
-        page, no accordion: saves vertical space on mobile (desktop keeps its
-        own hover mega-menus above, unaffected). This link already is what the
-        old "Browse all X pages →" sub-link pointed at, so there's nothing to
-        duplicate underneath it. */}
+    {/* Reference / Tools / Drills — flat links straight to each section's own
+        landing page, no accordion: saves vertical space on mobile (desktop
+        keeps its own hover mega-menus above, unaffected). This link already is
+        what each panel's "Browse all X →" link points at, so there's nothing to
+        duplicate underneath it. Fully data-driven off `dropdowns` + LANDING_HREF
+        — the type+verb rename needed no structural change here. */}
     {
       dropdowns
         .filter((d) => d.id !== 'more')
@@ -739,7 +795,7 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
           <li class={i === 0 ? mobileLinkDivider : undefined}>
             <a
               href={LANDING_HREF[d.id]}
-              aria-current={LANDING_HREF[d.id] && isActive(LANDING_HREF[d.id]!) ? 'page' : undefined}
+              aria-current={pathname === LANDING_HREF[d.id] ? 'page' : undefined}
               class={mobileLink}
             >
               {d.label}
@@ -751,7 +807,7 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
         grouping label needed for 3 items. */}
     {
       MORE_LINKS.map((link, i) => (
-        <li class={`${i === 0 ? mobileLinkDivider : ''} ${link.href === '/certifications/' ? css({ '[data-brand="cyberkit"] &': { display: 'none' } }) : ''}`}>
+        <li class={`${i === 0 ? mobileLinkDivider : ''} ${PERSONAL_HREFS.includes(link.href) ? hideOnCyberkit : ''}`}>
           <a href={link.href} aria-current={isActive(link.href) ? 'page' : undefined} class={mobileLink}>
             {link.label}
           </a>
@@ -793,13 +849,17 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
       else close();
     });
 
-    // Desktop dropdowns (DFIR / More): open purely via CSS :hover/:focus-within
-    // (see global.css's `.nav-more-menu` rule) — no click-to-pin. A previous
-    // version toggled a `data-open` attribute on click so the panel stayed
-    // open until a second click or an outside click dismissed it; that read
-    // as the menu getting stuck open (move the pointer away and it's still
-    // there), so it's gone. The DFIR trigger is now a real link (see the
-    // markup above) and just navigates on click, no JS needed. Two things
+    // Desktop dropdowns (Reference / Tools / Drills / More): open purely via
+    // CSS :hover/:focus-within (see global.css's `.nav-more-menu` rule) — no
+    // click-to-pin. A previous version toggled a `data-open` attribute on
+    // click so the panel stayed open until a second click or an outside click
+    // dismissed it; that read as the menu getting stuck open (move the pointer
+    // away and it's still there), so it's gone. The Reference/Tools/Drills
+    // triggers are real links (see the markup above) and just navigate on
+    // click, no JS needed. This loop is generic over every `.nav-more` group
+    // on the page and reads each group's own `.nav-more-btn` (the <a> or the
+    // <button>, either way), so the number and naming of the dropdowns is
+    // irrelevant to it. Two things
     // still need script, since CSS alone can't do them: keeping
     // `aria-expanded` accurate for screen readers (it has to track the same
     // hover/focus-within condition the CSS reveal already uses — there's no

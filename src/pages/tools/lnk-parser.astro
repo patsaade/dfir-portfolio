@@ -51,7 +51,7 @@ const REFERENCE_ROWS: { field: string; note: string }[] = [
   description="Parse a Windows .lnk shortcut file per MS-SHLLINK — target timestamps, volume/host info, and the embedded shell item breadcrumb path. Entirely in your browser, nothing uploaded."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'LNK Parser' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'LNK Parser' }]}
     eyebrow="Artifact Parsers"
     title="LNK (Shell Link) Forensic Parser"
     description="Upload a .lnk shortcut file to decode its target path, timestamps, volume info, and embedded shell item breadcrumb — entirely local."
@@ -83,7 +83,7 @@ const REFERENCE_ROWS: { field: string; note: string }[] = [
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> What's decoded
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="What's decoded table">
     <table class={refTable}>
       <thead>
         <tr>

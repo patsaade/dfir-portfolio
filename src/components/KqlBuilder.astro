@@ -20,6 +20,27 @@ import Icon from './Icon.astro';
 import WorkspaceShell from './WorkspaceShell.astro';
 import { KQL_AGGREGATIONS, KQL_BIN_SIZES, KQL_TABLES, KQL_TIMESPANS } from '../data/kql';
 import { KQL_EXAMPLE_HUNTS } from '../utils/kql';
+import { KQL_PACKAGES } from '../data/queryPackages';
+
+// DFIR packages are offered grouped by investigation theme, so the loader reads
+// as "what am I looking for" rather than as one flat list of two dozen titles.
+// Same select as the starter hunts — loading either just fills the form in, so
+// there is one "start from something" control rather than two.
+const packageThemes = KQL_PACKAGES.reduce<{ theme: string; packages: typeof KQL_PACKAGES }[]>((groups, p) => {
+  const existing = groups.find((g) => g.theme === p.theme);
+  if (existing) existing.packages.push(p);
+  else groups.push({ theme: p.theme, packages: [p] });
+  return groups;
+}, []);
+
+// Handed to the client script as a server-rendered JSON payload rather than
+// imported into it — same pattern DorkBuilder and SplBuilder already use. The
+// point here is bundle size: src/data/queryPackages.ts holds all three
+// languages' packages and imports all three builders, so importing it from
+// this script would drag the SPL and SentinelOne assembly code into the KQL
+// page's bundle for no benefit. Only the four fields the script actually reads
+// are serialized.
+const packagePayload = KQL_PACKAGES.map((p) => ({ id: p.id, finds: p.finds, dataSource: p.dataSource, tuning: p.tuning, spec: p.spec }));
 
 // Tables are grouped in the picker by which product surface they live in, so
 // it's never ambiguous whether a table needs the Defender portal or a
@@ -46,7 +67,7 @@ const selectInput = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.6rem',
   py: '0.45rem',
@@ -189,7 +210,7 @@ const numberInput = css({
   fontSize: '0.78rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'sm',
   px: '0.45rem',
   py: '0.32rem',
@@ -278,12 +299,31 @@ const actionBtnBase = {
 const primaryBtnBase = { bg: 'primary', color: 'onPrimary', borderColor: 'primary', _hover: { opacity: 0.9, color: 'onPrimary' } } as const;
 const primaryActionBtn = css(actionBtnBase, primaryBtnBase);
 const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: '0.35rem' });
+
+// Shown only once a DFIR package is loaded — what it finds, the telemetry it
+// needs, and where its false positives come from. `&[hidden]` is explicit
+// because this class sets `display` unconditionally (see CLAUDE.md's gotchas).
+const packageNote = css({
+  display: 'block',
+  fontSize: '0.82rem',
+  color: 'textMuted',
+  lineHeight: 1.65,
+  m: 0,
+  p: '0.6rem 0.75rem',
+  bg: 'bgCard',
+  border: '1px solid token(colors.border)',
+  borderLeftWidth: '3px',
+  borderLeftColor: 'primary',
+  borderRadius: 'md',
+  '&[hidden]': { display: 'none' },
+});
 ---
 
 <WorkspaceShell
   hook="data-kql-builder"
-  noJsMessage="The interactive KQL builder needs JavaScript enabled. The starter hunts further down the page are plain text and work without it."
+  noJsMessage="The interactive KQL builder needs JavaScript enabled. The starter hunts and DFIR packages further down the page are plain text and work without it."
   gap="1.25rem"
+  attrs={{ 'data-kql-packages': JSON.stringify(packagePayload) }}
 >
   <div class={topRow}>
     <div class={selectorField}>
@@ -308,10 +348,19 @@ const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: 
     </div>
 
     <div class={selectorField}>
-      <label class={fieldLabel} for="kql-preset">Starter hunt</label>
+      <label class={fieldLabel} for="kql-preset">Load a hunt</label>
       <select id="kql-preset" class={selectInput} data-kql-preset>
         <option value="">— Build from scratch —</option>
-        {KQL_EXAMPLE_HUNTS.map((e) => <option value={e.id}>{e.title}</option>)}
+        <optgroup label="Starter hunts">
+          {KQL_EXAMPLE_HUNTS.map((e) => <option value={e.id}>{e.title}</option>)}
+        </optgroup>
+        {
+          packageThemes.map((group) => (
+            <optgroup label={`Packages — ${group.theme}`}>
+              {group.packages.map((p) => <option value={p.id}>{p.title}</option>)}
+            </optgroup>
+          ))
+        }
       </select>
     </div>
 
@@ -321,6 +370,7 @@ const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: 
   </div>
 
   <p class={caption} data-kql-table-blurb role="status" aria-live="polite"></p>
+  <p class={packageNote} data-kql-package-note role="status" aria-live="polite" hidden></p>
 
   <div class={workspaceGrid}>
     <div>
@@ -403,7 +453,7 @@ const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: 
 
     <div class={stage}>
       <p class={paneLabel}>Query</p>
-      <pre class={outputBox}><code data-kql-output>&nbsp;</code></pre>
+      <pre class={outputBox} tabindex="0" role="region" aria-label="Generated KQL query"><code data-kql-output>&nbsp;</code></pre>
       <ul class={msgList} data-kql-messages data-warn-class={msgWarn} data-tip-class={msgTip} aria-live="polite"></ul>
       <div class={actionCol}>
         <button type="button" class={primaryActionBtn} data-kql-copy data-copy-pop data-sound="copy" title="Copy the query to the clipboard">
@@ -476,6 +526,7 @@ const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: 
         // The Reset button is wired by persistToolSession's `resetButton`
         // option at the bottom of this file, not here.
         var blurbEl = root.querySelector('[data-kql-table-blurb]');
+        var packageNoteEl = root.querySelector('[data-kql-package-note]');
         var filtersEl = root.querySelector('[data-kql-filters]');
         var filtersEmptyEl = root.querySelector('[data-kql-filters-empty]');
         var addFilterBtn = root.querySelector('[data-kql-add-filter]');
@@ -498,6 +549,12 @@ const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: 
         var copyBtn = root.querySelector('[data-kql-copy]');
         var rowTemplate = root.querySelector('[data-kql-row-template]');
         if (!tableSel || !outputEl || !rowTemplate || !filtersEl) return;
+
+        // Server-rendered payload (see the frontmatter comment on why these
+        // aren't imported). A malformed attribute degrades to "no packages
+        // offered" rather than breaking the whole builder.
+        var packages = [];
+        try { packages = JSON.parse(root.getAttribute('data-kql-packages') || '[]'); } catch (e) { packages = []; }
 
         var direction = 'desc';
         // Owned save trigger — see the persistToolSession call at the bottom.
@@ -836,11 +893,29 @@ const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: 
           b.addEventListener('click', function () { setDirection(b.getAttribute('data-kql-dir')); render(); });
         });
 
+        // A package's own context — what it finds, what telemetry it needs,
+        // where the noise comes from — only makes sense while that package is
+        // the thing on screen, so it's cleared the moment anything else is
+        // loaded rather than left behind as a stale caption.
+        function showPackageNote(pkg) {
+          if (!packageNoteEl) return;
+          if (!pkg) {
+            packageNoteEl.textContent = '';
+            packageNoteEl.hidden = true;
+            return;
+          }
+          packageNoteEl.textContent = pkg.finds + ' Needs: ' + pkg.dataSource + ' Tuning: ' + pkg.tuning;
+          packageNoteEl.hidden = false;
+        }
+
         presetSel.addEventListener('change', function () {
           var id = presetSel.value;
-          if (!id) return;
+          if (!id) { showPackageNote(null); return; }
           for (var i = 0; i < KQL_EXAMPLE_HUNTS.length; i++) {
-            if (KQL_EXAMPLE_HUNTS[i].id === id) { applySpec(KQL_EXAMPLE_HUNTS[i].spec); return; }
+            if (KQL_EXAMPLE_HUNTS[i].id === id) { applySpec(KQL_EXAMPLE_HUNTS[i].spec); showPackageNote(null); return; }
+          }
+          for (var j = 0; j < packages.length; j++) {
+            if (packages[j].id === id) { applySpec(packages[j].spec); showPackageNote(packages[j]); return; }
           }
         });
 
@@ -882,6 +957,7 @@ const smallBtn = css({ ...actionBtnBase, fontSize: '0.78rem', px: '0.6rem', py: 
           onReset: function () {
             suppressSave = true;
             presetSel.value = '';
+            showPackageNote(null);
             applySpec(defaultSpec());
             if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
             suppressSave = false;

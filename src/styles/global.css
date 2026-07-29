@@ -129,18 +129,8 @@ details.nav-mobile-section[open] .mobile-section-chev {
 .search-opt[data-active] {
   background: var(--colors-bg-subtle);
 }
-.search-opt-kind {
-  flex-shrink: 0;
-  font-family: var(--fonts-mono);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--colors-primary);
-  border: 1px solid var(--colors-border);
-  border-radius: 4px;
-  padding: 0.05rem 0.32rem;
-  line-height: 1.6;
-}
+/* (The result row's kind chip is styled by the shared `tag()` Panda recipe in
+   Search.astro itself — there is no `.search-opt-kind` rule here any more.) */
 .search-opt-main {
   display: flex;
   flex-direction: column;
@@ -159,6 +149,54 @@ details.nav-mobile-section[open] .mobile-section-chev {
   white-space: nowrap;
 }
 
+/* Back-to-top reveal (BackToTop.astro) — a SCROLL-DRIVEN animation, so the
+   component ships no JavaScript at all. This replaced a `scroll` listener that
+   ran on every scroll frame of every page just to toggle one attribute.
+
+   Failing open is the whole design here. The element's own Panda css() is its
+   VISIBLE state; the rule below is the only thing that ever hides it, and it is
+   gated on @supports. A browser without scroll-driven animations therefore shows
+   a permanently visible back-to-top control — never a hidden one — because
+   losing a navigation affordance is a far worse outcome than showing it a bit
+   early. Same reasoning applies to the reduced-motion override further down.
+
+   `visibility` and `pointer-events` are discrete (non-interpolable) properties:
+   listing them at 0% and 1% flips them essentially at the start of the range,
+   while opacity/transform interpolate across the whole 480→560px window. Keeping
+   `visibility` in the animation (rather than relying on opacity alone) is what
+   holds the control out of the TAB ORDER while it is invisible — a
+   `visibility: hidden` element is never focusable per spec (WCAG 2.4.3 / 2.4.7),
+   which `opacity: 0` + `pointer-events: none` on their own do not achieve.
+
+   Longhands, not the `animation` shorthand, on purpose: the shorthand resets
+   `animation-duration`, and a scroll timeline wants that left at its initial
+   `auto` (= span the whole `animation-range`). */
+@keyframes back-to-top-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(0.6rem);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  1% {
+    visibility: visible;
+    pointer-events: auto;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@supports (animation-timeline: scroll()) {
+  #back-to-top {
+    animation-name: back-to-top-reveal;
+    animation-fill-mode: both;
+    animation-timing-function: linear;
+    animation-timeline: scroll(root);
+    animation-range: 480px 560px;
+  }
+}
+
 /* Base accessibility rule: near-instant animation/transition globally, plus an
    explicit stop for the ticker's two infinite loops (the 0.01ms rule alone keeps
    them cycling). Charm animations carry their own reduced-motion off-switches in
@@ -172,6 +210,21 @@ details.nav-mobile-section[open] .mobile-section-chev {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  /* Back-to-top settles fully VISIBLE (invariant 12 rule (a)) — and must, since
+     it is the page's own top-of-page navigation control. The blanket
+     `animation-duration: 0.01ms` above is meaningless on a scroll timeline (it
+     would clamp the animation to a sliver of the scroll range and could strand
+     it on its hidden 0% frame), so the animation is switched off outright and
+     the visible end state pinned. `!important` is belt-and-suspenders — this
+     block already follows the @supports rule at equal specificity — so that
+     reordering this file can never silently re-hide the control. */
+  #back-to-top {
+    animation: none !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transform: none !important;
+    pointer-events: auto !important;
   }
   .totd-marquee-track {
     animation: none !important;
@@ -191,6 +244,19 @@ details.nav-mobile-section[open] .mobile-section-chev {
   to {
     transform: translateX(-50%);
   }
+}
+
+/* Term-of-the-day ticker paused by its own pause/play button (WCAG 2.2.2
+   Pause, Stop, Hide). Ticker.astro's script sets `data-totd-paused` on the
+   bar; this stops BOTH of the bar's infinite animations — the scrolling
+   marquee and the blinking "live" dot — from one attribute. Deliberately
+   plain CSS with a flat descendant selector rather than a Panda condition:
+   the two targets live in different components' class scopes, and this
+   codebase has already been bitten by a Panda ancestor+self condition
+   compiling to something other than the compound selector it looked like. */
+[data-totd-paused] .totd-marquee-track,
+[data-totd-paused] .totd-pulse-dot {
+  animation-play-state: paused;
 }
 
 /* Subtle "live" pulse on the ticker indicator dot. */

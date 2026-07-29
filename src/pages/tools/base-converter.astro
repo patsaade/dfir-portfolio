@@ -4,7 +4,8 @@
 // bytes. Pure positional-notation arithmetic (src/utils/baseConvert.ts) —
 // nothing here needs research or fact-checking, it's math. Same page shape
 // as the other interactive tools (intro aside -> tool -> reference notes).
-// IT-fundamentals content, not DFIR-specific — see consts.ts's IT_GROUPS
+// General-computing content — tagged `systems` rather than `dfir` in
+// SITE_ENTRIES; see consts.ts's Domain notes
 // comment and CLAUDE.md's "Nav grouping" invariant for the framing rule this
 // page follows. Static page — prerender to HTML served from the CDN.
 export const prerender = true;
@@ -44,7 +45,7 @@ const inlineCode = css({ fontFamily: 'mono', fontSize: '0.92em', color: 'primary
   description="Convert a value between binary, octal, decimal, and hexadecimal live as you type, with an ASCII decode of the underlying bytes — entirely in your browser."
 >
   <PageHeader
-    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tool Catalog', href: '/tools/' }, { label: 'Number Base Converter' }]}
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Tools', href: '/tools/' }, { label: 'Number Base Converter' }]}
     eyebrow="Tools"
     title="Number Base Converter"
     description="Type a value into any base — binary, octal, decimal, or hexadecimal — and the other three update live, alongside an ASCII decode of the value's underlying bytes."
@@ -88,7 +89,7 @@ const inlineCode = css({ fontFamily: 'mono', fontSize: '0.92em', color: 'primary
   <h2 id="reference" class={sectionH2}>
     <Icon name="list" size={20} class={css({ color: 'primary' })} /> Base reference
   </h2>
-  <div class={css({ overflowX: 'auto' })}>
+  <div class={css({ overflowX: 'auto' })} tabindex="0" role="region" aria-label="Base reference table">
     <table class={refTable}>
       <thead>
         <tr>

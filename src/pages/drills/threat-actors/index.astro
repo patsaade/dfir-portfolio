@@ -20,13 +20,22 @@ import { toolChip } from '../../../components/RelatedTools.astro';
 import ExternalResources from '../../../components/ExternalResources.astro';
 import { EXTERNAL_RESOURCES } from '../../../data/externalResources';
 import { THREAT_ACTORS_TOTAL } from '../../../data/threatActors';
-import { getThreatActorsQuestion, THREAT_ACTORS_DRILL_TOTAL } from '../../../data/drills/threatActorsDrill';
+import { threatActorsDrillQuestionBank, THREAT_ACTORS_DRILL_TOTAL } from '../../../data/drills/threatActorsDrill';
 
 const TOTAL = THREAT_ACTORS_DRILL_TOTAL;
-// Computed at build time so a no-JS visitor sees a real first question —
-// initDrill()'s own client-side nextQuestion(0) call reproduces this exact
-// value (the generator is a deterministic lookup, not Math.random()).
-const q0 = getThreatActorsQuestion(0);
+// The ENTIRE question bank, materialised at build time and handed to the
+// client as a JSON island below. The generator is a pure, deterministic
+// function of the question index, so there's nothing the client needs it for
+// at runtime — and keeping it out of the client bundle is what stops Rollup
+// pulling the whole generated THREAT_ACTORS dataset (~155 KB raw) into this
+// page. See src/data/drills/graders.ts for how the `grade` closures survive
+// the JSON round-trip.
+const QUESTIONS = threatActorsDrillQuestionBank();
+// Computed at build time so a no-JS visitor sees a real first question. It's
+// the SAME object the client hydrates for index 0, not a second call to the
+// generator, so SSR and hydration cannot drift.
+const q0 = QUESTIONS[0];
+const questionsJson = JSON.stringify(QUESTIONS).replace(/</g, '\\u003c');
 
 const sectionH2 = css({
   display: 'flex',
@@ -73,7 +82,7 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
       generated from MITRE's own Enterprise ATT&amp;CK STIX bundle — asking you to resolve a distinguishing fact,
       an alias, or a malware/tool name to the group behind it, the same correlation work reading multiple threat
       intel reports actually requires. The rest come from the reference's own{' '}
-      <a href="/threat-actors/#naming-conventions" class={css({ color: 'primary' })}>naming conventions</a>{' '}
+      <a href="/reference/threat-actors/#naming-conventions" class={css({ color: 'primary' })}>naming conventions</a>{' '}
       section — hand-verified facts about how MITRE, Mandiant, CrowdStrike, Microsoft, and Secureworks each derive
       their own <Term slug="threat-actor">threat-actor</Term> names, plus questions that apply those real rules to
       a new fact pattern rather than just recalling one memorized example. Nothing here is invented trivia.
@@ -81,13 +90,15 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
   </aside>
 
   <p class={css({ color: 'text', lineHeight: 1.8, fontSize: '1rem', mb: '1.5rem' })}>
-    Questions ask you to resolve a real alias or malware/tool name to the group behind it, name the group
+    Most questions ask you to resolve a real alias or malware/tool name to the group behind it, name the group
     matching a distinguishing real-world fact, explain how a specific vendor's own naming scheme works (e.g.
     what CrowdStrike's "Panda" qualifier indicates, or what letter prefix Mandiant uses for a
     financially-motivated group), or apply a vendor's own real rule to a new scenario (e.g. what code
-    Secureworks would assign a newly attributed North Korea-nexus group) — free-text recall, no multiple choice. Where
-    several answers are valid (an alias, an accepted phrasing of a naming fact), any one of them is graded
-    correct.
+    Secureworks would assign a newly attributed North Korea-nexus group) — free-text recall, no multiple choice.
+    Where several answers are valid (an alias, an accepted phrasing of a naming fact), any one of them is graded
+    correct. A few bonus questions instead sort a batch of easily-confused actors — distinct groups that share
+    overlapping tooling, targeting, or naming history — to the correct entity, since telling apart genuinely
+    similar actors is its own real deconfliction skill.
   </p>
 
   <DrillEngine
@@ -98,23 +109,25 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
     firstQuestion={q0}
   />
 
+  <script type="application/json" data-drill-questions="threat-actors" is:inline set:html={questionsJson} />
+
   <h2 id="related" class={sectionH2}>
     <Icon name="user" size={20} class={css({ color: 'primary' })} /> Related
   </h2>
   <div class={relatedList}>
     <div>
-      <a href="/threat-actors/" class={toolChip}>
+      <a href="/reference/threat-actors/" class={toolChip}>
         <Icon name="user" size={13} /> Threat Actor / APT Reference <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
         Browse the full {THREAT_ACTORS_TOTAL}-group reference this drill draws from — every group's aliases,
         documented techniques, and malware/tools, plus a{' '}
-        <a href="/threat-actors/#naming-conventions" class={css({ color: 'primary' })}>naming conventions</a>{' '}
+        <a href="/reference/threat-actors/#naming-conventions" class={css({ color: 'primary' })}>naming conventions</a>{' '}
         section on how MITRE/Mandiant/CrowdStrike/Microsoft/Secureworks each name the same tracked activity.
       </p>
     </div>
     <div>
-      <a href="/attack-map/" class={toolChip}>
+      <a href="/reference/attack-map/" class={toolChip}>
         <Icon name="crosshair" size={13} /> MITRE ATT&amp;CK Coverage Map <Icon name="arrow-right" size={13} />
       </a>
       <p class={relatedReason}>
@@ -128,8 +141,22 @@ const relatedReason = css({ color: 'textMuted', fontSize: '0.85rem', mt: '0.35re
 </BaseLayout>
 
 <script>
+  // Imports the drill engine and the tiny grader shim ONLY — never
+  // ../../../data/drills/threatActorsDrill, which would drag the whole
+  // generated THREAT_ACTORS dataset into this page's bundle. The questions
+  // come from the JSON island the frontmatter above emitted.
   import { initDrill } from '../../../scripts/drillEngine';
-  import { getThreatActorsQuestion, THREAT_ACTORS_DRILL_TOTAL } from '../../../data/drills/threatActorsDrill';
+  import { hydrateQuestion, type SerialisableDrillQuestion } from '../../../data/drills/graders';
   const root = document.querySelector('[data-drill="threat-actors"]');
-  if (root) initDrill({ root, totalQuestions: THREAT_ACTORS_DRILL_TOTAL, nextQuestion: getThreatActorsQuestion });
+  const dataEl = document.querySelector('[data-drill-questions="threat-actors"]');
+  if (root && dataEl) {
+    const questions: SerialisableDrillQuestion[] = JSON.parse(dataEl.textContent || '[]');
+    if (questions.length) {
+      initDrill({
+        root,
+        totalQuestions: questions.length,
+        nextQuestion: (i: number) => hydrateQuestion(questions[((i % questions.length) + questions.length) % questions.length]),
+      });
+    }
+  }
 </script>

@@ -137,7 +137,7 @@ const exprInputCss = css({
   fontWeight: 600,
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   p: '0.7rem 0.9rem',
   w: '100%',
@@ -180,7 +180,7 @@ const selectInput = css({
   fontSize: '0.85rem',
   color: 'text',
   bg: 'bgCard',
-  border: '1px solid token(colors.border)',
+  border: '1px solid token(colors.borderStrong)',
   borderRadius: 'md',
   px: '0.6rem',
   py: '0.45rem',
@@ -348,7 +348,7 @@ const resetBtn = css(actionBtnBase);
       <p class={paneLabel}>What this means</p>
       <p class={stageBox} data-cron-description aria-live="polite"></p>
       <div class={rawRow}>
-        <pre class={rawBox} data-cron-raw-copy></pre>
+        <pre class={rawBox} data-cron-raw-copy tabindex="0" role="region" aria-label="Cron expression breakdown"></pre>
         <button type="button" class={copyBtn} data-cron-copy data-copy-pop data-sound="copy" aria-label="Copy expression" title="Copy expression">
           <Icon name="copy" size={13} />
         </button>

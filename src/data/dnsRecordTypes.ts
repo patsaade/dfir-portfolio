@@ -1,6 +1,7 @@
-// DNS Resource Record (RR) TYPE reference — pure IT-fundamentals framing (what
-// each record type IS and does, no investigation/attacker angle; see CLAUDE.md's
-// IT vs. DFIR framing rule). Every `typeValue` and `rfc` citation below was
+// DNS Resource Record (RR) TYPE reference — teaches what each record type IS
+// and does, with no investigation/attacker angle. A `reference` entry in
+// SITE_ENTRIES, category `lookup-tables`, tagged `domains: ['networking']`.
+// Every `typeValue` and `rfc` citation below was
 // verified directly against IANA's own "Domain Name System (DNS) Parameters"
 // registry, "Resource Record (RR) TYPEs" table:
 //   https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
