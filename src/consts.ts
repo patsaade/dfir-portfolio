@@ -156,28 +156,39 @@ export const CATEGORIES: { id: CategoryId; type: EntryType; label: string; blurb
 
 // Domain tags. `hub` marks the three that have earned their own topic hub page
 // at >= 8 tagged entries; the rest are filter chips until they qualify.
-export const DOMAINS: { id: Domain; label: string; blurb: string; hub: boolean }[] = [
+/** A domain tag. `hubHref` is set iff `hub` is true — it's the ONE place a hub's
+ *  path is written. It used to be spelled three times (DomainHub's own
+ *  HUB_HREFS map, Footer's `/${d.id}/` template literal, and the page files),
+ *  which is three chances to drift; `test/consts.test.ts` now pins hub ⇔
+ *  hubHref. `icon` feeds the topic tiles on /reference/ and /tools/. */
+export const DOMAINS: { id: Domain; label: string; blurb: string; hub: boolean; hubHref?: string; icon: IconName }[] = [
   {
     id: 'dfir',
     label: 'DFIR',
     blurb: 'Digital forensics and incident response — artifacts, detection, and attacker tradecraft.',
     hub: true,
+    hubHref: '/dfir/',
+    icon: 'shield',
   },
   {
     id: 'networking',
     label: 'Networking',
     blurb: 'Addressing, protocols, ports, and the layered models that describe them.',
     hub: true,
+    hubHref: '/networking/',
+    icon: 'globe',
   },
   {
     id: 'systems',
     label: 'Systems',
     blurb: 'Operating-system and general-computing fundamentals — encoding, scheduling, storage, and the shell.',
     hub: true,
+    hubHref: '/systems/',
+    icon: 'terminal',
   },
-  { id: 'windows', label: 'Windows', blurb: 'Windows-specific artifacts, logging, and internals.', hub: false },
-  { id: 'web', label: 'Web', blurb: 'HTTP, email, tokens, and the headers that carry them.', hub: false },
-  { id: 'malware', label: 'Malware', blurb: 'Binary analysis, obfuscation, and detection rules.', hub: false },
+  { id: 'windows', label: 'Windows', blurb: 'Windows-specific artifacts, logging, and internals.', hub: false, icon: 'monitor' },
+  { id: 'web', label: 'Web', blurb: 'HTTP, email, tokens, and the headers that carry them.', hub: false, icon: 'link' },
+  { id: 'malware', label: 'Malware', blurb: 'Binary analysis, obfuscation, and detection rules.', hub: false, icon: 'bug' },
 ];
 
 // Every navigable reference page, tool, and drill on the site — one flat list,

@@ -137,6 +137,29 @@ describe('DOMAINS', () => {
     }
   });
 
+  // `hubHref` is the single source for a hub's path — read by DomainHub's
+  // sibling chips, the Footer's "By topic" column, and the topic tiles on
+  // /reference/ and /tools/. It used to be spelled separately in each of those,
+  // so this pins the two fields together in both directions: a domain promoted
+  // to hub: true without a path would render dead links in three places, and a
+  // stray hubHref on a filter-only domain would advertise a page that 404s.
+  it('gives every hub domain a hubHref, and no other domain one', () => {
+    for (const d of DOMAINS) {
+      if (d.hub) {
+        expect(d.hubHref, `hub domain "${d.id}" has no hubHref`).toBeTruthy();
+        expect(d.hubHref, `hub domain "${d.id}" hubHref must be a rooted, trailing-slash path`).toBe(`/${d.id}/`);
+      } else {
+        expect(d.hubHref, `filter-only domain "${d.id}" must not carry a hubHref`).toBeUndefined();
+      }
+    }
+  });
+
+  it('gives every domain an icon for the topic tiles', () => {
+    for (const d of DOMAINS) {
+      expect(d.icon, `domain "${d.id}" has no icon`).toBeTruthy();
+    }
+  });
+
   it('leaves every non-hub domain below the 8-entry hub threshold', () => {
     // If a filter-only domain reaches 8 it has earned a hub; that is a
     // deliberate decision to make, not something to let drift silently.

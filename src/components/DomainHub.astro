@@ -56,19 +56,16 @@ const { domain, startHere } = Astro.props;
 const meta = DOMAINS.find((d) => d.id === domain);
 if (!meta) throw new Error(`DomainHub: unknown domain "${domain}" — not present in DOMAINS.`);
 
-// DOMAINS marks which domains have earned a hub but carries no path, so the
-// id -> path mapping lives here, next to the component that renders them. The
-// assertion below means a domain promoted to `hub: true` in consts.ts fails the
-// build until its page actually exists, rather than shipping a dead sibling link.
-const HUB_HREFS: Partial<Record<Domain, string>> = {
-  dfir: '/dfir/',
-  networking: '/networking/',
-  systems: '/systems/',
-};
+// Each hub's path comes from its own DOMAINS entry (`hubHref`) — the single
+// source of truth, shared with the Footer's "By topic" column and the topic
+// tiles on /reference/ and /tools/. The assertion below means a domain promoted
+// to `hub: true` in consts.ts fails the build until its path is registered,
+// rather than shipping a dead sibling link. (`test/consts.test.ts` pins the same
+// hub ⇔ hubHref rule, so it fails at test time too, not only at build.)
 const hubDomains = DOMAINS.filter((d) => d.hub);
 for (const d of hubDomains) {
-  if (!HUB_HREFS[d.id]) {
-    throw new Error(`DomainHub: DOMAINS marks "${d.id}" as a hub but no page path is registered in HUB_HREFS.`);
+  if (!d.hubHref) {
+    throw new Error(`DomainHub: DOMAINS marks "${d.id}" as a hub but the entry has no \`hubHref\`.`);
   }
 }
 
@@ -162,7 +159,7 @@ const groupTiles = allGroups.map((g) => ({
 // `!` is safe: the loop above throws at build if any hub domain lacks a path.
 const siblingHubs = hubDomains
   .filter((d) => d.id !== domain)
-  .map((d) => ({ id: d.id, label: d.label, href: HUB_HREFS[d.id]! }));
+  .map((d) => ({ id: d.id, label: d.label, href: d.hubHref! }));
 
 const asideBox = css({
   bg: 'bgSubtle',

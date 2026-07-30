@@ -62,7 +62,10 @@ const toolsFooterLinks = sectionFooterLinks('tool', '/tools/');
 // Derived from DOMAINS so promoting/demoting a hub in consts.ts is the only
 // edit needed. These are topic-hub pages for domain tags (see DOMAINS in
 // consts.ts), not personal-identity content, so no cyberkit brand toggle.
-const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: `/${d.id}/`, label: d.label }));
+// Hub paths come from DOMAINS itself (`hubHref`) rather than being rebuilt as
+// `/${d.id}/` here — same single source DomainHub and the index-page topic tiles
+// read, so the path can't drift between the three.
+const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: d.hubHref!, label: d.label }));
 ---
 
 <footer
@@ -98,11 +101,18 @@ const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: `/${d.id}/`, l
       px: '1.25rem',
       py: { base: '2rem', sm: '2.25rem' },
       display: 'grid',
-      // Brand + four nav columns (Explore / Reference / Tools / More). Two
-      // columns on small screens, the full five once there's room — the nav
-      // columns share one `1fr` each so no category label gets a column
-      // narrower than its neighbours.
-      gridTemplateColumns: { base: '1fr', sm: 'repeat(2, 1fr)', md: '1.4fr repeat(4, 1fr)' },
+      // Brand + five nav columns (Explore / By topic / Reference / Tools / More).
+      // The nav columns share one `1fr` each so no category label gets a column
+      // narrower than its neighbours. Six children don't fit legibly at `md`
+      // (768px would give each ~120px, and the Reference/Tools rows are long
+      // category names like "Converters & Calculators"), so md lays them out as
+      // two balanced rows of three and only lg puts all six on one line.
+      gridTemplateColumns: {
+        base: '1fr',
+        sm: 'repeat(2, 1fr)',
+        md: '1.4fr repeat(2, 1fr)',
+        lg: '1.4fr repeat(5, 1fr)',
+      },
       gap: { base: '1.75rem', sm: '1.75rem 1.5rem' },
     })}
   >
@@ -151,10 +161,21 @@ const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: `/${d.id}/`, l
     <nav aria-label="Footer — site sections">
       <p class={colHead}>Explore</p>
       {NAV_LINKS.map((l) => <a href={l.href} class={`${fLink} ${hideOnCyberkit}`}>{l.label}</a>)}
-      {/* Drills is a single-category menu with no sub-anchors worth listing,
-          and the topic hubs are cross-cutting tag pages rather than a menu at
-          all — so both fold in here as plain rows instead of earning columns. */}
+      {/* Drills is a single-category menu with no sub-anchors worth listing, so
+          it folds in here as a plain row rather than earning its own column. */}
       <a href="/drills/" class={fLink}>Drills</a>
+    </nav>
+
+    {/* By topic — the topic hubs (/dfir/, /networking/, /systems/). These get
+        their own labeled column rather than trailing the Explore list, because
+        they are the site's SECOND axis: the nav is organized by object type +
+        verb, and domain is a cross-cutting tag, so a hub is "everything about
+        one subject, whatever kind of thing it is". Folded in under "Explore"
+        they read as unexplained strays next to Blog/Labs/About — the heading is
+        what tells a reader these cut across the type menus rather than being
+        more of the same. Not personal-identity content, so no cyberkit toggle. */}
+    <nav aria-label="Footer — browse by topic">
+      <p class={colHead}>By topic</p>
       {hubLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
     </nav>
 

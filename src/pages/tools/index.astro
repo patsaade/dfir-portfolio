@@ -27,7 +27,7 @@ import TagCombobox from '../../components/TagCombobox.astro';
 import ListFilter from '../../components/ListFilter.astro';
 import Icon from '../../components/Icon.astro';
 import Term from '../../components/Term.astro';
-import { groupsFor, DOMAINS } from '../../consts';
+import { groupsFor, DOMAINS, SITE_ENTRIES } from '../../consts';
 
 const groups = groupsFor('tool');
 const allEntries = groups.flatMap((g) => g.links);
@@ -65,6 +65,20 @@ const groupTiles = groups.map((g) => ({
   title: g.category,
   blurb: g.blurb,
   count: g.links.length,
+}));
+
+// "Browse by topic" tiles — the site's SECOND axis. Mirrors /reference/'s own
+// strip exactly (see that file for the full reasoning): it sits beside the
+// /reference/ cross-link because that link swaps the object TYPE while these
+// swap the AXIS, and the counts are each hub's total across ALL types rather
+// than this page's subset, since the tile navigates to that hub.
+const topicTiles = DOMAINS.filter((d) => d.hub).map((d) => ({
+  id: d.id,
+  href: d.hubHref!,
+  icon: d.icon,
+  title: d.label,
+  blurb: d.blurb,
+  count: SITE_ENTRIES.filter((e) => e.domains.includes(d.id)).length,
 }));
 
 const intro = css({
@@ -142,6 +156,10 @@ const domainChip = tag({ tone: 'muted' });
     <span>Looking for something to read instead of run? — <strong class={css({ fontWeight: 700 })}>Reference</strong></span>
     <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
   </a>
+
+  {/* Browse by topic — the domain axis, paired with the type cross-link above.
+      See topicTiles for why the counts are hub totals rather than this page's. */}
+  <GroupOverview items={topicTiles} heading="Browse by topic" />
 
   {/* Search + domain filter */}
   <div class={css({ mb: '0.6rem' })}>

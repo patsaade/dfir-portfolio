@@ -27,7 +27,7 @@ import TagCombobox from '../../components/TagCombobox.astro';
 import ListFilter from '../../components/ListFilter.astro';
 import Icon from '../../components/Icon.astro';
 import Term from '../../components/Term.astro';
-import { groupsFor, DOMAINS } from '../../consts';
+import { groupsFor, DOMAINS, SITE_ENTRIES } from '../../consts';
 import type { Domain } from '../../consts';
 
 const groups = groupsFor('reference');
@@ -59,6 +59,24 @@ const groupTiles = groups.map((g) => ({
   title: g.category,
   blurb: g.blurb,
   count: g.links.length,
+}));
+
+// "Browse by topic" tiles — the site's SECOND axis, and the reason they sit
+// beside the /tools/ cross-link rather than beside the domain facet: the
+// cross-link swaps the object TYPE (read vs run), these swap the AXIS. The facet
+// below narrows this page; a hub is a different page covering every type at once.
+// Counts are therefore the hub's own total across all types, not this page's
+// subset — the tile navigates there, so it should promise what the destination
+// actually holds, and keeping it away from the facet avoids showing two
+// different numbers for "DFIR" side by side. Hub domains only (a domain earns
+// one at >= 8 tagged entries; see DOMAINS).
+const topicTiles = DOMAINS.filter((d) => d.hub).map((d) => ({
+  id: d.id,
+  href: d.hubHref!,
+  icon: d.icon,
+  title: d.label,
+  blurb: d.blurb,
+  count: SITE_ENTRIES.filter((e) => e.domains.includes(d.id)).length,
 }));
 
 const asideBox = css({
@@ -156,6 +174,10 @@ const domainChip = tag({ tone: 'muted' });
     <span>Looking for something to run instead of read? — <strong class={css({ fontWeight: 700 })}>Tools</strong></span>
     <Icon name="arrow-right" size={15} class={`x-arrow ${css({ ml: 'auto', color: 'primary', flexShrink: 0, transition: 'transform 200ms ease' })}`} />
   </a>
+
+  {/* Browse by topic — the domain axis, paired with the type cross-link above.
+      See topicTiles for why the counts are hub totals rather than this page's. */}
+  <GroupOverview items={topicTiles} heading="Browse by topic" />
 
   {/* Search + domain filter */}
   <TagCombobox

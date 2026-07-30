@@ -11,6 +11,10 @@ import Icon from './Icon.astro';
 interface GroupOverviewItem {
   /** Anchor target (no leading '#') — must match the group's <details id>. */
   id: string;
+  /** Full destination, when the tile should LEAVE the page instead of jumping
+   *  within it — used by the "Browse by topic" strip on /reference/ and /tools/
+   *  to point at a topic hub (/dfir/, …). Omit for the same-page jump default. */
+  href?: string;
   icon: string;
   title: string;
   blurb: string;
@@ -71,7 +75,7 @@ const tileBlurb = css({ fontSize: '0.76rem', color: 'textMuted', lineHeight: 1.4
   <div class={grid}>
     {
       items.map((item) => (
-        <a href={`#${item.id}`} class={tile}>
+        <a href={item.href ?? `#${item.id}`} class={tile}>
           <span class={tileTop}>
             <Icon name={item.icon as any} size={16} class={css({ color: 'primary', flexShrink: 0 })} />
             <span class={tileTitle}>{item.title}</span>
