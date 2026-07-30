@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import vercel from '@astrojs/vercel';
+import optimizeHtml from './src/integrations/optimizeHtml.mjs';
 
 // https://astro.build/config
 export default defineConfig({
@@ -41,6 +42,11 @@ export default defineConfig({
         !/\/reference\/(?:event-ids|network-ports)\/\d+\/?$/.test(page) &&
         !/\/404\/?$/.test(page),
     }),
+    // Strips authoring comments and minifies the `is:inline` scripts Astro
+    // deliberately leaves alone. Runs last, on the emitted HTML, so the source
+    // keeps every comment it has. See the integration for the measurements and
+    // the three things it is careful not to break.
+    optimizeHtml(),
   ],
   markdown: {
     shikiConfig: {
