@@ -215,3 +215,111 @@ export const HOVER_ENTITIES: HoverEntity[] = [
     url: 'https://github.com/Yamato-Security/hayabusa',
   },
 ];
+
+// ── Auto-matched GLOSSARY TERMS ───────────────────────────────────────────
+//
+// A CURATED allowlist, not the whole glossary. The bank holds 542 terms; auto-
+// matching all of them would turn prose into a minefield of dotted underlines
+// and would fire on genuinely ambiguous words ("hash", "port", "session",
+// "recovery", "alert") — the same reason the tool aliases above are kept
+// deliberately distinctive.
+//
+// WHY THIS EXISTS. `<Term slug>` tagging is manual, and coverage had reached only
+// 35 of 1,729 pages — with exactly ONE of those a blog post. So both the term
+// cards and the `cursor: help` affordance were effectively unreachable while
+// reading prose: the machinery worked, but a reader would almost never meet it.
+// Auto-matching a safe subset scales to every future post without the author
+// having to remember, which manual tagging demonstrably did not.
+//
+// Inclusion bar — a term earns a slot only if ALL of these hold:
+//   1. It is unmistakable jargon, with no ordinary-English reading in a sentence.
+//   2. It plausibly appears in this site's own prose.
+//   3. Its shortest alias cannot sit inside an unrelated word. Word boundaries
+//      are enforced (so "packing" won't fire inside "unpacking"), but don't lean
+//      on that for a genuinely ambiguous word — leave it out instead.
+//
+// Matching is CASE-INSENSITIVE for terms, because prose writes "lateral
+// movement" mid-sentence; the proper-noun entities above stay case-sensitive.
+// Only the FIRST mention per term per page is wrapped, and a term already tagged
+// by hand with <Term> on that page is skipped entirely, so auto and manual can
+// never double-underline the same word.
+//
+// `test/autoTerms.test.ts` asserts every slug resolves against SECURITY_TERMS,
+// so a renamed or removed term fails the suite instead of silently wrapping a
+// word whose card then never loads.
+export interface AutoTerm {
+  /** Glossary slug — must exist in SECURITY_TERMS. */
+  slug: string;
+  /** Strings to match in prose, case-insensitively (longest matched first). */
+  aliases: string[];
+}
+
+export const AUTO_TERMS: AutoTerm[] = [
+  { slug: 'order-of-volatility', aliases: ['Order of Volatility'] },
+  { slug: 'chain-of-custody', aliases: ['Chain of Custody'] },
+  { slug: 'master-file-table', aliases: ['Master File Table'] },
+  { slug: 'alternate-data-streams', aliases: ['Alternate Data Streams'] },
+  { slug: 'usn-journal', aliases: ['USN Journal'] },
+  { slug: 'volume-shadow-copy', aliases: ['Volume Shadow Copy'] },
+  { slug: 'file-carving', aliases: ['File Carving'] },
+  { slug: 'timeline-analysis', aliases: ['Timeline Analysis'] },
+  { slug: 'write-blocking', aliases: ['Write Blocking'] },
+  { slug: 'live-response', aliases: ['Live Response'] },
+  { slug: 'mac-times', aliases: ['MAC(b) Times'] },
+  { slug: 'run-keys', aliases: ['Registry Run Keys'] },
+  { slug: 'jump-lists', aliases: ['Jump Lists'] },
+  { slug: 'lnk-files', aliases: ['LNK Files'] },
+  { slug: 'prefetch', aliases: ['Prefetch'] },
+  { slug: 'shimcache-appcompatcache', aliases: ['ShimCache'] },
+  { slug: 'amcache', aliases: ['AmCache'] },
+  { slug: 'shellbags', aliases: ['Shellbags'] },
+  { slug: 'timestomping', aliases: ['Timestomping'] },
+  { slug: 'living-off-the-land', aliases: ['Living off the Land'] },
+  { slug: 'lateral-movement', aliases: ['Lateral Movement'] },
+  { slug: 'privilege-escalation', aliases: ['Privilege Escalation'] },
+  { slug: 'credential-dumping', aliases: ['Credential Dumping'] },
+  { slug: 'indicator-of-compromise', aliases: ['Indicator of Compromise'] },
+  { slug: 'process-injection', aliases: ['Process Injection'] },
+  { slug: 'process-hollowing', aliases: ['Process Hollowing'] },
+  { slug: 'dll-injection', aliases: ['DLL Injection'] },
+  { slug: 'command-and-control', aliases: ['Command and Control'] },
+  { slug: 'data-exfiltration', aliases: ['Data Exfiltration'] },
+  { slug: 'dns-tunneling', aliases: ['DNS Tunneling'] },
+  { slug: 'domain-generation-algorithm', aliases: ['Domain Generation Algorithm'] },
+  { slug: 'reverse-shell', aliases: ['Reverse Shell'] },
+  { slug: 'web-shell', aliases: ['Web Shell'] },
+  { slug: 'fileless-malware', aliases: ['Fileless Malware'] },
+  { slug: 'kerberoasting', aliases: ['Kerberoasting'] },
+  { slug: 'pass-the-hash', aliases: ['Pass-the-Hash'] },
+  { slug: 'golden-ticket', aliases: ['Golden Ticket'] },
+  { slug: 'ntlm-relay', aliases: ['NTLM Relay'] },
+  { slug: 'lsass-credential-theft', aliases: ['LSASS Credential Theft'] },
+  { slug: 'persistence-mechanism', aliases: ['Persistence Mechanism'] },
+  { slug: 'anti-forensics', aliases: ['Anti-Forensics'] },
+  { slug: 'detection-engineering', aliases: ['Detection Engineering'] },
+  { slug: 'threat-hunting', aliases: ['Threat Hunting'] },
+  { slug: 'sigma-rule', aliases: ['Sigma Rule'] },
+  { slug: 'false-positive', aliases: ['False Positive'] },
+  { slug: 'alert-fatigue', aliases: ['Alert Fatigue'] },
+  { slug: 'dwell-time', aliases: ['Dwell Time'] },
+  { slug: 'mean-time-to-detect', aliases: ['Mean Time to Detect'] },
+  { slug: 'cyber-kill-chain', aliases: ['Cyber Kill Chain'] },
+  { slug: 'pyramid-of-pain', aliases: ['Pyramid of Pain'] },
+  { slug: 'threat-actor', aliases: ['Threat Actor'] },
+  { slug: 'advanced-persistent-threat', aliases: ['Advanced Persistent Threat'] },
+  { slug: 'tactics-techniques-and-procedures', aliases: ['Tactics, Techniques, and Procedures'] },
+  { slug: 'event-tracing-for-windows', aliases: ['Event Tracing for Windows'] },
+  { slug: 'powershell-logging', aliases: ['PowerShell Logging'] },
+  { slug: 'sysmon', aliases: ['Sysmon'] },
+  { slug: 'static-analysis', aliases: ['Static Analysis'] },
+  { slug: 'dynamic-analysis', aliases: ['Dynamic Analysis'] },
+  { slug: 'portable-executable-format', aliases: ['Portable Executable Format'] },
+  { slug: 'packing', aliases: ['Packing'] },
+  { slug: 'obfuscation', aliases: ['Obfuscation'] },
+  { slug: 'shellcode', aliases: ['Shellcode'] },
+  { slug: 'sandbox-evasion', aliases: ['Sandbox Evasion'] },
+  { slug: 'yara', aliases: ['YARA'] },
+  { slug: 'process-creation-auditing', aliases: ['Process Creation Auditing'] },
+  { slug: 'windows-event-log', aliases: ['Windows Event Log'] },
+  { slug: 'access-token-manipulation', aliases: ['Access Token Manipulation'] },
+];

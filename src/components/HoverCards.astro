@@ -64,7 +64,7 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
   // Bundled (never `is:inline`): the entity table below is imported, not
   // injected via `define:vars`, so it lands in one minified, content-hashed
   // chunk shared by every page instead of being repeated in every page's HTML.
-  import { HOVER_ENTITIES } from '../data/hovercards';
+  import { HOVER_ENTITIES, AUTO_TERMS } from '../data/hovercards';
 
   // Floating UI is loaded LAZILY. It is only needed once a card actually has to
   // be positioned — nothing before a hover/focus/tap touches it — but as a
@@ -122,23 +122,51 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
     // Word-boundary regex for an alias. Plain \b can't match next to a non-word
     // edge (e.g. the '+' in "CySA+"/"PenTest+"), so only add a boundary on
     // word-char edges — equivalent to \b where it works, correct where it doesn't.
-    function aliasRe(a) {
+    // `ci` = case-insensitive, used for glossary TERMS only: prose writes
+    // "lateral movement" mid-sentence, so a case-sensitive match on the
+    // canonical "Lateral Movement" would miss almost every real occurrence. The
+    // proper-noun entities (companies/certs/tools) stay case-SENSITIVE, exactly
+    // as before — "Prefetch" the artifact vs "prefetch" the verb is the sort of
+    // distinction that matters there. The wrapped span keeps whatever casing the
+    // prose used, since it re-uses the matched text verbatim.
+    function aliasRe(a, ci) {
       return new RegExp(
         (/\w/.test(a[0]) ? '(?<!\\w)' : '') +
           escapeRe(a) +
           (/\w/.test(a[a.length - 1]) ? '(?!\\w)' : ''),
+        ci ? 'i' : '',
       );
     }
     function autoWrap() {
       var main = document.querySelector('main');
       if (!main) return;
-      // Precompile one regex per alias once (it's constant across nodes); longest first.
+      // Precompile one regex per alias once (it's constant across nodes); longest
+      // first, so "Process Hollowing" wins over a shorter alias nested inside it.
+      // `kind` decides which attribute the wrapper gets, and whether the match is
+      // case-insensitive. Term keys are namespaced so a glossary slug can never
+      // collide with an entity id in `used`.
       var matchers = [];
       entities.forEach(function (e) {
-        (e.aliases || []).forEach(function (a) { matchers.push({ alias: a, id: e.id, re: aliasRe(a) }); });
+        (e.aliases || []).forEach(function (a) {
+          matchers.push({ alias: a, key: 'e:' + e.id, attr: 'data-card-entity', val: e.id, re: aliasRe(a, false) });
+        });
+      });
+      AUTO_TERMS.forEach(function (t) {
+        (t.aliases || []).forEach(function (a) {
+          matchers.push({ alias: a, key: 't:' + t.slug, attr: 'data-card-term', val: t.slug, re: aliasRe(a, true) });
+        });
       });
       matchers.sort(function (a, b) { return b.alias.length - a.alias.length; });
       var used = {};
+      // Anything already tagged by hand with <Term slug> on this page counts as
+      // used, so the auto-matcher never adds a SECOND underline for a term the
+      // author deliberately marked up. Without this, a page with a manual
+      // <Term slug="mitre-attack"> would still get an auto-wrap on a later
+      // mention: the tree walker skips text inside `.hovercard`, so the manual
+      // tag is invisible to the scan and cannot register itself.
+      document.querySelectorAll('[data-card-term]').forEach(function (el) {
+        used['t:' + el.getAttribute('data-card-term')] = true;
+      });
       var walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
         acceptNode: function (node) {
           if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
@@ -157,7 +185,7 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
       function scanNode(node) {
         for (var i = 0; i < matchers.length; i++) {
           var m = matchers[i];
-          if (used[m.id]) continue;
+          if (used[m.key]) continue;
           var match = node.nodeValue.match(m.re);
           if (!match) continue;
           var idx = match.index;
@@ -166,7 +194,7 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
           var after = node.nodeValue.slice(idx + matched.length);
           var span = document.createElement('span');
           span.className = 'hovercard';
-          span.setAttribute('data-card-entity', m.id);
+          span.setAttribute(m.attr, m.val);
           span.setAttribute('tabindex', '0');
           span.setAttribute('role', 'button');
           span.setAttribute('aria-expanded', 'false');
@@ -178,7 +206,7 @@ const linkCls = css({ display: 'inline-flex', alignItems: 'center', gap: '0.25re
           frag.appendChild(span);
           if (afterNode) frag.appendChild(afterNode);
           node.parentNode.replaceChild(frag, node);
-          used[m.id] = true;
+          used[m.key] = true;
           if (beforeNode) scanNode(beforeNode);
           if (afterNode) scanNode(afterNode);
           return;
