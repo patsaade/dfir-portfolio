@@ -16,6 +16,7 @@ import { termBySlug } from '../../../data/securityTerms';
 import { toolsByGlossarySlug } from '../../../data/tools';
 import { getSortedPosts, getSortedLabs } from '../../../utils/posts';
 import { SITE } from '../../../consts';
+import { metaDescription } from '../../../utils/metaDescription';
 
 export async function getStaticPaths() {
   // Invert the posts' `d3fend` frontmatter so each technique knows which writeups demonstrate it.
@@ -76,7 +77,11 @@ const jsonLd = JSON.stringify({
 }).replace(/</g, '\\u003c');
 ---
 
-<BaseLayout title={`${tech.id} ${tech.name} — MITRE D3FEND`} description={tech.definition || tech.name}>
+{/* The meta description is trimmed, the JSON-LD `description` above is NOT:
+    MITRE's raw `definition` runs to 606 characters on D3-AMED, far past what any
+    crawler renders in a snippet, and an arbitrary cut lands mid-sentence.
+    Structured data has no such display limit, so it keeps the full text. */}
+<BaseLayout title={`${tech.id} ${tech.name} — MITRE D3FEND`} description={metaDescription(tech.definition || tech.name)}>
   <Breadcrumbs
     items={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'MITRE D3FEND Map', href: '/reference/d3fend/' }, { label: tech.id }]}
   />
