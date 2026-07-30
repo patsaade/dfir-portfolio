@@ -1,6 +1,6 @@
 ---
-// Site footer — brand + social, four link columns (Explore / Reference /
-// Tools / More), and a version/commit line.
+// Site footer — brand + social, five link columns (By topic / Reference /
+// Tools / Drills / Site), and a centred clock + version/commit bar.
 import { css } from 'styled-system/css';
 import { SITE, SOCIALS, NAV_LINKS, DOMAINS, MORE_LINKS, PERSONAL_HREFS, groupsFor, type EntryType } from '../consts';
 import { VERSION, SHORT_COMMIT, COMMIT_URL } from '../utils/version';
@@ -57,6 +57,21 @@ const sectionFooterLinks = (type: EntryType, base: string) => [
 
 const referenceFooterLinks = sectionFooterLinks('reference', '/reference/');
 const toolsFooterLinks = sectionFooterLinks('tool', '/tools/');
+
+// Drills deliberately does NOT use sectionFooterLinks. It is the only
+// single-category type ('drills' is the only CategoryId of type 'drill'), so a
+// per-category build would emit exactly one row, labelled "Drills", under a
+// column already headed "Drills" — and pointing at `/drills/#drills`, an anchor
+// that page doesn't even emit (src/pages/drills/index.astro renders a flat
+// MODULES grid; only /reference/ and /tools/ emit per-group <section id>).
+// So this flattens to one row per LINK, exactly as Navigation.astro's own
+// Drills dropdown does for the same reason (see its comment there).
+// `flatMap` over the groups rather than indexing [0], so a second drill
+// category would still render every link instead of silently dropping some.
+const drillsFooterLinks = [
+  { href: '/drills/', label: 'Overview' },
+  ...groupsFor('drill').flatMap((g) => g.links).map((e) => ({ href: e.href, label: e.label })),
+];
 
 // Topic hubs — the domains that earned their own hub page (`hub: true`).
 // Derived from DOMAINS so promoting/demoting a hub in consts.ts is the only
@@ -154,49 +169,51 @@ const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: d.hubHref!, la
       </div>
     </div>
 
-    {/* Explore — NAV_LINKS (Blog/Labs/About) is exactly the personal-content
-        set redirected away on cyberkit.win (see vercel.json), so each row
-        hides individually there rather than dropping the whole column
-        (Drills and the topic hubs below stay visible on every domain). */}
-    <nav aria-label="Footer — site sections">
-      <p class={colHead}>Explore</p>
-      {NAV_LINKS.map((l) => <a href={l.href} class={`${fLink} ${hideOnCyberkit}`}>{l.label}</a>)}
-      {/* Drills is a single-category menu with no sub-anchors worth listing, so
-          it folds in here as a plain row rather than earning its own column. */}
-      <a href="/drills/" class={fLink}>Drills</a>
-    </nav>
-
-    {/* By topic — the topic hubs (/dfir/, /networking/, /systems/). These get
-        their own labeled column rather than trailing the Explore list, because
-        they are the site's SECOND axis: the nav is organized by object type +
-        verb, and domain is a cross-cutting tag, so a hub is "everything about
-        one subject, whatever kind of thing it is". Folded in under "Explore"
-        they read as unexplained strays next to Blog/Labs/About — the heading is
-        what tells a reader these cut across the type menus rather than being
-        more of the same. Not personal-identity content, so no cyberkit toggle. */}
+    {/* By topic — the topic hubs (/dfir/, /networking/, /systems/): the site's
+        SECOND axis. The nav is organized by object type + verb, and domain is a
+        cross-cutting tag, so a hub is "everything about one subject, whatever
+        kind of thing it is". It leads the nav columns because it cuts across
+        the three type columns that follow. Not personal-identity content, so no
+        cyberkit toggle. */}
     <nav aria-label="Footer — browse by topic">
       <p class={colHead}>By topic</p>
       {hubLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
     </nav>
 
-    {/* Reference — read-it content (lookup tables, guides, frameworks). */}
+    {/* The three TYPE columns, in nav order: read it / feed it input / practice.
+        Reference and Tools list one row per CATEGORY; Drills lists one row per
+        LINK — see drillsFooterLinks for why the two shapes differ. */}
     <nav aria-label="Footer — reference">
       <p class={colHead}>Reference</p>
       {referenceFooterLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
     </nav>
 
-    {/* Tools — feed-it-input content (parsers, decoders, converters, builders). */}
     <nav aria-label="Footer — tools">
       <p class={colHead}>Tools</p>
       {toolsFooterLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
     </nav>
 
-    {/* More — Certifications is credentials tied to Patrick's own name, so it
-        hides on cyberkit.win the same way (Privacy/Colophon are site-level,
-        not personal, so they stay everywhere). */}
-    <nav aria-label="Footer — more">
-      <p class={colHead}>More</p>
-      {moreLinks.map((l) => <a href={l.href} class={PERSONAL_HREFS.includes(l.href) ? `${fLink} ${hideOnCyberkit}` : fLink}>{l.label}</a>)}
+    <nav aria-label="Footer — drills">
+      <p class={colHead}>Drills</p>
+      {drillsFooterLinks.map((l) => <a href={l.href} class={fLink}>{l.label}</a>)}
+    </nav>
+
+    {/* Site — Blog/Labs/About (formerly their own "Explore" column) merged with
+        the meta links. Explore was dissolved for two reasons: giving Drills its
+        own column would otherwise have needed a 7th grid child, which doesn't
+        fit legibly in the 960px container shared with the header and page body;
+        and once Drills moved out, every remaining Explore row carried
+        `hideOnCyberkit`, so that column rendered as a bare heading over an empty
+        cell on cyberkit.win. Merging solves both at once, and needs NO new
+        hiding logic — PERSONAL_HREFS already covers Blog/Labs/About as well as
+        Certifications, so the existing per-row predicate below is unchanged.
+        Privacy and Colophon are site-level and carry no toggle, which is what
+        guarantees this column can never go empty on either domain. */}
+    <nav aria-label="Footer — site and meta">
+      <p class={colHead}>Site</p>
+      {[...NAV_LINKS, ...moreLinks].map((l) => (
+        <a href={l.href} class={PERSONAL_HREFS.includes(l.href) ? `${fLink} ${hideOnCyberkit}` : fLink}>{l.label}</a>
+      ))}
     </nav>
   </div>
 
@@ -208,10 +225,28 @@ const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: d.hubHref!, la
         mx: 'auto',
         px: '1.25rem',
         py: '0.85rem',
-        display: 'flex',
-        flexDirection: { base: 'column', sm: 'row' },
-        justifyContent: 'space-between',
-        alignItems: { base: 'flex-start', sm: 'center' },
+        // THREE TRACKS with mathematically equal outer rails, so the clock sits
+        // at the bar's true centre no matter what flanks it. This was a
+        // `justify-content: space-between` flex row, which only *looks* centred
+        // while the copyright and the version string happen to be the same
+        // width — they never are, and both move independently: the copyright
+        // forks per domain ("© 2026 Patrick Saade." vs "© 2026 CyberKit."), and
+        // the version grows on every push as `git rev-list --count HEAD` climbs
+        // (build.35 → build.100 → build.1000, see utils/version.ts). The drift
+        // was (width3 − width1) / 2.
+        //
+        // `minmax(0, 1fr)` NOT a bare `1fr`: an `fr` track keeps a min-content
+        // floor, so a long copyright would inflate its own rail and re-break the
+        // symmetry that makes this work.
+        display: 'grid',
+        gridTemplateColumns: { base: '1fr', sm: 'minmax(0, 1fr) auto minmax(0, 1fr)' },
+        alignItems: 'center',
+        // Below sm the bar is a single stacked column, where "centre of a row"
+        // has no meaning — so centre the whole stack instead. Both of these MUST
+        // name their `sm` value explicitly: Panda is mobile-first, so a lone
+        // `base` entry would leak upward into every larger breakpoint.
+        justifyItems: { base: 'center', sm: 'stretch' },
+        textAlign: { base: 'center', sm: 'start' },
         gap: '0.6rem',
         fontSize: '0.8rem',
         color: 'textMuted',
@@ -231,7 +266,18 @@ const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: d.hubHref!, la
           for a status line that sits below the fold. The no-JS fallback is the
           inert "UTC --:--" label. */}
       <span
-        class={css({ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'mono', fontSize: '0.72rem', color: 'textMuted' })}
+        class={css({
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          fontFamily: 'mono',
+          fontSize: '0.72rem',
+          color: 'textMuted',
+          // Inert while the centre track is `auto` (content-sized), but states
+          // the intent so a future edit to the track list can't silently
+          // de-centre this.
+          justifySelf: 'center',
+        })}
       >
         <span
           class={`totd-pulse-dot ${css({ w: '6px', h: '6px', borderRadius: 'full', bg: 'primary', flexShrink: 0 })}`}
@@ -276,6 +322,11 @@ const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: d.hubHref!, la
           gap: '0.4rem',
           transition: 'color 150ms ease',
           _hover: { color: 'primary' },
+          // Required, not cosmetic. Under the bar's `justifyItems: stretch`
+          // this inline-flex anchor blockifies and stretches across its whole
+          // track, which would park the version at the track's LEFT edge —
+          // visibly jumping it inward from the bar's right edge.
+          justifySelf: { base: 'center', sm: 'end' },
         })}
       >
         <Icon name="github" size={13} />
@@ -297,14 +348,22 @@ const hubLinks = DOMAINS.filter((d) => d.hub).map((d) => ({ href: d.hubHref!, la
       var local = false;
       try { local = localStorage.getItem(KEY) === 'local'; } catch (e) {}
       // Short zone label ("PDT", "CET") when the browser offers one; falls back
-      // to a UTC±H offset so the button always says which zone it is showing.
+      // to a UTC±H[:MM] offset so the button always says which zone it is showing.
       function localLabel() {
         try {
           var parts = new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' }).formatToParts(new Date());
           for (var i = 0; i < parts.length; i++) if (parts[i].type === 'timeZoneName') return parts[i].value;
         } catch (e) {}
-        var off = -new Date().getTimezoneOffset() / 60;
-        return 'UTC' + (off >= 0 ? '+' : '') + off;
+        // Stay in MINUTES. This used to be `-getTimezoneOffset() / 60` printed
+        // raw, which is only correct for whole-hour zones: India came out as
+        // "UTC+5.5" and Nepal as "UTC+5.75", neither of which is a notation
+        // anyone writes. Format H:MM instead, dropping the ":00" for the
+        // whole-hour majority. (`pad` is a hoisted function declaration in this
+        // same IIFE, so calling it before its line is fine.)
+        var mins = -new Date().getTimezoneOffset(); // minutes EAST of UTC
+        var abs = Math.abs(mins);
+        var rem = abs % 60;
+        return 'UTC' + (mins < 0 ? '-' : '+') + Math.floor(abs / 60) + (rem ? ':' + pad(rem) : '');
       }
       function pad(n) { return n < 10 ? '0' + n : '' + n; }
       function render() {

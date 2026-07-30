@@ -734,7 +734,12 @@ export const groupsFor = (type: EntryType) =>
 // personal page is a single edit here plus a vercel.json rule.
 export const PERSONAL_HREFS: readonly string[] = ['/blog/', '/labs/', '/about/', '/certifications/'];
 
-// Secondary / meta links — surfaced in the nav "More" dropdown and footer column.
+// Secondary / meta links — the nav's "More" dropdown. In the FOOTER these are
+// concatenated with NAV_LINKS into a single "Site" column: the old "Explore"
+// column was dissolved to free a grid slot for Drills, and because once Drills
+// moved out every remaining Explore row carried `hideOnCyberkit`, leaving an
+// empty labelled column on cyberkit.win. No extra hiding logic was needed —
+// PERSONAL_HREFS already covers Blog/Labs/About as well as Certifications.
 export const MORE_LINKS = [
   { href: '/certifications/', label: 'Certifications' },
   { href: '/privacy/', label: 'Privacy' },
