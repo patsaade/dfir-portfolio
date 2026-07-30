@@ -795,15 +795,15 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
 
 <style>
   [data-mftusn-status][data-state='error'] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
+    color: var(--colors-danger);
   }
   [data-mftusn-status][data-state='ok'] {
     color: var(--colors-primary);
   }
   [data-mftusn-mft-banner][data-state='detected'] {
-    color: color-mix(in srgb, red 70%, var(--colors-text));
-    border-color: color-mix(in srgb, red 40%, transparent);
-    background: color-mix(in srgb, red 8%, transparent);
+    color: var(--colors-danger);
+    border-color: color-mix(in srgb, var(--colors-danger) 40%, transparent);
+    background: color-mix(in srgb, var(--colors-danger) 8%, transparent);
   }
   [data-mftusn-mft-banner][data-state='clean'] {
     color: var(--colors-primary);
@@ -817,10 +817,10 @@ const sectionGap = css({ display: 'flex', flexDirection: 'column', gap: '0.6rem'
     display: none;
   }
   [data-mftusn-compare-row][data-mismatch] {
-    background: color-mix(in srgb, red 10%, transparent);
+    background: color-mix(in srgb, var(--colors-danger) 10%, transparent);
   }
   [data-mftusn-compare-row][data-mismatch] [data-mftusn-compare-status] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
+    color: var(--colors-danger);
   }
   [data-mftusn-compare-row]:not([data-mismatch]) [data-mftusn-compare-status] {
     color: var(--colors-text-muted);

@@ -144,7 +144,7 @@ const exprInputCss = css({
   transition: 'border-color 150ms ease',
   _focus: { outline: 'none', borderColor: 'primary' },
   '&::placeholder': { color: 'textMuted', opacity: 0.7 },
-  '&[data-invalid]': { borderColor: 'color-mix(in srgb, red 55%, token(colors.border))' },
+  '&[data-invalid]': { borderColor: 'color-mix(in srgb, token(colors.danger) 55%, token(colors.border))' },
 });
 const errorBox = css({ color: 'textMuted', fontSize: '0.85rem', p: '0.65rem 0.85rem', bg: 'bgSubtle', border: '1px solid token(colors.border)', borderRadius: 'md', mt: '0.6rem' });
 
@@ -171,7 +171,7 @@ const builderRow = css({
   gap: '0.35rem',
   p: '0.15rem',
   borderRadius: 'sm',
-  '&[data-invalid]': { bg: 'color-mix(in srgb, red 8%, transparent)' },
+  '&[data-invalid]': { bg: 'color-mix(in srgb, token(colors.danger) 8%, transparent)' },
 });
 const builderRowInputs = css({ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' });
 const selectInput = css({

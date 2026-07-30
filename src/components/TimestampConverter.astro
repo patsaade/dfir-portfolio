@@ -146,7 +146,7 @@ const blockRow = css({
     transition: 'background 150ms ease',
   },
   '&[data-filled]::before': { bg: 'primary' },
-  '&[data-invalid]': { bg: 'color-mix(in srgb, red 8%, transparent)' },
+  '&[data-invalid]': { bg: 'color-mix(in srgb, token(colors.danger) 8%, transparent)' },
 });
 // No truncation — a label that doesn't fit wraps onto a second line rather
 // than losing text to an ellipsis; the fixed width means this never eats

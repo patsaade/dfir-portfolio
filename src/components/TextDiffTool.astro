@@ -349,20 +349,31 @@ const diffText = css({ flex: 1, minW: 0, whiteSpace: 'pre-wrap', wordBreak: 'bre
 </script>
 
 <style>
+  /* added/removed use the `success`/`danger` STATE PAIR, never `accent` and
+     never the raw `red` keyword. Both were wrong here: `accent` is a decorative
+     token and is amber/terracotta/salmon in 6 of the 10 palettes — the same warm
+     hue family as the removed colour — so added and removed rows were separated
+     by as little as ~12 degrees of hue in most themes; and raw `red` is not
+     per-palette contrast-checked (it only reached ~3.8-4.2:1, which is why
+     `danger` exists). Same fix as DrillEngine's pass/fail rows.
+     Colour is NOT the only channel here and never was — every row carries a
+     +/- marker (set in the script above) and removed words additionally get a
+     line-through, so this satisfies WCAG 1.4.1 independently. The fix is about
+     the two states being visually confusable, not about colour being load-bearing. */
   [data-diff-row][data-diff-type='added'] {
-    background: color-mix(in srgb, var(--colors-accent) 13%, transparent);
+    background: color-mix(in srgb, var(--colors-success) 13%, transparent);
   }
   [data-diff-row][data-diff-type='added'] [data-diff-marker] {
-    color: var(--colors-accent);
+    color: var(--colors-success);
   }
   [data-diff-row][data-diff-type='removed'] {
-    background: color-mix(in srgb, red 13%, transparent);
+    background: color-mix(in srgb, var(--colors-danger) 13%, transparent);
   }
   [data-diff-row][data-diff-type='removed'] [data-diff-marker] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
+    color: var(--colors-danger);
   }
   [data-diff-stats][data-state='match'] {
-    color: var(--colors-accent);
+    color: var(--colors-success);
     font-weight: 600;
   }
   /* Word-level highlight within a modified line (see attachWordDiffs in
@@ -377,15 +388,15 @@ const diffText = css({ flex: 1, minW: 0, whiteSpace: 'pre-wrap', wordBreak: 'bre
      this: those elements come from cloning the static <template> block,
      which already carries the scope attribute baked in at build time.) */
   :global([data-diff-text] mark[data-diff-word-type='added']) {
-    background: color-mix(in srgb, var(--colors-accent) 45%, transparent);
+    background: color-mix(in srgb, var(--colors-success) 45%, transparent);
     color: var(--colors-text);
     border-radius: 3px;
   }
   :global([data-diff-text] mark[data-diff-word-type='removed']) {
-    background: color-mix(in srgb, red 40%, transparent);
+    background: color-mix(in srgb, var(--colors-danger) 40%, transparent);
     color: var(--colors-text);
     border-radius: 3px;
     text-decoration: line-through;
-    text-decoration-color: color-mix(in srgb, red 70%, var(--colors-text));
+    text-decoration-color: var(--colors-danger);
   }
 </style>

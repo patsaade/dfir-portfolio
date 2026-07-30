@@ -99,7 +99,7 @@ const removeRowBtn = css({
   cursor: 'pointer',
   transition: 'all 150ms ease',
   // Same red color-mix idiom as the error text below, not a new convention.
-  _hover: { borderColor: 'color-mix(in srgb, red 55%, transparent)', color: 'color-mix(in srgb, red 65%, token(colors.text))' },
+  _hover: { borderColor: 'color-mix(in srgb, token(colors.danger) 55%, transparent)', color: 'danger' },
 });
 const addRowBtn = css({
   display: 'inline-flex',
@@ -743,7 +743,7 @@ const groupsEmpty = css({ color: 'textMuted', fontSize: '0.85rem', m: 0 });
 
 <style>
   [data-regex-row-status][data-state='error'] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
+    color: var(--colors-danger);
   }
   [data-regex-lib-id] {
     cursor: pointer;

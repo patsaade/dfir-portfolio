@@ -17,7 +17,7 @@
 // test/themeContrast.test.ts covers the other half (success and danger must stay
 // far apart in hue, and success must actually be green).
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC = readFileSync(join(process.cwd(), 'src/components/DrillEngine.astro'), 'utf8');
@@ -55,6 +55,40 @@ describe('drill pass/fail colors', () => {
     const offenders = rows
       .filter(({ line }) => !/\bdanger\b/.test(line) || /['"]red['"]|:\s*red\b/.test(line))
       .map(({ n, line }) => `DrillEngine.astro:${n}  ${line.trim()}`);
+    expect(offenders).toEqual([]);
+  });
+
+  // SITE-WIDE, not just DrillEngine. Scoping the guard above to one file is
+  // exactly why this class of bug survived: a later audit found the raw `red`
+  // keyword signalling error state in 12 OTHER components (41 occurrences —
+  // HashCalculator, JwtDecoder, SigmaTester, YaraTester, RegexTester,
+  // EmailHeaderAnalyzer, CronParser, CidrCalculator, PeExplorer,
+  // TimestampConverter, MftUsnAnalyzer, RecycleBinParser), and TextDiffTool was
+  // signalling "added" with `accent` — the same decorative warm token that made
+  // the drills' pass/fail confusable.
+  //
+  // `danger` exists precisely because raw `red` is not per-palette
+  // contrast-checked (it only reached ~3.8-4.2:1 against these surfaces, below
+  // the 4.5:1 AA floor for normal text). A raw keyword also can't be tuned per
+  // theme, so it reads identically on all 10 palettes regardless of their
+  // backgrounds.
+  it('never signals state with a raw color keyword anywhere in src/', () => {
+    const offenders: string[] = [];
+    const RAW = /color-mix\(\s*in srgb,\s*(red|green|lime|crimson)\b|:\s*(red|green|crimson)\s*[;'"]/;
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(astro|css|ts)$/.test(e.name)) {
+          readFileSync(p, 'utf8')
+            .split('\n')
+            .forEach((line, i) => {
+              if (RAW.test(line)) offenders.push(`${p}:${i + 1}  ${line.trim().slice(0, 90)}`);
+            });
+        }
+      }
+    };
+    walk(join(process.cwd(), 'src'));
     expect(offenders).toEqual([]);
   });
 

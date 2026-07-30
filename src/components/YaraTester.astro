@@ -985,7 +985,7 @@ const actionBtn = css({
     color: var(--colors-text-muted);
   }
   [data-yara-result-badge][data-state='error'] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
+    color: var(--colors-danger);
   }
   [data-yara-verdict][data-state='match'] {
     color: var(--colors-primary);
@@ -993,11 +993,11 @@ const actionBtn = css({
     background: color-mix(in srgb, var(--colors-primary) 8%, transparent);
   }
   [data-yara-verdict][data-state='error'] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
-    border-color: color-mix(in srgb, red 30%, transparent);
+    color: var(--colors-danger);
+    border-color: color-mix(in srgb, var(--colors-danger) 30%, transparent);
   }
   [data-yara-import-status][data-state='error'] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
+    color: var(--colors-danger);
   }
   [data-yara-import-status][data-state='ok'] {
     color: var(--colors-primary);

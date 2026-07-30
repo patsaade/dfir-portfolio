@@ -100,8 +100,8 @@ const errorBanner = css({
   color: 'text',
   fontSize: '0.88rem',
   lineHeight: 1.6,
-  bg: 'color-mix(in srgb, red 10%, token(colors.bgSubtle))',
-  border: '1px solid color-mix(in srgb, red 30%, transparent)',
+  bg: 'color-mix(in srgb, token(colors.danger) 10%, token(colors.bgSubtle))',
+  border: '1px solid color-mix(in srgb, token(colors.danger) 30%, transparent)',
   borderRadius: 'md',
   p: '0.75rem 0.9rem',
   m: 0,
@@ -137,9 +137,9 @@ const unsecuredFlag = css({
   fontWeight: 700,
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
-  color: 'color-mix(in srgb, red 65%, token(colors.text))',
-  bg: 'color-mix(in srgb, red 12%, transparent)',
-  border: '1px solid color-mix(in srgb, red 30%, transparent)',
+  color: 'danger',
+  bg: 'color-mix(in srgb, token(colors.danger) 12%, transparent)',
+  border: '1px solid color-mix(in srgb, token(colors.danger) 30%, transparent)',
   borderRadius: 'sm',
   px: '0.4rem',
   py: '0.1rem',
@@ -489,9 +489,9 @@ const rowCopyBtn = css({
 <style>
   [data-claim-verdict][data-state='expired'],
   [data-claim-verdict][data-state='not-yet-valid'] {
-    color: color-mix(in srgb, red 65%, var(--colors-text));
-    background: color-mix(in srgb, red 12%, transparent);
-    border: 1px solid color-mix(in srgb, red 30%, transparent);
+    color: var(--colors-danger);
+    background: color-mix(in srgb, var(--colors-danger) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--colors-danger) 30%, transparent);
   }
   [data-claim-verdict][data-state='valid'] {
     color: var(--colors-primary);

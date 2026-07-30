@@ -148,7 +148,7 @@ const removeRowBtn = css({
   color: 'textMuted',
   cursor: 'pointer',
   transition: 'all 150ms ease',
-  _hover: { borderColor: 'color-mix(in srgb, red 55%, transparent)', color: 'color-mix(in srgb, red 65%, token(colors.text))' },
+  _hover: { borderColor: 'color-mix(in srgb, token(colors.danger) 55%, transparent)', color: 'danger' },
 });
 const addRowBtn = css({
   display: 'inline-flex',
@@ -895,6 +895,6 @@ const planTextarea = css({
 
 <style>
   [data-vlsm-result-row][data-state='overflow'] {
-    color: color-mix(in srgb, red 60%, var(--colors-text));
+    color: var(--colors-danger);
   }
 </style>
