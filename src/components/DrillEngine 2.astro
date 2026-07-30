@@ -278,13 +278,7 @@ const subnetRangeCss = css({
   // the bare token name resolves — this is what tints the native range
   // thumb/track per palette without any hand-rolled slider styling.
   accentColor: 'primary',
-  // grab/grabbing, not pointer: dragging the thumb IS the interaction here
-  // ("drag left for a bigger block", see this section's note above), so the
-  // cursor should say "pick this up" rather than "click this". Set on the
-  // component because a Panda utility wins over global.css's `@layer base`
-  // floor — that floor only covers range inputs that don't state a preference.
-  cursor: 'grab',
-  '&:active': { cursor: 'grabbing' },
+  cursor: 'pointer',
   _disabled: { cursor: 'not-allowed', opacity: 0.6 },
 });
 const subnetPrefixRowCss = css({ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' });

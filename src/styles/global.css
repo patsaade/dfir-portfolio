@@ -17,11 +17,75 @@ html {
   text-underline-offset: 3px;
   cursor: help;
 }
-/* On fine-pointer (mouse) devices the brand star-cursor takes over here — see CursorFX.astro. */
 .hovercard:hover,
 .hovercard:focus-visible {
   text-decoration-color: var(--colors-primary);
   text-underline-offset: 2px;
+}
+
+/* ── Native cursor semantics ────────────────────────────────────────────────
+   The site uses the visitor's own OS cursor. It used to paint a custom SVG
+   follower (CursorFX.astro) which set `cursor: none !important` on every
+   element — that suppressed EVERY meaningful native cursor the components
+   already declared: `.hovercard`'s `help` above, ToolSidebar's drag
+   `grab`/`grabbing`, and every `_disabled: not-allowed`. Deleting it restored
+   all of those for free; the rules below only fill the gaps the UA stylesheet
+   leaves.
+
+   ⚠ These MUST stay inside `@layer base`. Rules written unlayered in this file
+   beat every layered style — including Panda's `utilities` layer — regardless
+   of specificity (the same mechanism ThemeStyles.astro relies on deliberately).
+   Unlayered, `button { cursor: pointer }` would override the drag handle's own
+   `css({ cursor: 'grab' })` and silently break it. In `base` (which precedes
+   `utilities`) a per-component value still wins, so these are a floor, not a
+   ceiling. */
+@layer base {
+  /* The UA stylesheet gives buttons/summary/select the plain arrow — only <a
+     href> gets a pointer for free. Anything that activates on click should say so. */
+  button,
+  summary,
+  select,
+  [role='button'],
+  [role='radio'],
+  [role='tab'],
+  [role='option'],
+  label[for] {
+    cursor: pointer;
+  }
+
+  /* A label wrapping its own control instead of using `for`. Kept in a SEPARATE
+     rule on purpose: a CSS selector list is unforgiving, so on an engine without
+     `:has()` support one invalid selector would invalidate the whole rule and
+     take `button`/`summary` down with it. Isolated, only this line is lost. */
+  label:has(input),
+  label:has(select) {
+    cursor: pointer;
+  }
+
+  /* A range thumb is a genuine drag, so say "you can pick this up". Used by the
+     Subnetting drill's subnet builder. */
+  input[type='range'] {
+    cursor: grab;
+  }
+  input[type='range']:active {
+    cursor: grabbing;
+  }
+
+  /* Anything explicitly marked draggable (none today — a standing default so a
+     future drag affordance doesn't ship with a misleading arrow). */
+  [draggable='true'] {
+    cursor: grab;
+  }
+}
+
+/* Deliberately UNLAYERED, unlike the block above: a disabled control must never
+   show a `pointer`, so this has to beat a component's own utilities-layer
+   `cursor: pointer` even when that component forgot its own `_disabled` rule.
+   Last-listed among the cursor rules so it also wins on document order. */
+:disabled,
+[disabled],
+[aria-disabled='true'] {
+  cursor: not-allowed;
 }
 
 /* Nav "More"/"DFIR" dropdowns (Navigation.astro): open on hover/focus (desktop)

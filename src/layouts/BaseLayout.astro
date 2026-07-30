@@ -13,7 +13,6 @@ import Footer from '../components/Footer.astro';
 import HoverCards from '../components/HoverCards.astro';
 import SoundEngine from '../components/SoundEngine.astro';
 import Search from '../components/Search.astro';
-import CursorFX from '../components/CursorFX.astro';
 import OfflineIndicator from '../components/OfflineIndicator.astro';
 import BackToTop from '../components/BackToTop.astro';
 import ToolSidebar from '../components/ToolSidebar.astro';
@@ -134,9 +133,6 @@ const props = Astro.props;
 
     {/* Site-wide ⌘K search palette (build-time index at /search-index.json). */}
     <Search />
-
-    {/* Retro custom cursor + star-shine follower (fine-pointer only). */}
-    <CursorFX />
 
     {/* Vercel Web Analytics is injected by the @astrojs/vercel adapter
         (webAnalytics.enabled in astro.config.mjs). Speed Insights below. */}
