@@ -41,3 +41,11 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      # Runs AFTER the build because it audits the emitted HTML, not the source.
+      # Unlike check:security / check:freshness (which report and exit 0), this
+      # one exits non-zero on a violation — it is a gate. Accessibility was the
+      # only review area here with no automated check, so nothing caught a
+      # regression between manual passes.
+      - name: Accessibility (axe-core over built HTML)
+        run: npm run check:a11y

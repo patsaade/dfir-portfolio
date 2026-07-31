@@ -19,7 +19,8 @@
     "check:freshness": "node scripts/check-freshness.mjs",
     "check:security": "node scripts/check-security.mjs",
     "audit:deadcode": "knip",
-    "prepare": "panda codegen"
+    "prepare": "panda codegen",
+    "check:a11y": "node scripts/check-a11y.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.3",
@@ -33,7 +34,9 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
     "@pandacss/dev": "^1.11.4",
+    "axe-core": "^4.12.1",
     "esbuild": "^0.28.1",
+    "jsdom": "^30.0.1",
     "knip": "^6.27.0",
     "postcss": "^8.5.21",
     "satori": "^0.28.2",

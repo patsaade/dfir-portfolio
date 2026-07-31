@@ -44,13 +44,21 @@ const btnCls = css({
 });
 ---
 
-<a
-  href="#top"
-  id="back-to-top"
-  class={btnCls}
-  title="Back to top"
-  aria-label="Back to top"
-  data-sound="tick"
->
-  <Icon name="arrow-up" size={20} strokeWidth={2.5} />
-</a>
+{/* Wrapped in a labelled nav landmark. The link is `position: fixed`, so it sat
+    as a direct child of <body> outside every landmark — content a screen reader
+    browsing by landmark simply never encounters (axe `region`). A one-link nav
+    is the standard treatment for a skip/back-to-top control, and the label is
+    what keeps it distinguishable from the site's other nav landmarks. The
+    wrapper is layout-neutral: the fixed positioning lives on the <a>. */}
+<nav aria-label="Back to top">
+  <a
+    href="#top"
+    id="back-to-top"
+    class={btnCls}
+    title="Back to top"
+    aria-label="Back to top"
+    data-sound="tick"
+  >
+    <Icon name="arrow-up" size={20} strokeWidth={2.5} />
+  </a>
+</nav>

@@ -572,7 +572,14 @@ const handle = css({
 });
 ---
 
-<div class={outer} data-tool-sidebar data-default-mode={defaultMode}>
+{/* <aside>, not <div>: this rail was the ONLY content on the site sitting
+    outside any landmark, which axe flags as `region` and which means a screen
+    reader browsing by landmark could not reach the Quick Access panel at all.
+    Complementary is the right role — the per-category link lists inside are
+    already their own <nav> landmarks, so making this outer element a <nav> too
+    would nest navigation inside navigation for no gain. The label is what
+    distinguishes it in a landmark list. */}
+<aside class={outer} data-tool-sidebar data-default-mode={defaultMode} aria-label="Quick Access">
   <div class={slideRow}>
     <div class={`tool-sidebar-slide ${rail}`} data-tool-sidebar-rail data-view="shown">
       <div class={toolbar} data-tool-sidebar-toolbar>
@@ -660,7 +667,7 @@ const handle = css({
       <Icon name="chevron-right" size={16} strokeWidth={2.5} class="tool-sidebar-chev" />
     </button>
   </div>
-</div>
+</aside>
 
 {/*
   PRE-PAINT STATE HYDRATION — deliberately the ONLY thing left inline here.
