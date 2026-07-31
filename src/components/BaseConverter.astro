@@ -136,7 +136,13 @@ const defaults = convert(DEFAULT_VALUE);
       }
     </div>
 
-    <p id="base-error" hidden class={errorBox} data-base-error></p>
+    {/* role=alert, not just an id. This element already HAD `id="base-error"`,
+        but nothing ever referenced it — no `aria-describedby` anywhere — so a
+        validation error was shown visually and announced to nobody. `alert` is
+        assertive on purpose: unlike a result update, a rejected input needs to
+        interrupt, because the user is about to keep typing into a field whose
+        value the tool just refused. */}
+    <p id="base-error" role="alert" hidden class={errorBox} data-base-error></p>
   </div>
 
   <div>

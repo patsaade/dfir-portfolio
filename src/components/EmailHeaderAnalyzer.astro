@@ -266,7 +266,12 @@ const fieldDesc = css({ fontSize: '0.78rem', color: 'textMuted', lineHeight: 1.5
         already wrote into an existing <code class={inlineCode}>Authentication-Results</code> header — it never
         performs its own DNS, SPF, DKIM, or DMARC check.
       </p>
-      <div class={`${authGrid} ${css({ mt: '0.6rem' })}`}>
+      {/* The three verdicts recompute together on every paste, so the GRID is the
+          live region rather than each card — announcing "SPF pass", "DKIM pass",
+          "DMARC fail" as one result instead of three disconnected fragments.
+          Its two siblings (the hop summary and the mismatch list) already
+          announce; this section was the one that changed silently. */}
+      <div class={`${authGrid} ${css({ mt: '0.6rem' })}`} role="status" aria-live="polite">
         {
           (['spf', 'dkim', 'dmarc'] as const).map((mech) => (
             <div class={authCard} data-auth-card={mech}>

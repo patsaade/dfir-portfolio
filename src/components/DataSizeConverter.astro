@@ -181,7 +181,9 @@ const PANES: { system: DataUnitSystem; title: string; blurb: string }[] = [
     ))
   }
 
-  <p id="size-error" hidden class={errorBox} data-size-error></p>
+  {/* role=alert — see BaseConverter's identical note. `id="size-error"` existed
+      but was referenced by nothing, so validation errors were silent. */}
+  <p id="size-error" role="alert" hidden class={errorBox} data-size-error></p>
 </WorkspaceShell>
 
 <script>
