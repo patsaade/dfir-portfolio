@@ -1,0 +1,82 @@
+---
+// Bare document for the numeric-alias redirect stubs (/reference/event-ids/<n>/
+// and /reference/network-ports/<n>/). NOT for anything a reader is meant to stay on.
+//
+// WHY THIS EXISTS. Those stubs used BaseLayout, which meant each one shipped the
+// nav, the Quick Access sidebar, the Term of the Day ticker, the footer, the
+// hover-card engine and every site-wide script — 150,440 bytes — to display 126
+// characters of "this page has moved". There are 188 of them (125 event IDs + 63
+// ports), so that was 26.9 MB, about 9.4% of the entire build output, for pages
+// no one is supposed to read: they are `noindex` and filtered out of the sitemap
+// (see astro.config.mjs), and a visitor who lands on one is redirected away
+// immediately.
+//
+// Using BaseLayout was a deliberate authoring choice, not an oversight — the
+// original comment explains it was to avoid a second, differently-shaped <html>
+// root inside the route file. Moving that root into its own layout keeps that
+// property (the route still just picks a layout) while dropping the chrome.
+//
+// BEHAVIOUR IS UNCHANGED. Same `noindex`, same instant JS redirect, same
+// visible fallback link for a no-JS visitor. The only difference is that the
+// 150 KB of chrome around that one sentence is gone — which also makes the
+// redirect itself faster for the person who hits it.
+//
+// Styling is a few inline declarations rather than the site stylesheet: pulling
+// in the 86 KB Panda bundle to style a sentence that is on screen for one frame
+// would defeat the entire point. It only needs to not look broken in the no-JS
+// and slow-redirect cases.
+interface Props {
+  title: string;
+  description: string;
+}
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {/* These pages exist only to forward an old/ambiguous numeric URL to its
+        canonical slug. They must never be indexed in their own right. */}
+    <meta name="robots" content="noindex, follow" />
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        font-family: Georgia, 'Times New Roman', serif;
+        line-height: 1.6;
+        color: #2b2b2b;
+        background: #f5f1f2;
+      }
+      main {
+        max-width: 34rem;
+      }
+      a {
+        color: #6b4f8a;
+      }
+      ul {
+        padding-left: 1.1rem;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          color: #ece6ea;
+          background: #1b1518;
+        }
+        a {
+          color: #c9a9e0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

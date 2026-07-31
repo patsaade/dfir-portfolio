@@ -10,6 +10,7 @@ export const prerender = true;
 import { css } from 'styled-system/css';
 import { tag } from 'styled-system/recipes';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import RedirectLayout from '../../../layouts/RedirectLayout.astro';
 import Breadcrumbs from '../../../components/Breadcrumbs.astro';
 import Icon from '../../../components/Icon.astro';
 import EntryNav from '../../../components/EntryNav.astro';
@@ -134,10 +135,9 @@ const exampleBox = css({
 ---
 
 {matches ? (
-  <BaseLayout
+  <RedirectLayout
     title={dest ? `Moved — Port ${matches[0].port}` : `Port ${matches[0].port} — Multiple Matches`}
     description={dest ? `This page has moved to the canonical port ${matches[0].port} reference page.` : `Port ${matches[0].port} has more than one entry on this site — pick the one you mean.`}
-    robots="noindex"
   >
     {dest && <script is:inline define:vars={{ dest }}>window.location.replace(dest);</script>}
     {dest ? (
@@ -154,7 +154,7 @@ const exampleBox = css({
         </ul>
       </>
     )}
-  </BaseLayout>
+  </RedirectLayout>
 ) : (
   entry && (
     <BaseLayout title={`Port ${entry.port} — ${entry.name}`} description={`${entry.name} (port ${entry.port}/${entry.protocol}) — what it's used for, why it matters for DFIR, and common triggers.`}>

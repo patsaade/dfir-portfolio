@@ -10,6 +10,7 @@ export const prerender = true;
 import { css } from 'styled-system/css';
 import { tag } from 'styled-system/recipes';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+import RedirectLayout from '../../../layouts/RedirectLayout.astro';
 import Breadcrumbs from '../../../components/Breadcrumbs.astro';
 import Icon from '../../../components/Icon.astro';
 import EntryNav from '../../../components/EntryNav.astro';
@@ -179,10 +180,9 @@ const sampleLogBox = css({
 ---
 
 {matches ? (
-  <BaseLayout
+  <RedirectLayout
     title={dest ? `Moved — Event ${matches[0].id}` : `Event ${matches[0].id} — Multiple Matches`}
     description={dest ? `This page has moved to the canonical Event ${matches[0].id} reference page.` : `Event ID ${matches[0].id} exists in more than one Windows log — pick the one you mean.`}
-    robots="noindex"
   >
     {/* Instant client-side redirect for the unambiguous case — a script
         (not a <meta http-equiv="refresh"> in the head) so this stays a
@@ -204,7 +204,7 @@ const sampleLogBox = css({
         </ul>
       </>
     )}
-  </BaseLayout>
+  </RedirectLayout>
 ) : (
   entry && (
     <BaseLayout title={`Event ${entry.id} — ${entry.name}`} description={`${entry.name} (${SOURCE_LABEL[entry.source]} event ${entry.id}) — what it records, why it matters for DFIR, and common triggers.`}>
