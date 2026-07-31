@@ -743,6 +743,7 @@ export const PERSONAL_HREFS: readonly string[] = ['/blog/', '/labs/', '/about/',
 export const MORE_LINKS = [
   { href: '/certifications/', label: 'Certifications' },
   { href: '/privacy/', label: 'Privacy' },
+  { href: '/accessibility/', label: 'Accessibility' },
   { href: '/colophon/', label: 'Colophon' },
 ] as const;
 

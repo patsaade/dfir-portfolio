@@ -1,0 +1,163 @@
+---
+// Accessibility statement. Static page — prerender to HTML served from the CDN
+// (output: 'server' is on-demand by default).
+//
+// EVERY CLAIM ON THIS PAGE MUST BE BACKED BY SOMETHING THAT RUNS. That is the
+// whole point of writing it: an accessibility statement is a public commitment,
+// and one that drifts out of date is worse than none. Each specific assertion
+// below maps to an automated check that fails the build or the test suite if it
+// stops being true:
+//   - "no axe-core violations"          -> npm run check:a11y (gates CI)
+//   - contrast across every palette      -> test/themeContrast.test.ts
+//   - pass/fail never colour-hue alone   -> test/drillStateColors.test.ts
+//   - keyboard on every segmented switch -> src/scripts/radiogroupKeys.ts
+// If you change any of those, update this page in the same commit.
+//
+// The conformance wording is deliberately "substantially conforms" and NOT
+// "fully conformant". A formal full-conformance claim rests on human evaluation
+// with real assistive technology, which has not been done here — and the known
+// limitations section says so plainly rather than quietly omitting it.
+export const prerender = true;
+import { css } from 'styled-system/css';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHeader from '../components/PageHeader.astro';
+import { SOCIALS } from '../consts';
+import { prosePara, proseH2, proseLink } from '../styles/prose';
+
+const para = prosePara;
+const h2 = proseH2;
+const list = css({ color: 'textMuted', lineHeight: 1.9, pl: '1.25rem', mb: '1rem' });
+const link = proseLink;
+const strongText = css({ color: 'text' });
+const inlineCode = css({ fontFamily: 'mono', fontSize: '0.9em' });
+
+// Brand fork (CLAUDE.md invariant 14): the site is the same build on both
+// domains, so every accessibility claim holds identically. Only the sentence
+// that names a domain is forked. FLAT single-level selector — never nested.
+const hideOnCyberkit = css({ '[data-brand="cyberkit"] &': { display: 'none' } });
+const onlyOnCyberkit = css({ display: 'none', '[data-brand="cyberkit"] &': { display: 'inline' } });
+
+const updated = 'July 31, 2026';
+---
+
+<BaseLayout
+  title="Accessibility"
+  description="How this site approaches accessibility — target conformance, what is verified automatically on every build, known limitations, and how to report a problem."
+>
+  <PageHeader
+    breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Accessibility' }]}
+    eyebrow="Accessibility"
+    title="Accessibility statement"
+    description="What this site aims for, what is actually checked on every build, where it falls short, and how to tell me if something doesn't work for you."
+  />
+
+  <p class={para}>
+    I want this site to be usable by everyone who wants to read it — including with a keyboard
+    only, with a screen reader, at high zoom, or with motion reduced. This page sets out what that
+    means in practice and, more usefully, <strong class={strongText}>which parts of it are
+    enforced automatically</strong> rather than merely intended.
+  </p>
+
+  <h2 class={h2}>Conformance target</h2>
+  <p class={para}>
+    The target is <strong class={strongText}>WCAG 2.2 Level AA</strong>. This site
+    <strong class={strongText}> substantially conforms</strong> to it: the automated and structural
+    criteria below are verified on every build, and the interaction patterns have been checked by
+    hand. I have deliberately not claimed <em>full</em> conformance — that rests on evaluation with
+    real assistive technology, which I have not yet done. See the limitations below; I would rather
+    understate this and be accurate than claim a level I cannot evidence.
+  </p>
+
+  <h2 class={h2}>What is verified on every build</h2>
+  <p class={para}>
+    These aren't aspirations — each one fails the build or the test suite if it stops being true:
+  </p>
+  <ul class={list}>
+    <li>
+      <strong class={strongText}>No automated violations.</strong> Every page template is scanned
+      with <a class={link} href="https://github.com/dequelabs/axe-core" target="_blank" rel="noopener">axe-core</a>{' '}
+      and the build fails on any finding — currently zero across all page types.
+    </li>
+    <li>
+      <strong class={strongText}>Colour contrast, on every theme.</strong> All ten colour palettes
+      are checked programmatically: every text colour against every surface it can appear on clears
+      the 4.5:1 AA threshold, and interactive borders clear 3:1. Changing a palette without meeting
+      that fails the tests.
+    </li>
+    <li>
+      <strong class={strongText}>Colour is never the only signal.</strong> Pass/fail and
+      added/removed states carry a marker, an icon or text as well as a colour, and a test enforces
+      that the two states also differ in hue rather than only in shade.
+    </li>
+    <li>
+      <strong class={strongText}>Keyboard operability.</strong> Every custom control — the
+      segmented switches, the ⌘K search palette, the sidebar, collapsible sections and the practice
+      drills — is reachable and operable by keyboard alone, with arrow-key navigation and a single
+      tab stop on grouped controls, per the WAI-ARIA patterns.
+    </li>
+    <li>
+      <strong class={strongText}>It works without JavaScript.</strong> Every page renders its full
+      content with scripts disabled. Animations and enhancements are layered on top; none of them
+      hide content by default.
+    </li>
+    <li>
+      <strong class={strongText}>Reduced motion is honoured.</strong> With{' '}
+      <code class={inlineCode}>prefers-reduced-motion</code> set, every animation settles
+      immediately to its final, visible state — nothing loops, decodes or moves.
+    </li>
+    <li>
+      <strong class={strongText}>Structure.</strong> One <code class={inlineCode}>h1</code> per
+      page, no skipped heading levels, landmark regions covering all content, and a skip link to
+      the main content.
+    </li>
+  </ul>
+
+  <h2 class={h2}>Known limitations</h2>
+  <p class={para}>
+    Being specific here is more useful than a blanket assurance:
+  </p>
+  <ul class={list}>
+    <li>
+      <strong class={strongText}>No assistive-technology testing yet.</strong> The checks above are
+      automated and manual-by-inspection. Nobody has yet driven this site end to end with VoiceOver,
+      NVDA or JAWS. Automated tooling catches roughly half of real accessibility problems, so this
+      is the most significant gap and the next thing I intend to close.
+    </li>
+    <li>
+      <strong class={strongText}>Automated scanning samples page templates.</strong> The site has
+      over 1,700 pages generated from a small number of templates; the scan covers every template
+      and every hand-written page rather than all pages individually.
+    </li>
+    <li>
+      <strong class={strongText}>Some tools are inherently visual.</strong> The interactive
+      analysis tools present dense tabular output. They are keyboard-operable and announce their
+      results, but a few — the diff viewer especially — are harder to follow non-visually than I
+      would like.
+    </li>
+    <li>
+      <strong class={strongText}>Third-party content.</strong> Some pages embed data generated from
+      external sources such as MITRE ATT&amp;CK and D3FEND. I control the presentation, not the
+      source wording.
+    </li>
+  </ul>
+
+  <h2 class={h2}>Tell me if something doesn't work</h2>
+  <p class={para}>
+    If any part of this site is difficult or impossible for you to use, I'd genuinely like to know —
+    a specific report ("the X control can't be reached with a keyboard", "the Y result isn't
+    announced") is worth far more to me than the automated scan. Reach me on{' '}
+    <a class={link} href={SOCIALS.linkedin} target="_blank" rel="noopener">LinkedIn</a>{' '}
+    <span class={hideOnCyberkit}>
+      or open an issue on <a class={link} href={SOCIALS.github} target="_blank" rel="noopener">GitHub</a>
+    </span>
+    <span class={onlyOnCyberkit}>
+      or via the <a class={link} href="/colophon/">colophon</a>
+    </span>, and please say which browser and assistive technology you were using. There is no
+    third party to escalate to here — this is a personal site, so it comes to me and I will fix it.
+  </p>
+
+  <p class={css({ color: 'textMuted', fontSize: '0.85rem', mt: '2rem' })}>
+    Last reviewed {updated}. This statement describes the site as built at that date; the
+    automated checks referenced above run on every deploy.
+  </p>
+</BaseLayout>

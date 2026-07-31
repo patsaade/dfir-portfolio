@@ -84,6 +84,7 @@ const STATIC_ENTRIES: OgEntry[] = [
   { slug: 'certifications', title: 'Certifications', eyebrow: 'Credentials' },
   { slug: 'colophon', title: 'How this site is built', eyebrow: 'Colophon' },
   { slug: 'privacy', title: 'Privacy policy', eyebrow: 'Legal' },
+  { slug: 'accessibility', title: 'Accessibility statement', eyebrow: 'Accessibility' },
 ];
 
 const STATIC_SLUGS = new Set(STATIC_ENTRIES.map((e) => e.slug));
