@@ -14,7 +14,7 @@ const groups: { label: string; themes: Theme[] }[] = [
 
 // Each mode's palette list is its own vertical segmented switch — the shared
 // site-wide AnimatedSwitch (src/scripts/animatedSwitch.ts) auto-wires any
-// role="radiogroup" it finds, sliding a thumb behind the active item; a
+// role="radiogroup" data-no-radiokeys it finds, sliding a thumb behind the active item; a
 // group with aria-orientation="vertical" (below) slides that thumb down the
 // column instead of across a row, which is the same attribute these lists
 // already need for their own arrow-key nav. `position:'relative', zIndex:0`
@@ -123,7 +123,7 @@ const itemClass = css({
             >
               {group.label}
             </p>
-            <div class={paletteGroup} role="radiogroup" aria-orientation="vertical" aria-label={group.label}>
+            <div class={paletteGroup} role="radiogroup" data-no-radiokeys aria-orientation="vertical" aria-label={group.label}>
               {group.themes.map((theme) => (
                 <button
                   type="button"
@@ -191,7 +191,7 @@ const itemClass = css({
     // below stays scoped to whichever one currently has focus, matching
     // standard radiogroup behavior (Tab moves *between* groups, arrow keys
     // move *within* one).
-    var radioGroups = Array.prototype.slice.call(menu.querySelectorAll('[role="radiogroup"]'));
+    var radioGroups = Array.prototype.slice.call(menu.querySelectorAll('[role="radiogroup" data-no-radiokeys]'));
 
     function syncUI() {
       // Each column shows the preferred palette for its mode, independent of which

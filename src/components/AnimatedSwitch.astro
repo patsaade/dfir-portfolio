@@ -17,9 +17,15 @@
 <script>
   // @ts-nocheck — vanilla DOM client script
   import { animateSwitch } from '../scripts/animatedSwitch';
+  import { radiogroupKeys } from '../scripts/radiogroupKeys';
 
   function init() {
-    Array.prototype.forEach.call(document.querySelectorAll('[role="radiogroup"]'), animateSwitch);
+    const groups = document.querySelectorAll('[role="radiogroup"]');
+    // Keyboard support FIRST, and unconditionally: animateSwitch returns early
+    // under prefers-reduced-motion, and arrow-key access must never be lost with
+    // the animation. Kept as two separate scripts for exactly that reason.
+    Array.prototype.forEach.call(groups, radiogroupKeys);
+    Array.prototype.forEach.call(groups, animateSwitch);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();

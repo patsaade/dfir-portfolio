@@ -293,7 +293,7 @@ const railHeaderTitle = css({
   m: 0,
 });
 
-// Top-toolbar dataset switch — a real segmented switch (role="radiogroup" of
+// Top-toolbar dataset switch — a real segmented switch (role="radiogroup" data-no-radiokeys of
 // 3 role="radio" buttons, Reference / Tools / Drills, all three always rendered at
 // once — see this file's own top comment) rather than a single icon-swap
 // button. Wired into the shared, site-wide sliding-thumb system
@@ -302,7 +302,7 @@ const railHeaderTitle = css({
 // exactly one change" note): the track just needs `position: 'relative',
 // zIndex: 0` and each button needs `role="radio"` + a `data-active`
 // attribute on whichever one is current — no per-component thumb code here
-// at all, that script auto-wires every `[role="radiogroup"]` on the page.
+// at all, that script auto-wires every `[role="radiogroup" data-no-radiokeys]` on the page.
 //
 // Deliberately kept VERTICAL (a stacked column) rather than a horizontal
 // row: `animatedSwitch.ts` reads a group's `aria-orientation` ONCE, at
@@ -593,7 +593,7 @@ const handle = css({
           <p class={railHeaderTitle}>Quick Access</p>
         </div>
 
-        <div class={modeSwitchTrack} role="radiogroup" aria-label="Sidebar dataset" aria-orientation="vertical" data-tool-sidebar-mode-toggle>
+        <div class={modeSwitchTrack} role="radiogroup" data-no-radiokeys aria-label="Sidebar dataset" aria-orientation="vertical" data-tool-sidebar-mode-toggle>
           {
             MODE_OPTIONS.map((opt) => (
               <button
@@ -772,7 +772,7 @@ const handle = css({
     var scrollRegionEl = root.querySelector('[data-tool-sidebar-scroll]');
     // The 3 mode segment buttons (Reference/Tools/Drills) — `data-tool-sidebar-mode-toggle`
     // itself marks the group/track (see markup). animatedSwitch.ts finds it
-    // generically via `[role="radiogroup"]` for the sliding thumb, so this
+    // generically via `[role="radiogroup" data-no-radiokeys]` for the sliding thumb, so this
     // script never needs it for that; it does need its own reference below
     // to wire the arrow-key navigation the radiogroup role advertises to
     // assistive tech (native `role="radio"` buttons carry none of that for

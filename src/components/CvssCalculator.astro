@@ -234,7 +234,14 @@ const defaultVector = buildCvssV31VectorString(DEFAULT_CVSS_METRICS);
     </div>
 
     <div class={stage}>
-      <div class={scoreCard}>
+      {/* role=status + aria-live: the score and severity are recomputed on every
+          metric change, and without this a screen-reader user changed a metric
+          and heard nothing at all — the entire output of the tool was silent.
+          "polite" so it waits for a pause rather than interrupting the metric
+          the user is still moving through; the whole card is the live region so
+          score and severity are announced together as one result rather than as
+          two disconnected fragments. */}
+      <div class={scoreCard} role="status" aria-live="polite">
         <p class={paneLabel} style="margin-bottom:0">Base score</p>
         <span class={scoreNumber} data-cvss-score>{defaultResult.baseScore.toFixed(1)}</span>
         <span class={severityBadge} data-cvss-severity={defaultResult.severity.toLowerCase()} data-cvss-severity-label>
