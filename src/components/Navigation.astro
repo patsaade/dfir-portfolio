@@ -664,6 +664,20 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
         ))}
       </ul>
 
+    {/* Utility-control cluster: search, sound, palette, light/dark. These are
+        site controls rather than destinations, so they're grouped tightly
+        (0.4rem) and separated from the nav links by the row's own 24px gap —
+        previously all four sat at that same 24px spacing, which read as four
+        more nav items rather than one control group. All four are 34px tall
+        with the same border/radius/fill; the palette and mode controls used to
+        be 38px and 38.4px, so the row was visibly misaligned. */}
+    <div
+      class={css({
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+      })}
+    >
       <button
         type="button"
         data-search-trigger
@@ -709,6 +723,7 @@ const mobileLinkDivider = css({ borderTop: '1px solid token(colors.border)' });
 
       {/* Standalone light/dark/system switch — furthest-right control */}
       <ModeToggle />
+    </div>
 
       <button
         id="mobile-menu-toggle"

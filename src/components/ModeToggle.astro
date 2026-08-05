@@ -58,7 +58,11 @@ const segBtn = css({
     zIndex: 0,
     display: 'inline-flex',
     gap: '0.15rem',
-    p: '0.2rem',
+    // 34px total to match the other three nav controls: 30px segments + 2x1px
+    // padding + 2x1px border. It was `p: 0.2rem` (38.4px), which left this and
+    // the theme picker sitting ~4px taller than search and sound.
+    p: '1px',
+    h: '34px',
     bg: 'bgSubtle',
     border: '1px solid token(colors.border)',
     borderRadius: 'md',

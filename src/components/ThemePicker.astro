@@ -14,7 +14,7 @@ const groups: { label: string; themes: Theme[] }[] = [
 
 // Each mode's palette list is its own vertical segmented switch — the shared
 // site-wide AnimatedSwitch (src/scripts/animatedSwitch.ts) auto-wires any
-// role="radiogroup" data-no-radiokeys it finds, sliding a thumb behind the active item; a
+// role="radiogroup" it finds, sliding a thumb behind the active item; a
 // group with aria-orientation="vertical" (below) slides that thumb down the
 // column instead of across a row, which is the same attribute these lists
 // already need for their own arrow-key nav. `position:'relative', zIndex:0`
@@ -43,7 +43,14 @@ const itemClass = css({
 });
 ---
 
-<div class={css({ position: 'relative' })} data-theme-picker>
+{/* `display: flex`, not the default block. As a block, this wrapper measured
+    35.2px against its own 34px button: the inline-flex button sits on a text
+    baseline, so the line box added ~1.2px of descender space below it. The nav
+    cluster centres the WRAPPER, which floated the button 0.59px above its four
+    neighbours — invisible on a retina display, a 1px jog elsewhere. Flex makes
+    the wrapper shrink-wrap the button exactly. `position: relative` stays: it is
+    the positioning context for the absolutely-positioned menu. */}
+<div class={css({ position: 'relative', display: 'flex' })} data-theme-picker>
   <button
     id="theme-picker-btn"
     type="button"
@@ -55,11 +62,15 @@ const itemClass = css({
       display: 'inline-flex',
       alignItems: 'center',
       gap: '0.3rem',
-      h: '38px',
+      // 34px and filled, matching the search / sound / mode controls exactly.
+      // This was 38px with a transparent background, which made it both 4px
+      // taller than its neighbours and the only one of the four without a
+      // surface — so the cluster read as three buttons plus one outlier.
+      h: '34px',
       px: '0.6rem',
       borderRadius: 'md',
       border: '1px solid token(colors.border)',
-      bg: 'transparent',
+      bg: 'bgSubtle',
       color: 'textMuted',
       cursor: 'pointer',
       transition: 'all 200ms ease',
@@ -191,7 +202,7 @@ const itemClass = css({
     // below stays scoped to whichever one currently has focus, matching
     // standard radiogroup behavior (Tab moves *between* groups, arrow keys
     // move *within* one).
-    var radioGroups = Array.prototype.slice.call(menu.querySelectorAll('[role="radiogroup" data-no-radiokeys]'));
+    var radioGroups = Array.prototype.slice.call(menu.querySelectorAll('[role="radiogroup"]'));
 
     function syncUI() {
       // Each column shows the preferred palette for its mode, independent of which
