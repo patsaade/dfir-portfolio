@@ -115,7 +115,15 @@ const attackChip = css({
 });
 ---
 
-<BaseLayout title={term.term} description={`${term.term} — ${term.short}`}>
+{/* "<term> — Glossary" rather than the bare term. A glossary entry and a
+    full reference page can legitimately cover the same concept — today
+    /reference/glossary/pyramid-of-pain/ and /reference/pyramid-of-pain/ were
+    both titled exactly "Pyramid of Pain", which is two indexable pages
+    competing for one query and reads as duplicate content. Qualifying every
+    term page (not just the one that currently collides) fixes it generally
+    rather than waiting for the next collision, and tells a searcher which of
+    the two results is the short definition. */}
+<BaseLayout title={`${term.term} — Glossary`} description={`${term.term} — ${term.short}`}>
   <Breadcrumbs
     items={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'Glossary', href: '/reference/glossary/' }, { label: term.term }]}
   />

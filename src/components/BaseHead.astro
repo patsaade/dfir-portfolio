@@ -121,6 +121,16 @@ const jsonLd = JSON.stringify({ '@context': 'https://schema.org', '@graph': grap
 <meta name="theme-color" content="#1b1518" />
 <link rel="canonical" href={canonicalURL} />
 <link rel="sitemap" href="/sitemap-index.xml" />
+{/* Google Search Console verification. Emitted only when the env var is set, so
+    nothing ships until there is a real token — set GOOGLE_SITE_VERIFICATION in
+    the Vercel project and redeploy. Read at BUILD time (every route prerenders),
+    which is why it needs no PUBLIC_ prefix and never reaches the client bundle.
+    DNS TXT verification is the better option where it's available: it verifies
+    the whole domain rather than one URL prefix, so it covers the apex, www and
+    cyberkit.win at once. This tag is the fallback for when DNS isn't practical. */}
+{import.meta.env.GOOGLE_SITE_VERIFICATION && (
+  <meta name="google-site-verification" content={import.meta.env.GOOGLE_SITE_VERIFICATION} />
+)}
 <link
   rel="alternate"
   type="application/rss+xml"

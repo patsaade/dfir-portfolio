@@ -4,6 +4,17 @@ import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import vercel from '@astrojs/vercel';
 import optimizeHtml from './src/integrations/optimizeHtml.mjs';
+import { lastmodFor } from './src/integrations/sitemapLastmod.mjs';
+import { readdirSync, existsSync } from 'node:fs';
+
+// Content collections with no entries yet. Their listing page is noindex (a
+// content-free page is a soft-404 signal), so it must also stay out of the
+// sitemap. Computed from the directory, so adding the first post re-includes
+// the page automatically with no config edit.
+const emptyCollections = ['blog', 'labs'].filter((c) => {
+  const dir = `src/content/${c}`;
+  return !existsSync(dir) || readdirSync(dir).filter((f) => /\.mdx?$/.test(f)).length === 0;
+});
 
 // https://astro.build/config
 export default defineConfig({
@@ -40,7 +51,23 @@ export default defineConfig({
       filter: (page) =>
         !page.includes('/term-of-the-day/') &&
         !/\/reference\/(?:event-ids|network-ports)\/\d+\/?$/.test(page) &&
-        !/\/404\/?$/.test(page),
+        !/\/404\/?$/.test(page) &&
+        // A listing page whose collection is empty is noindex (see
+        // src/pages/labs/index.astro), and a noindex URL must never appear in
+        // the sitemap — that pair is a contradictory signal and shows up in
+        // Search Console as such. Read from the content directory rather than a
+        // flag so the two stay in lockstep and both lift automatically when the
+        // first post ships.
+        !emptyCollections.some((c) => new RegExp(`/${c}/?$`).test(page)),
+      // Real `lastmod` per URL, from git history — see the integration for why
+      // this is derived rather than stamped with the build date. Google uses
+      // lastmod to prioritise re-crawling but discounts it site-wide if it looks
+      // unreliable, and "everything changed on every deploy" is exactly that.
+      // A URL with no resolvable history simply gets no lastmod.
+      serialize: (item) => {
+        const lastmod = lastmodFor(item.url);
+        return lastmod ? { ...item, lastmod } : item;
+      },
     }),
     // Strips authoring comments and minifies the `is:inline` scripts Astro
     // deliberately leaves alone. Runs last, on the emitted HTML, so the source

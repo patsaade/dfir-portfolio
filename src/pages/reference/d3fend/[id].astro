@@ -81,7 +81,14 @@ const jsonLd = JSON.stringify({
     MITRE's raw `definition` runs to 606 characters on D3-AMED, far past what any
     crawler renders in a snippet, and an arbitrary cut lands mid-sentence.
     Structured data has no such display limit, so it keeps the full text. */}
-<BaseLayout title={`${tech.id} ${tech.name} — MITRE D3FEND`} description={metaDescription(tech.definition || tech.name)}>
+{/* The technique NAME is prefixed onto the description, not just the raw
+    definition. MITRE reuses one definition verbatim across related techniques —
+    D3-FISV (File Internal Structure Verification) and D3-FMVV (File Metadata
+    Value Verification) shipped byte-identical meta descriptions, which is a
+    duplicate-content signal even though their titles differ. Leading with the
+    name makes every page's description unique by construction and puts the
+    distinguishing words first, where a SERP snippet actually shows them. */}
+<BaseLayout title={`${tech.id} ${tech.name} — MITRE D3FEND`} description={metaDescription(tech.definition ? `${tech.name} — ${tech.definition}` : tech.name)}>
   <Breadcrumbs
     items={[{ label: 'Home', href: '/' }, { label: 'Reference', href: '/reference/' }, { label: 'MITRE D3FEND Map', href: '/reference/d3fend/' }, { label: tech.id }]}
   />

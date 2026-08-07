@@ -12,7 +12,15 @@ const dest = '/reference/glossary/';
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="refresh" content={`0; url=${dest}`} />
-    <link rel="canonical" href={dest} />
+    {/* Deliberately NO rel=canonical. It used to carry one pointing at the
+        destination, which contradicts the noindex directly below: a canonical
+        says "index the other URL in place of this one" while noindex says
+        "don't index this at all", and Google's own guidance is not to combine
+        the two — the conflicting pair is what shows up in Search Console as a
+        page with mixed exclusion reasons. The noindex alone is the unambiguous
+        instruction, and the meta-refresh plus the real link below already tell
+        both crawlers and humans where the content went. (The old canonical was
+        also relative rather than absolute, unlike every other on the site.) */}
     <meta name="robots" content="noindex" />
     <title>Moved — Glossary</title>
   </head>

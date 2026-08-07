@@ -44,7 +44,19 @@ const labTagOptions = Object.entries(labTagCounts)
   .sort((a, b) => b.count - a.count);
 ---
 
-<BaseLayout title="Labs" description="Completed DFIR lab & CTF writeups — CyberDefenders, 13Cubed, Magnet, BTLO, and home-lab projects.">
+{/* noindex ONLY while the collection is empty. The page is fully built and has
+    a real empty state, but with zero writeups there is nothing for Google to
+    rank — an indexed, content-free listing reads as a soft 404 and spends crawl
+    budget the rest of the site can use, which matters while ~1,700 URLs are
+    being re-crawled after the migration. `follow` is kept so the nav links on it
+    still pass through. Driven by the collection itself rather than a flag, so it
+    starts indexing the moment the first lab ships — nothing to remember to undo.
+    The sitemap applies the same rule from the same source (astro.config.mjs). */}
+<BaseLayout
+  title="Labs"
+  description="Completed DFIR lab & CTF writeups — CyberDefenders, 13Cubed, Magnet, BTLO, and home-lab projects."
+  robots={labs.length === 0 ? 'noindex, follow' : undefined}
+>
   <PageHeader
     breadcrumbs={[{ label: 'Home', href: '/' }, { label: 'Labs' }]}
     eyebrow="Labs & Writeups"
