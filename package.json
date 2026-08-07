@@ -20,7 +20,8 @@
     "check:security": "node scripts/check-security.mjs",
     "audit:deadcode": "knip",
     "prepare": "panda codegen",
-    "check:a11y": "node scripts/check-a11y.mjs"
+    "check:a11y": "node scripts/check-a11y.mjs",
+    "gen:lastmod": "node scripts/gen-lastmod.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.3",
