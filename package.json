@@ -43,7 +43,7 @@
     "postcss": "^8.5.21",
     "satori": "^0.28.2",
     "sharp": "^0.35.3",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },
   "allowScripts": {
